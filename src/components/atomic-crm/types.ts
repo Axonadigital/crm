@@ -69,6 +69,18 @@ export type Company = {
   context_links?: string[];
   nb_contacts?: number;
   nb_deals?: number;
+  // Swedish CRM fields
+  org_number?: string;
+  google_business_url?: string;
+  has_website?: boolean;
+  website_quality?: "none" | "poor" | "ok" | "good";
+  source?: "google_maps" | "hitta" | "allabolag" | "eniro" | "manual" | "referral" | "field";
+  lead_status?: "new" | "contacted" | "interested" | "meeting_booked" | "proposal_sent" | "negotiation" | "closed_won" | "closed_lost" | "not_interested" | "bad_fit";
+  next_followup_date?: string;
+  assigned_to?: string;
+  tags?: string[];
+  industry?: string;
+  employees_estimate?: number;
 } & Pick<RaRecord, "id">;
 
 export type EmailAndType = {
@@ -151,6 +163,51 @@ export type Task = {
   due_date: string;
   done_date?: string | null;
   sales_id?: Identifier;
+} & Pick<RaRecord, "id">;
+
+export type CalendarEventAttendee = {
+  name?: string;
+  email: string;
+};
+
+export type CalendarEventStatus = "scheduled" | "completed" | "cancelled";
+
+export type CalendarEventSource = "crm" | "calcom" | "google";
+
+export type CalendarMeetingProvider = "google_meet";
+
+export type CalendarEvent = {
+  id: Identifier;
+  title: string;
+  description?: string;
+  starts_at: string;
+  ends_at: string;
+  time_zone?: string;
+  contact_id?: Identifier | null;
+  company_id?: Identifier | null;
+  sales_id?: Identifier | null;
+  status: CalendarEventStatus;
+  source: CalendarEventSource;
+  google_event_id?: string | null;
+  calcom_event_id?: string | null;
+  meeting_provider: CalendarMeetingProvider;
+  meet_link?: string | null;
+  attendees?: CalendarEventAttendee[];
+  metadata?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+} & Pick<RaRecord, "id">;
+
+export type CallLog = {
+  company_id: Identifier;
+  contact_id?: Identifier | null;
+  user_id?: string;
+  call_outcome: "no_answer" | "busy" | "wrong_number" | "spoke_gatekeeper" | "spoke_decision_maker" | "interested" | "not_interested" | "meeting_booked" | "send_info" | "callback_requested";
+  notes?: string;
+  call_duration_seconds?: number;
+  followup_date?: string;
+  followup_note?: string;
+  created_at: string;
 } & Pick<RaRecord, "id">;
 
 export type ActivityCompanyCreated = {

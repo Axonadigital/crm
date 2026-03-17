@@ -13,6 +13,7 @@ import { AsideSection } from "../misc/AsideSection";
 import type { Contact } from "../types";
 import { ContactMergeButton } from "./ContactMergeButton";
 import { ExportVCardButton } from "./ExportVCardButton";
+import { ContactCalendarEvents } from "./ContactCalendarEvents";
 
 export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
   const record = useRecordContext<Contact>();
@@ -59,6 +60,12 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
           <TasksIterator />
         </ReferenceManyField>
         <AddTask />
+      </AsideSection>
+
+      <AsideSection
+        title={translate("resources.calendar_events.name", { smart_count: 2 })}
+      >
+        <ContactCalendarEvents />
       </AsideSection>
 
       {link !== "edit" && (

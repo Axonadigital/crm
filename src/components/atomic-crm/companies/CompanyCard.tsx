@@ -1,4 +1,4 @@
-import { Handshake } from "lucide-react";
+import { Handshake, MapPin, Phone } from "lucide-react";
 import { Link } from "react-router";
 import {
   useCreatePath,
@@ -8,11 +8,13 @@ import {
 } from "ra-core";
 import { ReferenceManyField } from "@/components/admin/reference-many-field";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 import { Avatar as ContactAvatar } from "../contacts/Avatar";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Company } from "../types";
 import { CompanyAvatar } from "./CompanyAvatar";
+import { getLeadStatusBadgeVariant } from "./leadStatusUtils";
 
 export const CompanyCard = (props: { record?: Company }) => {
   const createPath = useCreatePath();
@@ -33,13 +35,42 @@ export const CompanyCard = (props: { record?: Company }) => {
       })}
       className="no-underline"
     >
-      <Card className="h-[200px] flex flex-col justify-between p-4 hover:bg-muted">
+      <Card className="h-[240px] flex flex-col justify-between p-4 hover:bg-muted">
         <div className="flex flex-col items-center gap-1">
           <CompanyAvatar />
           <div className="text-center mt-1">
             <h6 className="text-sm font-medium">{record.name}</h6>
             <p className="text-xs text-muted-foreground">{sectorLabel}</p>
+            {record.lead_status && (
+              <Badge
+                variant={getLeadStatusBadgeVariant(record.lead_status)}
+                className="mt-1 text-[10px] px-1.5 py-0"
+              >
+                {translate(`resources.companies.lead_status.${record.lead_status}`, {
+                  _: record.lead_status.replace(/_/g, " "),
+                })}
+              </Badge>
+            )}
           </div>
+        </div>
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {record.city && (
+            <div className="flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              <span className="truncate">{record.city}</span>
+            </div>
+          )}
+          {record.phone_number && (
+            <div className="flex items-center gap-1">
+              <Phone className="w-3 h-3" />
+              <span className="truncate">{record.phone_number}</span>
+            </div>
+          )}
+          {record.next_followup_date && (
+            <div className="text-xs font-medium text-orange-600">
+              Följ upp: {new Date(record.next_followup_date).toLocaleDateString('sv-SE')}
+            </div>
+          )}
         </div>
         <div className="flex flex-row w-full justify-between gap-2">
           <div className="flex items-center">

@@ -41,6 +41,8 @@ import {
   ContextInfo,
 } from "./CompanyAside";
 import { CompanyAvatar } from "./CompanyAvatar";
+import { CallLogModal } from "./CallLogModal";
+import { CallLogHistory } from "./CallLogHistory";
 
 export const CompanyShow = () => {
   const isMobile = useIsMobile();
@@ -113,9 +115,10 @@ const CompanyShowContent = () => {
       <div className="flex-1">
         <Card>
           <CardContent>
-            <div className="flex mb-3">
+            <div className="flex mb-3 items-center">
               <CompanyAvatar />
               <h5 className="text-xl ml-2 flex-1">{record.name}</h5>
+              <CallLogModal />
             </div>
             <Tabs defaultValue={currentTab} onValueChange={handleTabChange}>
               <TabsList className="grid w-full grid-cols-3">
@@ -138,7 +141,10 @@ const CompanyShowContent = () => {
                 ) : null}
               </TabsList>
               <TabsContent value="activity" className="pt-2">
-                <ActivityLog companyId={record.id} context="company" />
+                <div className="space-y-4">
+                  <CallLogHistory />
+                  <ActivityLog companyId={record.id} context="company" />
+                </div>
               </TabsContent>
               <TabsContent value="contacts">
                 {record.nb_contacts ? (

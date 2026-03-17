@@ -9,6 +9,7 @@ import { TopToolbar } from "../layout/TopToolbar";
 import { CompanyEmpty } from "./CompanyEmpty";
 import { CompanyListFilter } from "./CompanyListFilter";
 import { ImageList } from "./GridList";
+import { GoogleMapsScraper } from "./GoogleMapsScraper";
 
 export const CompanyList = () => {
   const { identity } = useGetIdentity();
@@ -47,8 +48,9 @@ const CompanyListActions = () => {
   const translate = useTranslate();
   return (
     <TopToolbar>
-      <SortButton fields={["name", "created_at", "nb_contacts"]} />
+      <SortButton fields={["name", "created_at", "nb_contacts", "lead_status"]} />
       <ExportButton />
+      <GoogleMapsScraper />
       <CreateButton
         label={translate("resources.companies.action.new", {
           _: "New Company",

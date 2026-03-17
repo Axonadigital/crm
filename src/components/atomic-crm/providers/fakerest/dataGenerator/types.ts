@@ -1,4 +1,5 @@
 import type {
+  CalendarEvent,
   Company,
   Contact,
   ContactNote,
@@ -19,5 +20,6 @@ export interface Db {
   sales: Sale[];
   tags: Tag[];
   tasks: Task[];
+  calendar_events: CalendarEvent[];
   configuration: Array<{ id: number; config: ConfigurationContextValue }>;
 }

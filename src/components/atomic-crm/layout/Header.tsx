@@ -1,4 +1,4 @@
-import { Import, Settings, User, Users } from "lucide-react";
+import { Import, Phone, Settings, User, Users } from "lucide-react";
 import { CanAccess, useTranslate, useUserMenu } from "ra-core";
 import { Link, matchPath, useLocation } from "react-router";
 import { RefreshButton } from "@/components/admin/refresh-button";
@@ -17,6 +17,10 @@ const Header = () => {
   let currentPath: string | boolean = "/";
   if (matchPath("/", location.pathname)) {
     currentPath = "/";
+  } else if (matchPath("/call-queue", location.pathname)) {
+    currentPath = "/call-queue";
+  } else if (matchPath("/calendar/*", location.pathname)) {
+    currentPath = "/calendar";
   } else if (matchPath("/contacts/*", location.pathname)) {
     currentPath = "/contacts";
   } else if (matchPath("/companies/*", location.pathname)) {
@@ -57,11 +61,23 @@ const Header = () => {
                     isActive={currentPath === "/"}
                   />
                   <NavigationTab
+                    label="Ringlista"
+                    to="/call-queue"
+                    isActive={currentPath === "/call-queue"}
+                  />
+                  <NavigationTab
                     label={translate("resources.contacts.name", {
                       smart_count: 2,
                     })}
                     to="/contacts"
                     isActive={currentPath === "/contacts"}
+                  />
+                  <NavigationTab
+                    label={translate("resources.calendar_events.name", {
+                      smart_count: 2,
+                    })}
+                    to="/calendar"
+                    isActive={currentPath === "/calendar"}
                   />
                   <NavigationTab
                     label={translate("resources.companies.name", {

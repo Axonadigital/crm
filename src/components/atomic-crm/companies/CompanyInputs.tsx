@@ -101,6 +101,37 @@ const CompanyContextInputs = () => {
     ...size,
     name: getTranslatedCompanySizeLabel(size, translate),
   }));
+
+  const leadStatusChoices = [
+    { id: "new", name: translate("resources.companies.lead_status.new", { _: "Ny" }) },
+    { id: "contacted", name: translate("resources.companies.lead_status.contacted", { _: "Kontaktad" }) },
+    { id: "interested", name: translate("resources.companies.lead_status.interested", { _: "Intresserad" }) },
+    { id: "meeting_booked", name: translate("resources.companies.lead_status.meeting_booked", { _: "Möte bokat" }) },
+    { id: "proposal_sent", name: translate("resources.companies.lead_status.proposal_sent", { _: "Offert skickad" }) },
+    { id: "negotiation", name: translate("resources.companies.lead_status.negotiation", { _: "Förhandling" }) },
+    { id: "closed_won", name: translate("resources.companies.lead_status.closed_won", { _: "Vunnen" }) },
+    { id: "closed_lost", name: translate("resources.companies.lead_status.closed_lost", { _: "Förlorad" }) },
+    { id: "not_interested", name: translate("resources.companies.lead_status.not_interested", { _: "Ej intresserad" }) },
+    { id: "bad_fit", name: translate("resources.companies.lead_status.bad_fit", { _: "Dålig match" }) },
+  ];
+
+  const sourceChoices = [
+    { id: "manual", name: "Manuell" },
+    { id: "google_maps", name: "Google Maps" },
+    { id: "hitta", name: "Hitta.se" },
+    { id: "allabolag", name: "Allabolag" },
+    { id: "eniro", name: "Eniro" },
+    { id: "referral", name: "Rekommendation" },
+    { id: "field", name: "Fältarbete" },
+  ];
+
+  const websiteQualityChoices = [
+    { id: "none", name: "Ingen" },
+    { id: "poor", name: "Dålig" },
+    { id: "ok", name: "OK" },
+    { id: "good", name: "Bra" },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
       <h6 className="text-lg font-semibold">
@@ -118,6 +149,11 @@ const CompanyContextInputs = () => {
       <SelectInput source="size" choices={translatedSizes} helperText={false} />
       <TextInput source="revenue" helperText={false} />
       <TextInput source="tax_identifier" helperText={false} />
+      <TextInput source="org_number" label="Organisationsnummer" helperText={false} />
+      <TextInput source="industry" label="Bransch" helperText={false} />
+      <SelectInput source="lead_status" label="Lead Status" choices={leadStatusChoices} helperText={false} />
+      <SelectInput source="source" label="Källa" choices={sourceChoices} helperText={false} />
+      <TextInput source="next_followup_date" type="date" label="Nästa uppföljning" helperText={false} />
     </div>
   );
 };
@@ -142,6 +178,14 @@ const CompanyAddressInputs = () => {
 
 const CompanyAdditionalInformationInputs = () => {
   const translate = useTranslate();
+
+  const websiteQualityChoices = [
+    { id: "none", name: "Ingen" },
+    { id: "poor", name: "Dålig" },
+    { id: "ok", name: "OK" },
+    { id: "good", name: "Bra" },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
       <h6 className="text-lg font-semibold">
@@ -150,6 +194,9 @@ const CompanyAdditionalInformationInputs = () => {
         })}
       </h6>
       <TextInput source="description" multiline helperText={false} />
+      <TextInput source="google_business_url" label="Google Business URL" helperText={false} validate={isUrl} />
+      <SelectInput source="website_quality" label="Webbplatskvalitet" choices={websiteQualityChoices} helperText={false} />
+      <TextInput source="employees_estimate" type="number" label="Uppskattad storlek (anställda)" helperText={false} />
       <ArrayInput source="context_links" helperText={false}>
         <SimpleFormIterator disableReordering fullWidth getItemLabel={false}>
           <TextInput
@@ -163,6 +210,16 @@ const CompanyAdditionalInformationInputs = () => {
       <ReferenceInput
         source="sales_id"
         reference="sales"
+        filter={{
+          "disabled@neq": true,
+        }}
+      >
+        <SelectInput helperText={false} optionText={saleOptionRenderer} />
+      </ReferenceInput>
+      <ReferenceInput
+        source="assigned_to"
+        reference="sales"
+        label="Tilldelad till"
         filter={{
           "disabled@neq": true,
         }}

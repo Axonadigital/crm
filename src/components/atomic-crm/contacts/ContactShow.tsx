@@ -26,6 +26,7 @@ import { TagsListEdit } from "./TagsListEdit";
 import { ContactPersonalInfo } from "./ContactPersonalInfo";
 import { ContactBackgroundInfo } from "./ContactBackgroundInfo";
 import { ContactTasksList } from "./ContactTasksList";
+import { ContactCalendarEvents } from "./ContactCalendarEvents";
 import type { Contact } from "../types";
 import { Avatar } from "./Avatar";
 import { ContactAside } from "./ContactAside";
@@ -129,7 +130,7 @@ const ContactShowContentMobile = () => {
         </div>
 
         <Tabs defaultValue="notes" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-10">
+          <TabsList className="grid w-full grid-cols-4 h-10">
             <TabsTrigger value="notes">
               {translate("resources.notes.name", { smart_count: 2 })}
             </TabsTrigger>
@@ -140,6 +141,9 @@ const ContactShowContentMobile = () => {
             </TabsTrigger>
             <TabsTrigger value="details">
               {translate("crm.common.details")}
+            </TabsTrigger>
+            <TabsTrigger value="meetings">
+              {translate("resources.calendar_events.name", { smart_count: 2 })}
             </TabsTrigger>
           </TabsList>
 
@@ -215,6 +219,10 @@ const ContactShowContentMobile = () => {
                 </div>
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="meetings" className="mt-4">
+            <ContactCalendarEvents />
           </TabsContent>
         </Tabs>
       </MobileContent>

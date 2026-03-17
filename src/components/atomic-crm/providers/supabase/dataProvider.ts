@@ -56,6 +56,26 @@ const dataProviderWithCustomMethods = {
   ...baseDataProvider,
   async getList(resource: string, params: GetListParams) {
     if (resource === "companies") {
+      // If there's a search query, use the RPC function for fuzzy search
+      if (params.filter?.q) {
+        const searchTerm = params.filter.q;
+        const { data, error } = await supabase.rpc("search_companies", {
+          search_term: searchTerm,
+          limit_count: params.pagination?.perPage || 25,
+        });
+
+        if (error) {
+          console.error("search_companies error:", error);
+          // Fallback to default search
+          return baseDataProvider.getList("companies_summary", params);
+        }
+
+        // Transform RPC results to match expected format
+        return {
+          data: data || [],
+          total: data?.length || 0,
+        };
+      }
       return baseDataProvider.getList("companies_summary", params);
     }
     if (resource === "contacts") {
@@ -90,6 +110,67 @@ const dataProviderWithCustomMethods = {
     }
 
     return baseDataProvider.getOne(resource, params);
+  },
+  async create(resource: string, params: any) {
+    if (resource === "calendar_events") {
+      const { data, error } = await supabase.functions.invoke("calendar_sync", {
+        method: "POST",
+        body: {
+          action: "create",
+          data: params.data,
+        },
+      });
+
+      if (error || !data?.data) {
+        console.error("calendar_sync create error:", error);
+        throw new Error(error?.message || "Failed to create calendar event");
+      }
+
+      return { data: data.data };
+    }
+
+    return baseDataProvider.create(resource, params);
+  },
+  async update(resource: string, params: any) {
+    if (resource === "calendar_events") {
+      const { data, error } = await supabase.functions.invoke("calendar_sync", {
+        method: "POST",
+        body: {
+          action: "update",
+          id: params.id,
+          data: params.data,
+        },
+      });
+
+      if (error || !data?.data) {
+        console.error("calendar_sync update error:", error);
+        throw new Error(error?.message || "Failed to update calendar event");
+      }
+
+      return { data: data.data };
+    }
+
+    return baseDataProvider.update(resource, params);
+  },
+  async delete(resource: string, params: any) {
+    if (resource === "calendar_events") {
+      const { data, error } = await supabase.functions.invoke("calendar_sync", {
+        method: "POST",
+        body: {
+          action: "delete",
+          id: params.id,
+        },
+      });
+
+      if (error || !data?.data) {
+        console.error("calendar_sync delete error:", error);
+        throw new Error(error?.message || "Failed to cancel calendar event");
+      }
+
+      return { data: data.data };
+    }
+
+    return baseDataProvider.delete(resource, params);
   },
 
   async signUp({ email, password, first_name, last_name }: SignUpData) {

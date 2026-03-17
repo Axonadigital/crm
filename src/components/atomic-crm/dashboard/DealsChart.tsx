@@ -8,18 +8,22 @@ import { findDealLabel } from "../deals/dealUtils";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 
-const multiplier = {
-  opportunity: 0.2,
-  "proposal-sent": 0.5,
-  "in-negociation": 0.8,
-  delayed: 0.3,
-};
-
-const threeMonthsAgo = new Date(
+const sixMonthsAgo = new Date(
   new Date().setMonth(new Date().getMonth() - 6),
 ).toISOString();
 
 const DEFAULT_LOCALE = "en-US";
+
+const getMonthKey = (date: string | undefined) => {
+  if (!date) {
+    return null;
+  }
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return startOfMonth(parsed).toISOString();
+};
 
 export const DealsChart = memo(() => {
   const translate = useTranslate();
@@ -31,52 +35,53 @@ export const DealsChart = memo(() => {
   const lostLabel = findDealLabel(dealStages, "lost") ?? "Lost";
 
   const { data, isPending } = useGetList<Deal>("deals", {
-    pagination: { perPage: 100, page: 1 },
+    pagination: { perPage: 1000, page: 1 },
     sort: {
-      field: "created_at",
+      field: "expected_closing_date",
       order: "ASC",
     },
     filter: {
-      "created_at@gte": threeMonthsAgo,
+      "expected_closing_date@gte": sixMonthsAgo,
+      "archived_at@is": null,
     },
   });
+
   const months = useMemo(() => {
     if (!data) return [];
-    const dealsByMonth = data.reduce((acc, deal) => {
-      const month = startOfMonth(deal.created_at ?? new Date()).toISOString();
-      if (!acc[month]) {
-        acc[month] = [];
-      }
-      acc[month].push(deal);
-      return acc;
-    }, {} as any);
 
-    const amountByMonth = Object.keys(dealsByMonth).map((month) => {
-      return {
-        date: format(month, "MMM"),
-        won: dealsByMonth[month]
-          .filter((deal: Deal) => deal.stage === "won")
-          .reduce((acc: number, deal: Deal) => {
-            acc += deal.amount;
-            return acc;
-          }, 0),
-        pending: dealsByMonth[month]
-          .filter((deal: Deal) => !["won", "lost"].includes(deal.stage))
-          .reduce((acc: number, deal: Deal) => {
-            // @ts-expect-error - multiplier type issue
-            acc += deal.amount * multiplier[deal.stage];
-            return acc;
-          }, 0),
-        lost: dealsByMonth[month]
-          .filter((deal: Deal) => deal.stage === "lost")
-          .reduce((acc: number, deal: Deal) => {
-            acc -= deal.amount;
-            return acc;
-          }, 0),
-      };
-    });
+    const dealsByMonth = data.reduce(
+      (acc, deal) => {
+        const month = getMonthKey(deal.expected_closing_date);
+        if (!month) {
+          return acc;
+        }
 
-    return amountByMonth;
+        if (!acc[month]) {
+          acc[month] = [];
+        }
+        acc[month].push(deal);
+        return acc;
+      },
+      {} as Record<string, Deal[]>,
+    );
+
+    return Object.keys(dealsByMonth)
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+      .map((month) => {
+        const monthDeals = dealsByMonth[month];
+        return {
+          date: format(new Date(month), "MMM"),
+          won: monthDeals
+            .filter((deal) => deal.stage === "won")
+            .reduce((acc, deal) => acc + deal.amount, 0),
+          pending: monthDeals
+            .filter((deal) => !["won", "lost"].includes(deal.stage))
+            .reduce((acc, deal) => acc + deal.amount, 0),
+          lost: monthDeals
+            .filter((deal) => deal.stage === "lost")
+            .reduce((acc, deal) => acc - deal.amount, 0),
+        };
+      });
   }, [data]);
 
   if (isPending) return null; // FIXME return skeleton instead

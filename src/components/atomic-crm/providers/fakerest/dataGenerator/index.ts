@@ -1,4 +1,5 @@
 import { generateCompanies } from "./companies";
+import { generateCalendarEvents } from "./calendarEvents";
 import { generateContactNotes } from "./contactNotes";
 import { generateContacts } from "./contacts";
 import { generateDealNotes } from "./dealNotes";
@@ -19,6 +20,7 @@ export default (): Db => {
   db.deals = generateDeals(db);
   db.deal_notes = generateDealNotes(db);
   db.tasks = generateTasks(db);
+  db.calendar_events = generateCalendarEvents(db);
   db.configuration = [
     {
       id: 1,

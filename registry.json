@@ -294,6 +294,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/providers/fakerest/dataGenerator/calendarEvents.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/providers/commons/mergeContacts.ts",
           "type": "registry:component"
         },
@@ -594,6 +598,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/dashboard/UpcomingMeetings.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/dashboard/TasksList.tsx",
           "type": "registry:component"
         },
@@ -718,6 +726,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/contacts/ContactCalendarEvents.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/contacts/ContactBackgroundInfo.tsx",
           "type": "registry:component"
         },
@@ -734,6 +746,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/companies/leadStatusUtils.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/companies/index.ts",
           "type": "registry:component"
         },
@@ -743,6 +759,10 @@
         },
         {
           "path": "src/components/atomic-crm/companies/GridList.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/companies/GoogleMapsScraper.tsx",
           "type": "registry:component"
         },
         {
@@ -786,7 +806,51 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/companies/CallLogModal.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/companies/CallLogHistory.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/companies/AutocompleteCompanyInput.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/call-queue/index.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/call-queue/CallQueue.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/calendar/types.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/calendar/index.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/calendar/CalendarWeekView.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/calendar/CalendarPage.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/calendar/CalendarList.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/calendar/CalendarForm.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/calendar/CalendarAgenda.tsx",
           "type": "registry:component"
         },
         {

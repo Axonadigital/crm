@@ -6,6 +6,7 @@ import { DashboardStepper } from "./DashboardStepper";
 import { DealsChart } from "./DealsChart";
 import { HotContacts } from "./HotContacts";
 import { TasksList } from "./TasksList";
+import { UpcomingMeetings } from "./UpcomingMeetings";
 import { Welcome } from "./Welcome";
 
 export const Dashboard = () => {
@@ -59,7 +60,10 @@ export const Dashboard = () => {
       </div>
 
       <div className="md:col-span-3">
-        <TasksList />
+        <div className="flex flex-col gap-6">
+          <UpcomingMeetings />
+          <TasksList />
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { Globe, Linkedin, Phone } from "lucide-react";
+import { Globe, Linkedin, Phone, Calendar, Building2, Tag } from "lucide-react";
 import {
   useGetIdentity,
   useLocaleState,
@@ -11,6 +11,7 @@ import { ShowButton } from "@/components/admin/show-button";
 import { TextField } from "@/components/admin/text-field";
 import { UrlField } from "@/components/admin/url-field";
 import { SelectField } from "@/components/admin/select-field";
+import { Badge } from "@/components/ui/badge";
 
 import { formatLocalizedDate } from "../misc/RelativeDate";
 import { AsideSection } from "../misc/AsideSection";
@@ -19,6 +20,7 @@ import type { Company } from "../types";
 import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
 import { sizes } from "./sizes";
 import { useGetSalesName } from "../sales/useGetSalesName";
+import { getLeadStatusColor } from "./leadStatusUtils";
 
 interface CompanyAsideProps {
   link?: string;
@@ -41,6 +43,8 @@ export const CompanyAside = ({ link = "edit" }: CompanyAsideProps) => {
 
       <CompanyInfo record={record} />
 
+      <SwedishCrmInfo record={record} />
+
       <AddressInfo record={record} />
 
       <ContextInfo record={record} />
@@ -48,10 +52,12 @@ export const CompanyAside = ({ link = "edit" }: CompanyAsideProps) => {
       <AdditionalInfo record={record} />
 
       {link !== "edit" && (
-        <div className="mt-6 pt-6 border-t hidden sm:flex flex-col gap-2 items-start">
+        <div className="mt-6 pt-6 border-t hidden sm:flex flex-col gap-2">
           <DeleteButton
-            className="h-6 cursor-pointer hover:bg-destructive/10! text-destructive! border-destructive! focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40"
-            size="sm"
+            label={translate("ra.action.delete")}
+            variant="destructive"
+            size="default"
+            className="w-full"
           />
         </div>
       )}
@@ -176,6 +182,92 @@ export const AddressInfo = ({ record }: { record: Company }) => {
   );
 };
 
+export const SwedishCrmInfo = ({ record }: { record: Company }) => {
+  const translate = useTranslate();
+  const assignedToName = useGetSalesName(record.assigned_to, {
+    enabled: !!record.assigned_to,
+  });
+
+  if (
+    !record.lead_status &&
+    !record.org_number &&
+    !record.source &&
+    !record.industry &&
+    !record.next_followup_date &&
+    !record.assigned_to &&
+    !record.tags?.length &&
+    !record.employees_estimate
+  ) {
+    return null;
+  }
+
+  return (
+    <AsideSection title="Lead Information">
+      {record.lead_status && (
+        <div className="flex items-center gap-2 mb-2">
+          <Badge className={getLeadStatusColor(record.lead_status)}>
+            {translate(
+              `resources.companies.lead_status.${record.lead_status}`,
+              {
+                _: record.lead_status.replace(/_/g, " "),
+              },
+            )}
+          </Badge>
+        </div>
+      )}
+      {record.org_number && (
+        <div className="text-sm mb-1">
+          <span className="font-medium">Org.nr:</span> {record.org_number}
+        </div>
+      )}
+      {record.industry && (
+        <div className="flex items-center gap-1 text-sm mb-1">
+          <Building2 className="w-4 h-4" />
+          <span>{record.industry}</span>
+        </div>
+      )}
+      {record.source && (
+        <div className="text-sm mb-1">
+          <span className="font-medium">Källa:</span>{" "}
+          {translate(`resources.companies.source.${record.source}`, {
+            _: record.source.replace(/_/g, " "),
+          })}
+        </div>
+      )}
+      {record.next_followup_date && (
+        <div className="flex items-center gap-1 text-sm mb-1 text-orange-600 font-medium">
+          <Calendar className="w-4 h-4" />
+          <span>
+            Följ upp:{" "}
+            {new Date(record.next_followup_date).toLocaleDateString("sv-SE")}
+          </span>
+        </div>
+      )}
+      {record.assigned_to && (
+        <div className="text-sm mb-1">
+          <span className="font-medium">Tilldelad:</span> {assignedToName}
+        </div>
+      )}
+      {record.employees_estimate && (
+        <div className="text-sm mb-1">
+          <span className="font-medium">Anställda:</span> ~
+          {record.employees_estimate}
+        </div>
+      )}
+      {record.tags && record.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {record.tags.map((tag, index) => (
+            <Badge key={index} variant="outline" className="text-xs">
+              <Tag className="w-3 h-3 mr-1" />
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </AsideSection>
+  );
+};
+
 export const AdditionalInfo = ({ record }: { record: Company }) => {
   const translate = useTranslate();
   const [locale = "en"] = useLocaleState();
@@ -188,7 +280,9 @@ export const AdditionalInfo = ({ record }: { record: Company }) => {
     !record.created_at &&
     !record.sales_id &&
     !record.description &&
-    !record.context_links
+    !record.context_links &&
+    !record.google_business_url &&
+    !record.website_quality
   ) {
     return null;
   }
@@ -203,6 +297,29 @@ export const AdditionalInfo = ({ record }: { record: Company }) => {
     >
       {record.description && (
         <p className="text-sm  mb-1">{record.description}</p>
+      )}
+      {record.google_business_url && (
+        <div className="mb-1">
+          <a
+            className="text-sm underline hover:no-underline"
+            href={record.google_business_url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Google Business Profile
+          </a>
+        </div>
+      )}
+      {record.website_quality && (
+        <div className="text-sm mb-1">
+          <span className="font-medium">Webbplatskvalitet:</span>{" "}
+          {translate(
+            `resources.companies.website_quality.${record.website_quality}`,
+            {
+              _: record.website_quality,
+            },
+          )}
+        </div>
       )}
       {record.context_links && (
         <div className="flex flex-col">

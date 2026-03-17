@@ -74,11 +74,34 @@ interface DealsTable {
   index: number | null;
 }
 
+interface CalendarEventsTable {
+  id: Generated<number>;
+  title: string;
+  description: string | null;
+  starts_at: Date;
+  ends_at: Date;
+  time_zone: string | null;
+  contact_id: number | null;
+  company_id: number | null;
+  sales_id: number | null;
+  status: string;
+  source: string;
+  google_event_id: string | null;
+  calcom_event_id: string | null;
+  meeting_provider: string;
+  meet_link: string | null;
+  attendees: unknown | null;
+  metadata: unknown | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 interface Database {
   contacts: ContactsTable;
   tasks: TasksTable;
   contact_notes: ContactNotesTable;
   deals: DealsTable;
+  calendar_events: CalendarEventsTable;
 }
 
 // Deno Postgres Driver for Kysely

@@ -1,12 +1,12 @@
 import type { Identifier, DataProvider } from "ra-core";
 
-import type { Contact, Task, Deal, ContactNote } from "../../types";
+import type { CalendarEvent, Contact, Task, Deal, ContactNote } from "../../types";
 
 /**
  * Merge one contact (loser) into another contact (winner).
  *
  * This function copies properties from the loser to the winner contact,
- * transfers all associated data (tasks, notes, deals) from the loser to the winner,
+ * transfers all associated data (tasks, notes, meetings, deals) from the loser to the winner,
  * and deletes the loser contact.
  */
 export const mergeContacts = async (
@@ -70,7 +70,28 @@ export const mergeContacts = async (
       }),
     ) || [];
 
-  // 3. Change contact in deals - replace loser ID with winner ID in contact_ids array
+  // 3. Reassign all meetings from loser to winner
+  const { data: loserMeetings } = await dataProvider.getManyReference<CalendarEvent>(
+    "calendar_events",
+    {
+      target: "contact_id",
+      id: loserId,
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: "id", order: "ASC" },
+      filter: {},
+    },
+  );
+
+  const meetingUpdates =
+    loserMeetings?.map((meeting) =>
+      dataProvider.update<CalendarEvent>("calendar_events", {
+        id: meeting.id,
+        data: { contact_id: winnerId },
+        previousData: meeting,
+      }),
+    ) || [];
+
+  // 4. Change contact in deals - replace loser ID with winner ID in contact_ids array
   const { data: loserDeals } = await dataProvider.getList<Deal>("deals", {
     filter: { "contact_ids@cs": `{${loserId}}` },
     pagination: { page: 1, perPage: 1000 },
@@ -94,7 +115,7 @@ export const mergeContacts = async (
       });
     }) || [];
 
-  // 4. Update winner contact with loser data
+  // 5. Update winner contact with loser data
   const mergedEmails = mergeObjectArraysUnique(
     winnerContact.email_jsonb || [],
     loserContact.email_jsonb || [],
@@ -143,11 +164,12 @@ export const mergeContacts = async (
   await Promise.all([
     ...taskUpdates,
     ...noteUpdates,
+    ...meetingUpdates,
     ...dealUpdates,
     winnerUpdate,
   ]);
 
-  // 5. Delete the loser contact
+  // 6. Delete the loser contact
   await dataProvider.delete<Contact>("contacts", {
     id: loserId,
     previousData: loserContact,

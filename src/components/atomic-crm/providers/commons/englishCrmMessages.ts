@@ -327,6 +327,67 @@ export const englishCrmMessages = {
       regarding_contact: "(Re: %{name})",
       updated: "Task updated",
     },
+    calendar_events: {
+      name: "Meeting |||| Meetings",
+      forcedCaseName: "Meeting",
+      fields: {
+        title: "Title",
+        description: "Description",
+        starts_at: "Start",
+        ends_at: "End",
+        contact_id: "Contact",
+        attendee_emails: "Attendees (comma separated emails)",
+        attendees: "Attendees",
+        meeting_provider: "Meeting provider",
+        status: "Status",
+        source: "Source",
+      },
+      action: {
+        add: "Add meeting",
+        create: "Create meeting",
+        create_new: "View all meetings",
+      },
+      actions: {
+        join_meeting: "Join meeting",
+        mark_scheduled: "Mark scheduled",
+        toggle_complete: "Mark completed",
+        reopen: "Reopen",
+        cancel: "Cancel",
+        open_link: "Open meeting link",
+        no_link: "No meeting link",
+        drag_to_move: "Drag to move, +/- 15 min",
+      },
+      status: {
+        scheduled: "Scheduled",
+        completed: "Completed",
+        cancelled: "Cancelled",
+      },
+      filters: {
+        today: "Today's meetings",
+        upcoming: "Upcoming 7 days",
+        cancelled: "Cancelled",
+        all: "All",
+      },
+      views: {
+        agenda: "Agenda",
+        week: "Week",
+      },
+      list: {
+        description:
+          "Manage meetings, links, and attendees in one place.",
+        contact_description: "Upcoming meetings for this contact",
+      },
+      notifications: {
+        completed: "%{title} marked as completed",
+        reopened: "%{title} marked as scheduled",
+        updated: "%{title} updated",
+        moved: "%{title} moved",
+        resized: "%{title} resized",
+      },
+      added: "Meeting created",
+      empty: "No meetings yet",
+      empty_list: "No meetings found",
+    },
     tags: {
       name: "Tag |||| Tags",
       action: {
@@ -404,6 +465,7 @@ export const englishCrmMessages = {
         whats_next: "What's next?",
       },
       upcoming_tasks: "Upcoming Tasks",
+      upcoming_meetings: "Upcoming Meetings",
     },
     header: {
       import_data: "Import data",

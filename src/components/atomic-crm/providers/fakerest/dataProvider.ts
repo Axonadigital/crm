@@ -9,6 +9,7 @@ import {
 import fakeRestDataProvider from "ra-data-fakerest";
 
 import type {
+  CalendarEvent,
   Company,
   Contact,
   ContactNote,
@@ -559,6 +560,32 @@ export const createDataProvider = ({
           return result;
         },
       } satisfies ResourceCallbacks<Company>,
+      {
+        resource: "calendar_events",
+        beforeCreate: async (params) => {
+          return {
+            ...params,
+            data: {
+              source: "crm",
+              status: "scheduled",
+              meeting_provider: "google_meet",
+              time_zone: "Europe/Stockholm",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              ...params.data,
+            },
+          };
+        },
+        beforeUpdate: async (params) => {
+          return {
+            ...params,
+            data: {
+              ...params.data,
+              updated_at: new Date().toISOString(),
+            },
+          };
+        },
+      } satisfies ResourceCallbacks<CalendarEvent>,
       {
         resource: "deals",
         beforeCreate: async (params) => {

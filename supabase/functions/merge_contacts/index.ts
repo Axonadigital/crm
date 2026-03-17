@@ -119,7 +119,14 @@ async function mergeContacts(
         .where("contact_id", "=", loserId)
         .execute();
 
-      // 4. Update deals - replace loserId with winnerId in contact_ids array
+      // 4. Reassign calendar events from loser to winner
+      await trx
+        .updateTable("calendar_events")
+        .set({ contact_id: winnerId })
+        .where("contact_id", "=", loserId)
+        .execute();
+
+      // 5. Update deals - replace loserId with winnerId in contact_ids array
       const deals = await trx
         .selectFrom("deals")
         .selectAll()
@@ -139,7 +146,7 @@ async function mergeContacts(
           .execute();
       }
 
-      // 5. Merge and update winner contact
+      // 6. Merge and update winner contact
       const mergedData = mergeContactData(winner as Contact, loser as Contact);
       await trx
         .updateTable("contacts")
@@ -147,7 +154,7 @@ async function mergeContacts(
         .where("id", "=", winnerId)
         .execute();
 
-      // 6. Delete loser contact
+      // 7. Delete loser contact
       await trx.deleteFrom("contacts").where("id", "=", loserId).execute();
 
       return { success: true, winnerId };

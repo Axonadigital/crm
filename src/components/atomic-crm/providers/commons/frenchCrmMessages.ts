@@ -332,6 +332,67 @@ export const frenchCrmMessages = {
       regarding_contact: "(Concernant : %{name})",
       updated: "Tâche mise à jour",
     },
+    calendar_events: {
+      name: "Rendez-vous |||| Rendez-vous",
+      forcedCaseName: "Rendez-vous",
+      fields: {
+        title: "Titre",
+        description: "Description",
+        starts_at: "Début",
+        ends_at: "Fin",
+        contact_id: "Contact",
+        attendee_emails: "Participants (emails séparés par virgule)",
+        attendees: "Participants",
+        meeting_provider: "Fournisseur de réunion",
+        status: "Statut",
+        source: "Source",
+      },
+      action: {
+        add: "Ajouter un rendez-vous",
+        create: "Créer un rendez-vous",
+        create_new: "Voir tous les rendez-vous",
+      },
+      actions: {
+        join_meeting: "Rejoindre la réunion",
+        mark_scheduled: "Marquer planifié",
+        toggle_complete: "Marquer terminé",
+        reopen: "Rouvrir",
+        cancel: "Annuler",
+        open_link: "Ouvrir le lien",
+        no_link: "Aucun lien",
+        drag_to_move: "Glisser pour déplacer, +/- 15 min",
+      },
+      status: {
+        scheduled: "Planifié",
+        completed: "Terminé",
+        cancelled: "Annulé",
+      },
+      filters: {
+        today: "Rendez-vous du jour",
+        upcoming: "7 prochains jours",
+        cancelled: "Annulés",
+        all: "Tous",
+      },
+      views: {
+        agenda: "Agenda",
+        week: "Semaine",
+      },
+      list: {
+        description:
+          "Gérez les rendez-vous, liens Meet et participants au même endroit.",
+        contact_description: "Rendez-vous à venir pour ce contact",
+      },
+      notifications: {
+        completed: "%{title} marqué comme terminé",
+        reopened: "%{title} replanifié",
+        updated: "%{title} mis à jour",
+        moved: "%{title} déplacé",
+        resized: "%{title} redimensionné",
+      },
+      added: "Rendez-vous créé",
+      empty: "Aucun rendez-vous pour l'instant",
+      empty_list: "Aucun rendez-vous trouvé",
+    },
     tags: {
       name: "Étiquette |||| Étiquettes",
       action: {
@@ -410,6 +471,7 @@ export const frenchCrmMessages = {
         whats_next: "Et ensuite ?",
       },
       upcoming_tasks: "Tâches à venir",
+      upcoming_meetings: "Rendez-vous à venir",
     },
     header: {
       import_data: "Importer des données",

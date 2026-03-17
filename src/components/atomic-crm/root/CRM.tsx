@@ -17,6 +17,7 @@ import { OAuthConsentPage } from "@/components/supabase/oauth-consent-page";
 
 import companies from "../companies";
 import contacts from "../contacts";
+import calendarEvents from "../calendar";
 import { Dashboard } from "../dashboard/Dashboard";
 import { MobileDashboard } from "../dashboard/MobileDashboard";
 import deals from "../deals";
@@ -58,6 +59,8 @@ import { ContactListMobile } from "../contacts/ContactList.tsx";
 import { ContactShow } from "../contacts/ContactShow.tsx";
 import { CompanyShow } from "../companies/CompanyShow.tsx";
 import { NoteShowPage } from "../notes/NoteShowPage.tsx";
+import { CallQueue } from "../call-queue";
+import { CalendarPage } from "../calendar";
 
 const defaultStore = localStorageStore(undefined, "CRM");
 
@@ -246,13 +249,17 @@ const DesktopAdmin = (props: CoreAdminProps) => {
         <Route path={ProfilePage.path} element={<ProfilePage />} />
         <Route path={SettingsPage.path} element={<SettingsPage />} />
         <Route path={ImportPage.path} element={<ImportPage />} />
+        <Route path="/call-queue" element={<CallQueue />} />
+        <Route path="/calendar" element={<CalendarPage />} />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
       <Resource name="contacts" {...contacts} />
       <Resource name="companies" {...companies} />
       <Resource name="contact_notes" />
       <Resource name="deal_notes" />
+      <Resource name="call_logs" />
       <Resource name="tasks" />
+      <Resource name="calendar_events" {...calendarEvents} />
       <Resource name="sales" {...sales} />
       <Resource name="tags" />
     </Admin>
@@ -304,6 +311,7 @@ const MobileAdmin = (props: CoreAdminProps) => {
             path={SettingsPageMobile.path}
             element={<SettingsPageMobile />}
           />
+          <Route path="/calendar" element={<CalendarPage />} />
         </CustomRoutes>
         <Resource
           name="contacts"
@@ -315,6 +323,7 @@ const MobileAdmin = (props: CoreAdminProps) => {
         </Resource>
         <Resource name="companies" show={CompanyShow} />
         <Resource name="tasks" list={MobileTasksList} />
+        <Resource name="calendar_events" {...calendarEvents} />
       </Admin>
     </PersistQueryClientProvider>
   );

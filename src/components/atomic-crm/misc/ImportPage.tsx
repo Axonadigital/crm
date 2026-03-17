@@ -1,9 +1,17 @@
+import * as Papa from "papaparse";
+import { useState } from "react";
 import { AlertCircleIcon } from "lucide-react";
 import { Form, required, useTranslate } from "ra-core";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -24,9 +32,111 @@ import {
 } from "./useImportFromJson";
 import sampleFile from "./import-sample.json?url";
 
+type ImportMode = "json" | "csv";
+
+const REQUIRED_CSV_COLUMNS = [
+  "first_name",
+  "last_name",
+  "company",
+  "phone_work",
+  "email_work",
+  "tags",
+] as const;
+
+type CsvContactImport = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  emails: Array<{ email: string; type: string }>;
+  phones: Array<{ number: string; type: string }>;
+  tags: string[];
+  company_id?: number;
+};
+
+type CsvCompanyImport = {
+  id: number;
+  name: string;
+};
+
+type CsvImportPayload = {
+  contacts: CsvContactImport[];
+  companies: CsvCompanyImport[];
+};
+
 export const ImportPage = () => {
   const translate = useTranslate();
   const [importState, importFile, reset] = useImportFromJson();
+  const [mode, setMode] = useState<ImportMode>("json");
+  const [csvImportError, setCsvImportError] = useState<string | null>(null);
+
+  const resetAll = () => {
+    setCsvImportError(null);
+    reset();
+  };
+
+  const handleCsvImport = async (file: File) => {
+    try {
+      setCsvImportError(null);
+      const payload = await parseCsvToImportPayload(file);
+      const jsonFile = createJsonFileFromCsvPayload(
+        payload,
+        file.name.replace(/\.csv$/i, ""),
+      );
+      await importFile(jsonFile);
+    } catch (err) {
+      setCsvImportError((err as Error).message);
+    }
+  };
+
+  const renderImportContent = () => {
+    if (importState.status === "importing") {
+      return <ImportFromJsonStatus importState={importState} translate={translate} />;
+    }
+    if (importState.status === "success") {
+      return (
+        <ImportFromJsonSuccess
+          importState={importState}
+          reset={resetAll}
+          translate={translate}
+        />
+      );
+    }
+    if (mode === "json") {
+      if (importState.status === "error") {
+        return (
+          <ImportFromJsonError
+            importState={importState}
+            importFile={importFile}
+            translate={translate}
+          />
+        );
+      }
+      return (
+        <ImportFromJsonIdle
+          importFile={importFile}
+          translate={translate}
+        />
+      );
+    }
+
+    if (importState.status === "error") {
+      return (
+        <ImportFromCsvError
+          importState={importState}
+          csvImportError={csvImportError}
+          onSubmit={handleCsvImport}
+          translate={translate}
+        />
+      );
+    }
+    return (
+      <ImportFromCsvIdle
+        csvImportError={csvImportError}
+        onSubmit={handleCsvImport}
+        translate={translate}
+      />
+    );
+  };
 
   return (
     <div className="max-w-2xl mx-auto mt-8">
@@ -35,26 +145,34 @@ export const ImportPage = () => {
           <CardTitle>{translate("crm.import.title")}</CardTitle>
         </CardHeader>
         <CardContent>
-          {importState.status === "idle" ? (
-            <ImportFromJsonIdle importFile={importFile} translate={translate} />
-          ) : importState.status === "error" ? (
-            <ImportFromJsonError
-              importState={importState}
-              importFile={importFile}
-              translate={translate}
-            />
-          ) : importState.status === "importing" ? (
-            <ImportFromJsonStatus
-              importState={importState}
-              translate={translate}
-            />
-          ) : (
-            <ImportFromJsonSuccess
-              importState={importState}
-              reset={reset}
-              translate={translate}
-            />
-          )}
+          <Tabs
+            defaultValue="json"
+            value={mode}
+            onValueChange={(nextMode) => {
+              setMode(nextMode as ImportMode);
+              setCsvImportError(null);
+              reset();
+            }}
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="json">
+                {translate("crm.import.tab.json", {
+                  _: "JSON",
+                })}
+              </TabsTrigger>
+              <TabsTrigger value="csv">
+                {translate("crm.import.tab.csv", {
+                  _: "Import CSV",
+                })}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="json" className="mt-4">
+              {mode === "json" && renderImportContent()}
+            </TabsContent>
+            <TabsContent value="csv" className="mt-4">
+              {mode === "csv" && renderImportContent()}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>
@@ -118,6 +236,103 @@ const ImportFromJsonError = ({
     <ImportFromJsonForm importFile={importFile} translate={translate} />
   </>
 );
+
+const ImportFromCsvIdle = ({
+  onSubmit,
+  csvImportError,
+  translate,
+}: {
+  onSubmit: (file: File) => Promise<void>;
+  csvImportError: string | null;
+  translate: (key: string, options?: any) => string;
+}) => (
+  <>
+    <div className="mb-4">
+      <p className="text-sm">
+        {translate("crm.import.idle.csv.description", {
+          _: "You can import contacts from a CSV file with these columns: first_name, last_name, company, phone_work, email_work, tags.",
+        })}
+      </p>
+      <p className="text-sm">
+        {translate("crm.import.idle.csv.description_2", {
+          _: "Columns may be empty if optional, but rows must still include names.",
+        })}
+      </p>
+    </div>
+    {csvImportError ? (
+      <Alert variant="destructive" className="mb-4">
+        <AlertCircleIcon />
+        <AlertTitle>
+          {translate("crm.import.error.unable", {
+            _: "Unable to import this file.",
+          })}
+        </AlertTitle>
+        <AlertDescription>
+          <p>{csvImportError}</p>
+        </AlertDescription>
+      </Alert>
+    ) : null}
+    <Form
+      onSubmit={(values: any) => {
+        const file = values.file?.rawFile;
+        if (file) {
+          onSubmit(file);
+        }
+      }}
+    >
+      <FileInput
+        className="mt-4"
+        source="file"
+        accept={{ "text/csv": [".csv"] }}
+        validate={required()}
+      >
+        <FileField source="src" title="title" />
+      </FileInput>
+      <div className="flex justify-end mt-4">
+        <Button type="submit">{translate("crm.import.action.import")}</Button>
+      </div>
+    </Form>
+  </>
+);
+
+const ImportFromCsvError = ({
+  importState,
+  onSubmit,
+  csvImportError,
+  translate,
+}: {
+  importState: ImportFromJsonErrorState;
+  onSubmit: (file: File) => Promise<void>;
+  csvImportError: string | null;
+  translate: (key: string, options?: any) => string;
+}) => {
+  return (
+    <>
+      <Alert variant="destructive" className="mb-4">
+        <AlertCircleIcon />
+        <AlertTitle>
+          {translate("crm.import.error.unable", {
+            _: "Unable to import this file.",
+          })}
+        </AlertTitle>
+        <AlertDescription>
+          <p>{importState.error.message}</p>
+        </AlertDescription>
+      </Alert>
+      {csvImportError ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircleIcon />
+          <AlertDescription>{csvImportError}</AlertDescription>
+        </Alert>
+      ) : null}
+      <ImportFromCsvIdle
+        csvImportError={null}
+        onSubmit={onSubmit}
+        translate={translate}
+      />
+    </>
+  );
+};
 
 const ImportFromJsonForm = ({
   importFile,
@@ -307,3 +522,130 @@ const ImportStats = ({
     </Table>
   );
 };
+
+const parseCsvToImportPayload = async (
+  file: File,
+): Promise<CsvImportPayload> => {
+  const parseResult = await new Promise<Papa.ParseResult<Record<string, string>>>(
+    (resolve, reject) => {
+      Papa.parse<Record<string, string>>(file, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: normalizeCsvHeader,
+        complete: (result) => {
+          resolve(result);
+        },
+        error: (error) => {
+          reject(new Error(error.message));
+        },
+      });
+    },
+  );
+
+  if (
+    parseResult.errors.length > 0 &&
+    parseResult.data.some((row) => Object.keys(row).length > 0)
+  ) {
+    const firstErrors = parseResult.errors
+      .slice(0, 3)
+      .map((error) => `Row ${error.row}: ${error.message}`)
+      .join(", ");
+    throw new Error(
+      `CSV parsing failed: ${firstErrors}${parseResult.errors.length > 3 ? ", ..." : ""}`,
+    );
+  }
+
+  const fields = parseResult.meta.fields ?? [];
+  const missingColumns = REQUIRED_CSV_COLUMNS.filter(
+    (column) => !fields.includes(column),
+  );
+  if (missingColumns.length > 0) {
+    throw new Error(
+      `CSV is missing required columns: ${missingColumns.join(", ")}.`,
+    );
+  }
+
+  const companies: CsvCompanyImport[] = [];
+  const contacts: CsvContactImport[] = [];
+  const companiesMap = new Map<string, number>();
+  let nextCompanyId = 1;
+  let nextContactId = 1;
+
+  for (const row of parseResult.data) {
+    const firstName = normalizeCsvValue(row.first_name);
+    const lastName = normalizeCsvValue(row.last_name);
+    const phoneWork = normalizeCsvValue(row.phone_work);
+    const emailWork = normalizeCsvValue(row.email_work);
+    const company = normalizeCsvValue(row.company);
+    const tags = parseTags(normalizeCsvValue(row.tags));
+
+    const isEmptyRow =
+      !firstName &&
+      !lastName &&
+      !phoneWork &&
+      !emailWork &&
+      !company &&
+      !tags.length;
+    if (isEmptyRow) {
+      continue;
+    }
+
+    let companyId: number | undefined;
+    if (company) {
+      const existingCompanyId = companiesMap.get(company);
+      if (existingCompanyId == null) {
+        companyId = nextCompanyId;
+        companiesMap.set(company, nextCompanyId);
+        companies.push({ id: nextCompanyId, name: company });
+        nextCompanyId += 1;
+      } else {
+        companyId = existingCompanyId;
+      }
+    }
+
+    contacts.push({
+      id: nextContactId,
+      first_name: firstName,
+      last_name: lastName,
+      emails: emailWork ? [{ email: emailWork, type: "Work" }] : [],
+      phones: phoneWork ? [{ number: phoneWork, type: "Work" }] : [],
+      tags,
+      ...(companyId == null ? {} : { company_id: companyId }),
+    });
+    nextContactId += 1;
+  }
+
+  if (contacts.length === 0) {
+    throw new Error("No importable rows were found in the CSV file.");
+  }
+
+  return { contacts, companies };
+};
+
+const createJsonFileFromCsvPayload = (
+  payload: CsvImportPayload,
+  fileBaseName: string,
+) => {
+  const data = JSON.stringify({
+    companies: payload.companies,
+    contacts: payload.contacts,
+  });
+  const fileName =
+    fileBaseName.length > 0 ? `${fileBaseName}.json` : "import-csv.json";
+
+  return new File([data], fileName, {
+    type: "application/json",
+  });
+};
+
+const normalizeCsvHeader = (header: string | null) => {
+  return header?.replace("\uFEFF", "").trim() ?? "";
+};
+
+const normalizeCsvValue = (value: string | undefined) => value?.trim() ?? "";
+
+const parseTags = (value: string) =>
+  value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
