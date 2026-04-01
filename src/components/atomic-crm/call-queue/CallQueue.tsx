@@ -3,10 +3,9 @@ import {
   useGetList,
   useRecordContext,
   useGetIdentity,
-  useCreate,
   useNotify,
   useRefresh,
-  useUpdate,
+  useDataProvider,
 } from "ra-core";
 import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,6 +80,18 @@ const leadStatusLabel = (status: string) => {
 };
 
 export const CallQueue = () => {
+  return (
+    <div className="p-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Ringlista</h1>
+      </div>
+      <CallQueueContent />
+    </div>
+  );
+};
+
+/** Shared call queue content without wrapper padding/title — used by both desktop and mobile. */
+export const CallQueueContent = () => {
   const [activeStatuses, setActiveStatuses] = useState<string[]>([
     "new",
     "contacted",
@@ -105,8 +116,8 @@ export const CallQueue = () => {
   const activeStatusSet = new Set(activeStatuses);
 
   // Filter on client side for now (can be optimized with server-side filter later)
-  const filteredCompanies = companies?.filter(
-    (company) => activeStatusSet.has(company.lead_status),
+  const filteredCompanies = companies?.filter((company) =>
+    activeStatusSet.has(company.lead_status),
   );
 
   const isFilterActive = (status: string) => activeStatuses.includes(status);
@@ -130,12 +141,7 @@ export const CallQueue = () => {
   };
 
   if (isPending) {
-    return (
-      <div className="p-8">
-        <h1 className="text-3xl font-bold mb-6">Ringlista</h1>
-        <p>Laddar företag...</p>
-      </div>
-    );
+    return <p>Laddar företag...</p>;
   }
 
   const hasResults = !!filteredCompanies && filteredCompanies.length > 0;
@@ -144,21 +150,20 @@ export const CallQueue = () => {
     .map((status) => status.label);
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Ringlista</h1>
-        <Badge variant="outline" className="text-lg px-4 py-2">
-          {(filteredCompanies?.length || 0)} företag att ringa
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <Badge variant="outline" className="text-sm px-3 py-1">
+          {filteredCompanies?.length || 0} företag att ringa
         </Badge>
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         <Button
           size="sm"
           variant="outline"
           onClick={() => setActiveStatuses(allStatusValues)}
         >
-          Visa alla ringlistestatusar
+          Alla
         </Button>
         <Button size="sm" variant="outline" onClick={showColdLeadsOnly}>
           Kalla leads
@@ -207,10 +212,7 @@ export const CallQueue = () => {
             <p className="text-muted-foreground">
               Inga företag i ringlistan med valda filter.
               {activeStatusNames.length > 0 && (
-                <>
-                  {" "}
-                  Valda statusar: {activeStatusNames.join(", ")}.
-                </>
+                <> Valda statusar: {activeStatusNames.join(", ")}.</>
               )}
             </p>
             {companies && companies.length > 0 && (
@@ -230,7 +232,7 @@ export const CallQueue = () => {
           </CardContent>
         </Card>
       )}
-    </div>
+    </>
   );
 };
 
@@ -345,80 +347,43 @@ const CallLogDialog = ({
   open: boolean;
   onClose: () => void;
 }) => {
-  const { identity } = useGetIdentity();
+  const dataProvider =
+    useDataProvider() as import("../../providers/supabase/dataProvider").CrmDataProvider;
   const notify = useNotify();
   const refresh = useRefresh();
-  const [create, { isPending: isCreating }] = useCreate();
-  const [updateCompany] = useUpdate();
+  const [isSaving, setIsSaving] = useState(false);
 
   const [outcome, setOutcome] = useState<CallLog["call_outcome"]>("no_answer");
   const [notes, setNotes] = useState("");
   const [followupDate, setFollowupDate] = useState("");
   const [followupNote, setFollowupNote] = useState("");
 
-  const handleSave = () => {
-    const followupTimestamp = followupDate
-      ? new Date(followupDate).toISOString()
-      : null;
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const followupTimestamp = followupDate
+        ? new Date(followupDate).toISOString()
+        : null;
 
-    create(
-      "call_logs",
-      {
-        data: {
-          company_id: company.id,
-          user_id: identity?.id,
-          call_outcome: outcome,
-          notes: notes || null,
-          followup_date: followupTimestamp,
-          followup_note: followupDate ? followupNote || null : null,
-        },
-      },
-      {
-        onSuccess: () => {
-          // Update company lead_status based on outcome
-          let newLeadStatus = company.lead_status;
-          if (outcome === "interested") newLeadStatus = "interested";
-          else if (outcome === "not_interested")
-            newLeadStatus = "not_interested";
-          else if (outcome === "meeting_booked")
-            newLeadStatus = "meeting_booked";
-          else if (outcome === "callback_requested")
-            newLeadStatus = "callback_requested";
-          else if (outcome !== "no_answer" && outcome !== "busy")
-            newLeadStatus = "contacted";
+      await dataProvider.logCall({
+        company_id: Number(company.id),
+        call_outcome: outcome,
+        notes: notes || null,
+        followup_date: followupTimestamp,
+        followup_note: followupDate ? followupNote || null : null,
+      });
 
-          if (newLeadStatus !== company.lead_status) {
-            updateCompany(
-              "companies",
-              {
-                id: company.id,
-                data: {
-                  lead_status: newLeadStatus,
-                  next_followup_date: followupTimestamp,
-                },
-                previousData: company,
-              },
-              {
-                onSuccess: () => {
-                  notify("Samtalslogg sparad", { type: "success" });
-                  refresh();
-                  onClose();
-                  resetForm();
-                },
-              },
-            );
-          } else {
-            notify("Samtalslogg sparad", { type: "success" });
-            refresh();
-            onClose();
-            resetForm();
-          }
-        },
-        onError: (error) => {
-          notify(`Fel: ${error.message}`, { type: "error" });
-        },
-      },
-    );
+      notify("Samtalslogg sparad", { type: "success" });
+      refresh();
+      onClose();
+      resetForm();
+    } catch (error) {
+      notify(`Fel: ${error instanceof Error ? error.message : "Okänt fel"}`, {
+        type: "error",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const resetForm = () => {
@@ -509,13 +474,13 @@ const CallLogDialog = ({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isCreating}>
+          <Button variant="outline" onClick={onClose} disabled={isSaving}>
             <X className="h-4 w-4 mr-2" />
             Avbryt
           </Button>
-          <Button onClick={handleSave} disabled={isCreating}>
+          <Button onClick={handleSave} disabled={isSaving}>
             <Save className="h-4 w-4 mr-2" />
-            {isCreating ? "Sparar..." : "Spara"}
+            {isSaving ? "Sparar..." : "Spara"}
           </Button>
         </DialogFooter>
       </DialogContent>

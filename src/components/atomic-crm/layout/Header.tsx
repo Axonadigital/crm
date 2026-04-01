@@ -1,4 +1,12 @@
-import { Import, Phone, Settings, User, Users } from "lucide-react";
+import {
+  Import,
+  ListTodo,
+  Mail,
+  Phone,
+  Settings,
+  User,
+  Users,
+} from "lucide-react";
 import { CanAccess, useTranslate, useUserMenu } from "ra-core";
 import { Link, matchPath, useLocation } from "react-router";
 import { RefreshButton } from "@/components/admin/refresh-button";
@@ -27,6 +35,8 @@ const Header = () => {
     currentPath = "/companies";
   } else if (matchPath("/deals/*", location.pathname)) {
     currentPath = "/deals";
+  } else if (matchPath("/quotes/*", location.pathname)) {
+    currentPath = "/quotes";
   } else {
     currentPath = false;
   }
@@ -93,6 +103,13 @@ const Header = () => {
                     to="/deals"
                     isActive={currentPath === "/deals"}
                   />
+                  <NavigationTab
+                    label={translate("resources.quotes.name", {
+                      smart_count: 2,
+                    })}
+                    to="/quotes"
+                    isActive={currentPath === "/quotes"}
+                  />
                 </nav>
               </div>
               <div className="flex items-center">
@@ -106,6 +123,8 @@ const Header = () => {
                   <CanAccess resource="configuration" action="edit">
                     <SettingsMenu />
                   </CanAccess>
+                  <EmailTemplatesMenu />
+                  <SequencesMenu />
                   <ImportFromJsonMenuItem />
                 </UserMenu>
               </div>
@@ -181,6 +200,36 @@ const SettingsMenu = () => {
       <Link to="/settings" className="flex items-center gap-2">
         <Settings />
         {translate("crm.settings.title")}
+      </Link>
+    </DropdownMenuItem>
+  );
+};
+
+const EmailTemplatesMenu = () => {
+  const userMenuContext = useUserMenu();
+  if (!userMenuContext) {
+    throw new Error("<EmailTemplatesMenu> must be used inside <UserMenu>");
+  }
+  return (
+    <DropdownMenuItem asChild onClick={userMenuContext.onClose}>
+      <Link to="/email_templates" className="flex items-center gap-2">
+        <Mail />
+        E-postmallar
+      </Link>
+    </DropdownMenuItem>
+  );
+};
+
+const SequencesMenu = () => {
+  const userMenuContext = useUserMenu();
+  if (!userMenuContext) {
+    throw new Error("<SequencesMenu> must be used inside <UserMenu>");
+  }
+  return (
+    <DropdownMenuItem asChild onClick={userMenuContext.onClose}>
+      <Link to="/sequences" className="flex items-center gap-2">
+        <ListTodo />
+        Sekvenser
       </Link>
     </DropdownMenuItem>
   );

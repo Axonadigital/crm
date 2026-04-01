@@ -25,7 +25,11 @@ async function hmacSha256Hex(secret: string, input: string) {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(input));
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(input),
+  );
   return toHex(signature);
 }
 
@@ -83,18 +87,24 @@ Deno.serve(async (req: Request) =>
     try {
       const rawBody = await req.text();
 
-      if (CALCOM_WEBHOOK_SECRET) {
-        const signatureHeader =
-          req.headers.get("x-cal-signature-256") ??
-          req.headers.get("x-cal-signature") ??
-          "";
+      if (!CALCOM_WEBHOOK_SECRET) {
+        console.error("CALCOM_WEBHOOK_SECRET not configured");
+        return createErrorResponse(500, "Webhook secret not configured");
+      }
 
-        const expectedSignature = await hmacSha256Hex(CALCOM_WEBHOOK_SECRET, rawBody);
-        const incomingSignature = normalizeSignature(signatureHeader);
+      const signatureHeader =
+        req.headers.get("x-cal-signature-256") ??
+        req.headers.get("x-cal-signature") ??
+        "";
 
-        if (!incomingSignature || incomingSignature !== expectedSignature) {
-          return createErrorResponse(401, "Invalid webhook signature");
-        }
+      const expectedSignature = await hmacSha256Hex(
+        CALCOM_WEBHOOK_SECRET,
+        rawBody,
+      );
+      const incomingSignature = normalizeSignature(signatureHeader);
+
+      if (!incomingSignature || incomingSignature !== expectedSignature) {
+        return createErrorResponse(401, "Invalid webhook signature");
       }
 
       const body = JSON.parse(rawBody);
@@ -110,7 +120,10 @@ Deno.serve(async (req: Request) =>
       }
 
       const startsAt = new Date(
-        payload?.startTime ?? payload?.start_time ?? payload?.start ?? Date.now(),
+        payload?.startTime ??
+          payload?.start_time ??
+          payload?.start ??
+          Date.now(),
       ).toISOString();
       const endsAt = new Date(
         payload?.endTime ??
@@ -144,7 +157,10 @@ Deno.serve(async (req: Request) =>
         starts_at: startsAt,
         ends_at: endsAt,
         time_zone:
-          payload?.timeZone ?? payload?.time_zone ?? payload?.timezone ?? "Europe/Stockholm",
+          payload?.timeZone ??
+          payload?.time_zone ??
+          payload?.timezone ??
+          "Europe/Stockholm",
         contact_id: linkedContact?.id ?? null,
         company_id: linkedContact?.company_id ?? null,
         sales_id: linkedContact?.sales_id ?? null,

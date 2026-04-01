@@ -3,10 +3,12 @@ import { SortButton } from "@/components/admin/sort-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserPlus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { UserPlus, FileText } from "lucide-react";
 import {
   RecordContextProvider,
   ShowBase,
+  useGetList,
   useListContext,
   useLocaleState,
   useRecordContext,
@@ -32,7 +34,7 @@ import { MobileBackButton } from "../misc/MobileBackButton";
 import { formatRelativeDate } from "../misc/RelativeDate";
 import { Status } from "../misc/Status";
 import { useConfigurationContext } from "../root/ConfigurationContext";
-import type { Company, Contact, Deal } from "../types";
+import type { Company, Contact, Deal, Quote } from "../types";
 import {
   AdditionalInfo,
   AddressInfo,
@@ -62,9 +64,9 @@ const CompanyShowContentMobile = () => {
   return (
     <>
       <MobileHeader>
-        <MobileBackButton to="/" />
+        <MobileBackButton resource="companies" />
         <div className="flex flex-1">
-          <Link to="/">
+          <Link to="/companies">
             <h1 className="text-xl font-semibold">
               {translate("resources.companies.forcedCaseName")}
             </h1>
@@ -99,6 +101,15 @@ const CompanyShowContent = () => {
   const tabMatch = useMatch("/companies/:id/show/:tab");
   const currentTab = tabMatch?.params?.tab || "activity";
 
+  const { total: nbQuotes = 0 } = useGetList<Quote>(
+    "quotes",
+    {
+      pagination: { page: 1, perPage: 1 },
+      filter: { company_id: record?.id },
+    },
+    { enabled: !!record?.id },
+  );
+
   const handleTabChange = (value: string) => {
     if (value === currentTab) return;
     if (value === "activity") {
@@ -109,6 +120,15 @@ const CompanyShowContent = () => {
   };
 
   if (isPending || !record) return null;
+
+  const hasDeals = !!record.nb_deals;
+  const hasQuotes = nbQuotes > 0;
+  const gridColsClass =
+    hasDeals && hasQuotes
+      ? "grid-cols-5"
+      : hasDeals || hasQuotes
+        ? "grid-cols-4"
+        : "grid-cols-3";
 
   return (
     <div className="mt-2 flex pb-2 gap-8">
@@ -121,7 +141,7 @@ const CompanyShowContent = () => {
               <CallLogModal />
             </div>
             <Tabs defaultValue={currentTab} onValueChange={handleTabChange}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className={`grid w-full ${gridColsClass}`}>
                 <TabsTrigger value="activity">
                   {translate("crm.common.activity")}
                 </TabsTrigger>
@@ -136,6 +156,14 @@ const CompanyShowContent = () => {
                   <TabsTrigger value="deals">
                     {translate("resources.companies.nb_deals", {
                       smart_count: record.nb_deals,
+                    })}
+                  </TabsTrigger>
+                ) : null}
+                {nbQuotes ? (
+                  <TabsTrigger value="quotes">
+                    {translate("resources.quotes.name", {
+                      smart_count: nbQuotes,
+                      _: `${nbQuotes} Quotes`,
                     })}
                   </TabsTrigger>
                 ) : null}
@@ -181,6 +209,17 @@ const CompanyShowContent = () => {
                     sort={{ field: "name", order: "ASC" }}
                   >
                     <DealsIterator />
+                  </ReferenceManyField>
+                ) : null}
+              </TabsContent>
+              <TabsContent value="quotes">
+                {nbQuotes ? (
+                  <ReferenceManyField
+                    reference="quotes"
+                    target="company_id"
+                    sort={{ field: "created_at", order: "DESC" }}
+                  >
+                    <QuotesIterator />
                   </ReferenceManyField>
                 ) : null}
               </TabsContent>
@@ -306,6 +345,64 @@ const DealsIterator = () => {
           </div>
         ))}
       </div>
+    </div>
+  );
+};
+
+const quoteStatusColors: Record<string, string> = {
+  draft: "bg-gray-100 text-gray-800",
+  generated: "bg-blue-100 text-blue-800",
+  sent: "bg-yellow-100 text-yellow-800",
+  viewed: "bg-purple-100 text-purple-800",
+  signed: "bg-green-100 text-green-800",
+  declined: "bg-red-100 text-red-800",
+  expired: "bg-orange-100 text-orange-800",
+};
+
+const QuotesIterator = () => {
+  const translate = useTranslate();
+  const [locale = "en"] = useLocaleState();
+  const { data: quotesList, error, isPending } = useListContext<Quote>();
+  const { currency } = useConfigurationContext();
+  if (isPending || error) return null;
+  return (
+    <div className="pt-0">
+      {quotesList.map((quote) => (
+        <div key={quote.id} className="p-0 text-sm">
+          <RouterLink
+            to={`/quotes/${quote.id}/show`}
+            className="flex items-center justify-between hover:bg-muted py-2 px-4 transition-colors"
+          >
+            <div className="flex items-center gap-2 mr-3">
+              <FileText className="w-4 h-4 text-muted-foreground" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium">{quote.title}</div>
+              <div className="text-sm text-muted-foreground">
+                {quote.quote_number ? `${quote.quote_number} — ` : ""}
+                {quote.total_amount.toLocaleString(locale, {
+                  style: "currency",
+                  currency,
+                })}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge
+                className={
+                  quoteStatusColors[quote.status] ?? quoteStatusColors.draft
+                }
+              >
+                {translate(`resources.quotes.status.${quote.status}`, {
+                  _: quote.status,
+                })}
+              </Badge>
+              <div className="text-sm text-muted-foreground">
+                {formatRelativeDate(quote.created_at, locale)}
+              </div>
+            </div>
+          </RouterLink>
+        </div>
+      ))}
     </div>
   );
 };

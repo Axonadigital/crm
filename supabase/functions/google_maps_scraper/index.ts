@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
+import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 
 interface ScrapeRequest {
   query: string; // Sökfråga, t.ex. "restauranger i Stockholm"
@@ -8,6 +9,7 @@ interface ScrapeRequest {
 }
 
 interface GoogleMapsPlace {
+  place_id: string;
   name: string;
   address?: string;
   phone?: string;
@@ -60,77 +62,73 @@ async function scrapeGoogleMaps(
   limit: number = 20,
 ): Promise<GoogleMapsPlace[]> {
   const apiKey = Deno.env.get("GOOGLE_MAPS_API_KEY");
-  const useMockData = Deno.env.get("USE_MOCK_DATA") === "true" || !apiKey;
 
-  // Om ingen API-nyckel finns eller USE_MOCK_DATA är satt, använd mockad data
-  if (useMockData) {
-    console.log(
-      "Använder mockad testdata (ingen Google Maps API-nyckel eller USE_MOCK_DATA=true)",
+  if (!apiKey) {
+    throw new Error(
+      "GOOGLE_MAPS_API_KEY saknas i miljövariabler. Lägg till nyckeln i supabase/functions/.env",
     );
-    return generateMockData(query, limit);
   }
 
-  // Försök använda riktiga Google Maps API
-  try {
-    const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${apiKey}`;
-    const searchResponse = await fetch(searchUrl);
-    const searchData = await searchResponse.json();
+  console.log("Använder Google Maps API för sökning:", query);
 
-    if (
-      searchData.status === "REQUEST_DENIED" ||
-      searchData.status === "OVER_QUERY_LIMIT"
-    ) {
-      console.warn(
-        `Google Maps API fel: ${searchData.status}, använder mockad data istället`,
-      );
-      return generateMockData(query, limit);
-    }
+  const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${apiKey}`;
+  const searchResponse = await fetch(searchUrl);
+  const searchData = await searchResponse.json();
 
-    if (searchData.status !== "OK" && searchData.status !== "ZERO_RESULTS") {
-      throw new Error(
-        `Google Maps API fel: ${searchData.status} - ${searchData.error_message || "Okänt fel"}`,
-      );
-    }
+  console.log("Google Maps API status:", searchData.status);
 
-    if (!searchData.results || searchData.results.length === 0) {
-      return [];
-    }
+  if (searchData.status === "REQUEST_DENIED") {
+    throw new Error(
+      `Google Maps API nekade förfrågan: ${searchData.error_message || "Kontrollera att Places API är aktiverat i Google Cloud Console"}`,
+    );
+  }
 
-    const results = searchData.results.slice(0, limit);
-    const places: GoogleMapsPlace[] = [];
+  if (searchData.status === "OVER_QUERY_LIMIT") {
+    throw new Error(
+      "Google Maps API quota överskriden. Kontrollera din fakturering och kvot i Google Cloud Console.",
+    );
+  }
 
-    for (const result of results) {
-      try {
-        const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${result.place_id}&fields=name,formatted_address,formatted_phone_number,website,rating,user_ratings_total,types,geometry&key=${apiKey}`;
-        const detailsResponse = await fetch(detailsUrl);
-        const detailsData = await detailsResponse.json();
+  if (searchData.status !== "OK" && searchData.status !== "ZERO_RESULTS") {
+    throw new Error(
+      `Google Maps API fel: ${searchData.status} - ${searchData.error_message || "Okänt fel"}`,
+    );
+  }
 
-        if (detailsData.status === "OK" && detailsData.result) {
-          const place = detailsData.result;
-          places.push({
-            name: place.name || "",
-            address: place.formatted_address || "",
-            phone: place.formatted_phone_number || "",
-            website: place.website || "",
-            rating: place.rating || 0,
-            reviews_count: place.user_ratings_total || 0,
-            category: place.types?.[0] || "",
-            latitude: place.geometry?.location?.lat,
-            longitude: place.geometry?.location?.lng,
-          });
-        }
-      } catch (error) {
-        console.error(`Fel vid hämtning av detaljer för plats: ${error}`);
+  if (!searchData.results || searchData.results.length === 0) {
+    return [];
+  }
+
+  const results = searchData.results.slice(0, limit);
+  const places: GoogleMapsPlace[] = [];
+
+  for (const result of results) {
+    try {
+      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${result.place_id}&fields=name,formatted_address,formatted_phone_number,website,rating,user_ratings_total,types,geometry&key=${apiKey}`;
+      const detailsResponse = await fetch(detailsUrl);
+      const detailsData = await detailsResponse.json();
+
+      if (detailsData.status === "OK" && detailsData.result) {
+        const place = detailsData.result;
+        places.push({
+          place_id: result.place_id,
+          name: place.name || "",
+          address: place.formatted_address || "",
+          phone: place.formatted_phone_number || "",
+          website: place.website || "",
+          rating: place.rating || 0,
+          reviews_count: place.user_ratings_total || 0,
+          category: place.types?.[0] || "",
+          latitude: place.geometry?.location?.lat,
+          longitude: place.geometry?.location?.lng,
+        });
       }
+    } catch (error) {
+      console.error(`Fel vid hämtning av detaljer för plats: ${error}`);
     }
-
-    return places;
-  } catch (error) {
-    console.error(
-      `Fel vid Google Maps API-anrop, använder mockad data: ${error}`,
-    );
-    return generateMockData(query, limit);
   }
+
+  return places;
 }
 
 async function handleScrapeRequest(req: Request, currentUserSale: any) {
@@ -168,30 +166,16 @@ async function handleScrapeRequest(req: Request, currentUserSale: any) {
   }
 }
 
-Deno.serve(async (req: Request) => {
-  // Handle CORS
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+Deno.serve(async (req: Request) =>
+  OptionsMiddleware(req, async (req) =>
+    AuthMiddleware(req, async (req) =>
+      UserMiddleware(req, async (req, user) => {
+        if (req.method !== "POST") {
+          return createErrorResponse(405, "Metod ej tillåten");
+        }
 
-  try {
-    // Försök hämta användare via Authorization header
-    const authHeader = req.headers.get("Authorization");
-
-    if (!authHeader) {
-      return createErrorResponse(401, "Authorization header saknas");
-    }
-
-    // För lokal utveckling med --no-verify-jwt behöver vi inte verifiera JWT
-    // Vi kan bara fortsätta med requesten
-
-    if (req.method === "POST") {
-      return handleScrapeRequest(req, null);
-    }
-
-    return createErrorResponse(405, "Metod ej tillåten");
-  } catch (error) {
-    console.error("Edge Function error:", error);
-    return createErrorResponse(500, `Internt fel: ${(error as Error).message}`);
-  }
-});
+        return handleScrapeRequest(req, user);
+      }),
+    ),
+  ),
+);

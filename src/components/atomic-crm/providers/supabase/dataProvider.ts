@@ -308,6 +308,199 @@ const dataProviderWithCustomMethods = {
 
     return data;
   },
+  async generateQuoteText(quoteId: Identifier) {
+    const { data, error } = await supabase.functions.invoke(
+      "generate_quote_text",
+      {
+        method: "POST",
+        body: { quote_id: quoteId },
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to generate quote text");
+    }
+    return data;
+  },
+  async generateQuotePdf(quoteId: Identifier) {
+    const { data, error } = await supabase.functions.invoke(
+      "generate_quote_pdf",
+      {
+        method: "POST",
+        body: { quote_id: quoteId },
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to generate PDF");
+    }
+    return data;
+  },
+  async sendQuoteForSigning(quoteId: Identifier) {
+    const { data, error } = await supabase.functions.invoke(
+      "send_quote_for_signing",
+      {
+        method: "POST",
+        body: { quote_id: quoteId },
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to send quote for signing");
+    }
+    return data;
+  },
+  async duplicateQuote(quoteId: Identifier): Promise<{ id: number }> {
+    const { data, error } = await supabase.rpc("duplicate_quote", {
+      source_quote_id: quoteId,
+    });
+    if (error) {
+      throw new Error("Failed to duplicate quote");
+    }
+    return { id: data as number };
+  },
+  async enrichCompany(companyId: Identifier) {
+    const { data, error } = await supabase.functions.invoke("enrich_company", {
+      method: "POST",
+      body: { company_id: companyId },
+    });
+    if (error || !data) {
+      throw new Error("Failed to enrich company");
+    }
+    return data;
+  },
+  async enrichAllabolag(companyId: Identifier) {
+    const { data, error } = await supabase.functions.invoke(
+      "enrich_allabolag",
+      {
+        method: "POST",
+        body: { company_id: companyId },
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to enrich from Allabolag");
+    }
+    return data;
+  },
+  async bulkEnrichCompanies(
+    companyIds: Identifier[],
+    onProgress?: (done: number, total: number) => void,
+  ) {
+    const CONCURRENCY = 3;
+    const results: Array<{
+      id: Identifier;
+      success: boolean;
+      data?: Record<string, unknown>;
+      error?: string;
+    }> = [];
+    let completed = 0;
+
+    // Process in batches of CONCURRENCY
+    for (let i = 0; i < companyIds.length; i += CONCURRENCY) {
+      const batch = companyIds.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.allSettled(
+        batch.map((id) => this.enrichCompany(id)),
+      );
+
+      for (let j = 0; j < batchResults.length; j++) {
+        const result = batchResults[j];
+        const id = batch[j];
+        completed++;
+
+        if (result.status === "fulfilled") {
+          results.push({ id, success: true, data: result.value });
+        } else {
+          results.push({
+            id,
+            success: false,
+            error:
+              result.reason instanceof Error
+                ? result.reason.message
+                : "Unknown error",
+          });
+        }
+        onProgress?.(completed, companyIds.length);
+      }
+    }
+    return results;
+  },
+  async triggerAutoScrape(profileId?: Identifier) {
+    const { data, error } = await supabase.functions.invoke("auto_scrape", {
+      method: "POST",
+      body: profileId ? { profile_id: profileId } : {},
+    });
+    if (error || !data) {
+      throw new Error("Failed to run auto scrape");
+    }
+    return data;
+  },
+  async analyzeMeeting(params: {
+    transcription_id?: Identifier;
+    transcription_text?: string;
+    calendar_event_id?: Identifier | null;
+    contact_id?: Identifier | null;
+    company_id?: Identifier | null;
+  }) {
+    const { data, error } = await supabase.functions.invoke("analyze_meeting", {
+      method: "POST",
+      body: params,
+    });
+    if (error || !data) {
+      throw new Error("Failed to analyze meeting");
+    }
+    return data;
+  },
+  async sendEmail(
+    templateId: Identifier,
+    contactId: Identifier,
+  ): Promise<{ message_id: string }> {
+    const { data, error } = await supabase.functions.invoke("send_email", {
+      method: "POST",
+      body: { template_id: templateId, contact_id: contactId },
+    });
+    if (error || !data) {
+      throw new Error("Failed to send email");
+    }
+    return data;
+  },
+  async logCall(params: {
+    company_id: number;
+    contact_id?: number | null;
+    call_outcome: string;
+    notes?: string | null;
+    call_duration_seconds?: number | null;
+    followup_date?: string | null;
+    followup_note?: string | null;
+  }): Promise<{
+    call_log_id: number;
+    task_id: number | null;
+    new_lead_status: string;
+  }> {
+    const { data, error } = await supabase.rpc(
+      "log_call_and_schedule_followup",
+      {
+        p_company_id: params.company_id,
+        p_contact_id: params.contact_id ?? null,
+        p_call_outcome: params.call_outcome,
+        p_notes: params.notes ?? null,
+        p_call_duration_seconds: params.call_duration_seconds ?? null,
+        p_followup_date: params.followup_date ?? null,
+        p_followup_note: params.followup_note ?? null,
+      },
+    );
+    if (error) {
+      throw new Error(error.message || "Failed to log call");
+    }
+    return data as {
+      call_log_id: number;
+      task_id: number | null;
+      new_lead_status: string;
+    };
+  },
+  async expireOverdueQuotes(): Promise<{ affected: number }> {
+    const { data, error } = await supabase.rpc("expire_overdue_quotes");
+    if (error) {
+      throw new Error("Failed to expire overdue quotes");
+    }
+    return { affected: data as number };
+  },
   async getConfiguration(): Promise<ConfigurationContextValue> {
     const { data } = await baseDataProvider.getOne("configuration", { id: 1 });
     return (data?.config as ConfigurationContextValue) ?? {};
@@ -431,7 +624,115 @@ const lifeCycleCallbacks: ResourceCallbacks[] = [
       return applyFullTextSearch(["name", "category", "description"])(params);
     },
   },
+  {
+    resource: "quotes",
+    beforeGetList: async (params) => {
+      return applyFullTextSearch(["title"])(params);
+    },
+    beforeSave: async (data: Record<string, unknown>) => {
+      // Strip line_items — they are in a separate table and handled by afterCreate/afterUpdate
+      const { line_items: _, ...quoteData } = data;
+      return quoteData;
+    },
+    afterCreate: async (result, _dataProvider) => {
+      // Re-fetch the original form data from the create params stored by beforeCreate
+      // The line_items were stripped by beforeSave but we stored them via stashLineItems
+      const lineItems =
+        popLineItems(`create_${result.data.id}`) ??
+        popLineItems("pending_create");
+      if (lineItems && lineItems.length > 0) {
+        await supabase.from("quote_line_items").insert(
+          lineItems.map(
+            (
+              item: {
+                description: string;
+                quantity: number;
+                unit_price: number;
+              },
+              index: number,
+            ) => ({
+              quote_id: result.data.id,
+              description: item.description,
+              quantity: Number(item.quantity),
+              unit_price: Number(item.unit_price),
+              sort_order: index,
+            }),
+          ),
+        );
+      }
+      return result;
+    },
+    beforeCreate: async (params) => {
+      // Stash line_items before they get stripped by beforeSave
+      stashLineItems("pending_create", params.data.line_items || null);
+      return params;
+    },
+    afterUpdate: async (result) => {
+      const lineItems = popLineItems(`update_${result.data.id}`);
+      if (lineItems) {
+        // Delete existing line items and re-insert
+        await supabase
+          .from("quote_line_items")
+          .delete()
+          .eq("quote_id", result.data.id);
+        if (lineItems.length > 0) {
+          await supabase.from("quote_line_items").insert(
+            lineItems.map(
+              (
+                item: {
+                  description: string;
+                  quantity: number;
+                  unit_price: number;
+                },
+                index: number,
+              ) => ({
+                quote_id: result.data.id,
+                description: item.description,
+                quantity: Number(item.quantity),
+                unit_price: Number(item.unit_price),
+                sort_order: index,
+              }),
+            ),
+          );
+        }
+      }
+      return result;
+    },
+    beforeUpdate: async (params) => {
+      stashLineItems(`update_${params.id}`, params.data.line_items || null);
+      return params;
+    },
+  },
 ];
+
+// Keyed storage for line items during create/update lifecycle (avoids race conditions)
+const _pendingQuoteLineItemsMap = new Map<
+  string,
+  Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+  }>
+>();
+
+function stashLineItems(
+  key: string,
+  lineItems: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+  }> | null,
+) {
+  if (lineItems) {
+    _pendingQuoteLineItemsMap.set(key, lineItems);
+  }
+}
+
+function popLineItems(key: string) {
+  const items = _pendingQuoteLineItemsMap.get(key);
+  _pendingQuoteLineItemsMap.delete(key);
+  return items ?? null;
+}
 
 export const dataProvider = withLifecycleCallbacks(
   dataProviderWithCustomMethods,

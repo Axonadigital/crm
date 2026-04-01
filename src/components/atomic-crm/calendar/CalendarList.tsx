@@ -60,6 +60,10 @@ export const CalendarList = () => {
     "upcoming",
   );
   const [viewMode, setViewMode] = useState<"agenda" | "week">("agenda");
+  const googleCalendarEmbedUrl = import.meta.env.VITE_GOOGLE_CALENDAR_EMBED_URL;
+  const [calendarMode, setCalendarMode] = useState<"google" | "crm">(
+    googleCalendarEmbedUrl ? "google" : "crm",
+  );
 
   const filterContactId = searchParams.get("contact_id");
 
@@ -121,64 +125,107 @@ export const CalendarList = () => {
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-2 text-sm">
-        <Button
-          size="sm"
-          variant={filterMode === "today" ? "default" : "outline"}
-          onClick={() => setFilterMode("today")}
-        >
-          {translate("resources.calendar_events.filters.today")}
-        </Button>
-        <Button
-          size="sm"
-          variant={filterMode === "upcoming" ? "default" : "outline"}
-          onClick={() => setFilterMode("upcoming")}
-        >
-          {translate("resources.calendar_events.filters.upcoming")}
-        </Button>
-        <Button
-          size="sm"
-          variant={filterMode === "cancelled" ? "default" : "outline"}
-          onClick={() => setFilterMode("cancelled")}
-        >
-          {translate("resources.calendar_events.filters.cancelled")}
-        </Button>
-        <Button
-          size="sm"
-          variant={filterMode === "all" ? "default" : "outline"}
-          onClick={() => setFilterMode("all")}
-        >
-          {translate("resources.calendar_events.filters.all")}
-        </Button>
-      </div>
+      {googleCalendarEmbedUrl ? (
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Button
+            size="sm"
+            variant={calendarMode === "google" ? "default" : "outline"}
+            onClick={() => setCalendarMode("google")}
+          >
+            {translate("resources.calendar_events.modes.google")}
+          </Button>
+          <Button
+            size="sm"
+            variant={calendarMode === "crm" ? "default" : "outline"}
+            onClick={() => setCalendarMode("crm")}
+          >
+            {translate("resources.calendar_events.modes.crm")}
+          </Button>
+        </div>
+      ) : null}
 
-      <div className="flex flex-wrap gap-2 text-sm">
-        <Button
-          size="sm"
-          variant={viewMode === "agenda" ? "default" : "outline"}
-          onClick={() => setViewMode("agenda")}
-        >
-          {translate("resources.calendar_events.views.agenda")}
-        </Button>
-        <Button
-          size="sm"
-          variant={viewMode === "week" ? "default" : "outline"}
-          onClick={() => setViewMode("week")}
-        >
-          {translate("resources.calendar_events.views.week")}
-        </Button>
-      </div>
+      {calendarMode === "google" && googleCalendarEmbedUrl ? (
+        <Card>
+          <CardHeader>
+            {translate("resources.calendar_events.embed.title")}
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {translate("resources.calendar_events.embed.description")}
+            </p>
+            <div className="overflow-hidden rounded-lg border bg-background">
+              <iframe
+                src={googleCalendarEmbedUrl}
+                title={translate("resources.calendar_events.embed.title")}
+                className="h-[72vh] min-h-[720px] w-full"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
-      <Card>
-        <CardHeader>{translate("crm.dashboard.upcoming_meetings")}</CardHeader>
-        <CardContent>
-          {viewMode === "agenda" ? (
-            <CalendarAgenda events={filteredEvents} isPending={isPending} />
-          ) : (
-            <CalendarWeekView events={filteredEvents} />
-          )}
-        </CardContent>
-      </Card>
+      {calendarMode === "crm" ? (
+        <>
+          <div className="flex flex-wrap gap-2 text-sm">
+            <Button
+              size="sm"
+              variant={filterMode === "today" ? "default" : "outline"}
+              onClick={() => setFilterMode("today")}
+            >
+              {translate("resources.calendar_events.filters.today")}
+            </Button>
+            <Button
+              size="sm"
+              variant={filterMode === "upcoming" ? "default" : "outline"}
+              onClick={() => setFilterMode("upcoming")}
+            >
+              {translate("resources.calendar_events.filters.upcoming")}
+            </Button>
+            <Button
+              size="sm"
+              variant={filterMode === "cancelled" ? "default" : "outline"}
+              onClick={() => setFilterMode("cancelled")}
+            >
+              {translate("resources.calendar_events.filters.cancelled")}
+            </Button>
+            <Button
+              size="sm"
+              variant={filterMode === "all" ? "default" : "outline"}
+              onClick={() => setFilterMode("all")}
+            >
+              {translate("resources.calendar_events.filters.all")}
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-sm">
+            <Button
+              size="sm"
+              variant={viewMode === "agenda" ? "default" : "outline"}
+              onClick={() => setViewMode("agenda")}
+            >
+              {translate("resources.calendar_events.views.agenda")}
+            </Button>
+            <Button
+              size="sm"
+              variant={viewMode === "week" ? "default" : "outline"}
+              onClick={() => setViewMode("week")}
+            >
+              {translate("resources.calendar_events.views.week")}
+            </Button>
+          </div>
+
+          <Card>
+            <CardHeader>{translate("crm.dashboard.upcoming_meetings")}</CardHeader>
+            <CardContent>
+              {viewMode === "agenda" ? (
+                <CalendarAgenda events={filteredEvents} isPending={isPending} />
+              ) : (
+                <CalendarWeekView events={filteredEvents} />
+              )}
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="lg:max-w-xl overflow-y-auto max-h-9/10 top-1/20 translate-y-0">

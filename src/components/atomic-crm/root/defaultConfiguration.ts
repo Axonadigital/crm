@@ -1,7 +1,10 @@
-import type { ConfigurationContextValue } from "./ConfigurationContext";
+import type {
+  ConfigurationContextValue,
+  SellerCompanyInfo,
+} from "./ConfigurationContext";
 
-export const defaultDarkModeLogo = "./logos/logo_atomic_crm_dark.svg";
-export const defaultLightModeLogo = "./logos/logo_atomic_crm_light.svg";
+export const defaultDarkModeLogo = "./logos/axona-logo-dark.png";
+export const defaultLightModeLogo = "./logos/axona-logo-light.png";
 
 export const defaultCurrency = "USD";
 
@@ -23,6 +26,7 @@ export const defaultCompanySectors = [
 
 export const defaultDealStages = [
   { value: "opportunity", label: "Opportunity" },
+  { value: "generating-proposal", label: "Generating Proposal" },
   { value: "proposal-sent", label: "Proposal Sent" },
   { value: "in-negociation", label: "In Negotiation" },
   { value: "won", label: "Won" },
@@ -59,6 +63,31 @@ export const defaultTaskTypes = [
   { value: "call", label: "Call" },
 ];
 
+export const defaultSellerCompany: SellerCompanyInfo = {
+  companyName: "",
+  orgNumber: "",
+  vatNumber: "",
+  fSkatt: true,
+  address: "",
+  zipcode: "",
+  city: "",
+  country: "Sverige",
+  phone: "",
+  email: "",
+  website: "",
+  bankgiro: "",
+  plusgiro: "",
+  iban: "",
+  bic: "",
+  defaultPaymentTerms: "30 dagar netto",
+  defaultDeliveryTerms: "",
+  defaultTermsAndConditions: "",
+  quoteLogo: "",
+};
+
+export const defaultRevenueGoals: import("./ConfigurationContext").RevenueGoal[] =
+  [];
+
 export const defaultConfiguration: ConfigurationContextValue = {
   companySectors: defaultCompanySectors,
   currency: defaultCurrency,
@@ -70,4 +99,7 @@ export const defaultConfiguration: ConfigurationContextValue = {
   title: defaultTitle,
   darkModeLogo: defaultDarkModeLogo,
   lightModeLogo: defaultLightModeLogo,
+  sellerCompany: defaultSellerCompany,
+  proposalKbTemplate: "",
+  revenueGoals: defaultRevenueGoals,
 };

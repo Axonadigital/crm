@@ -137,12 +137,16 @@ const exporter: Exporter<Contact> = async (records, fetchRelatedRecords) => {
       ...contact,
       company:
         contact.company_id != null
-          ? companies[contact.company_id].name
+          ? companies[contact.company_id]?.name
           : undefined,
-      sales: `${sales[contact.sales_id].first_name} ${
-        sales[contact.sales_id].last_name
-      }`,
-      tags: contact.tags.map((tagId) => tags[tagId].name).join(", "),
+      sales:
+        contact.sales_id != null && sales[contact.sales_id]
+          ? `${sales[contact.sales_id].first_name} ${sales[contact.sales_id].last_name}`
+          : undefined,
+      tags: contact.tags
+        .map((tagId) => tags[tagId]?.name)
+        .filter(Boolean)
+        .join(", "),
       email_work: contact.email_jsonb?.find((email) => email.type === "Work")
         ?.email,
       email_home: contact.email_jsonb?.find((email) => email.type === "Home")

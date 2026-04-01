@@ -1,10 +1,26 @@
-import { Globe, Linkedin, Phone, Calendar, Building2, Tag } from "lucide-react";
 import {
+  Globe,
+  Linkedin,
+  Mail,
+  Phone,
+  Calendar,
+  Building2,
+  Tag,
+  Facebook,
+  Instagram,
+  Sparkles,
+  TrendingUp,
+} from "lucide-react";
+import {
+  useDataProvider,
   useGetIdentity,
   useLocaleState,
+  useNotify,
   useRecordContext,
+  useRefresh,
   useTranslate,
 } from "ra-core";
+import { useMutation } from "@tanstack/react-query";
 import { EditButton } from "@/components/admin/edit-button";
 import { DeleteButton } from "@/components/admin/delete-button";
 import { ShowButton } from "@/components/admin/show-button";
@@ -12,6 +28,9 @@ import { TextField } from "@/components/admin/text-field";
 import { UrlField } from "@/components/admin/url-field";
 import { SelectField } from "@/components/admin/select-field";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import type { CrmDataProvider } from "../providers/supabase/dataProvider";
 
 import { formatLocalizedDate } from "../misc/RelativeDate";
 import { AsideSection } from "../misc/AsideSection";
@@ -20,6 +39,12 @@ import type { Company } from "../types";
 import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
 import { sizes } from "./sizes";
 import { useGetSalesName } from "../sales/useGetSalesName";
+import {
+  getFollowupRelativeLabel,
+  getFollowupUrgency,
+  getFollowupUrgencyColor,
+  getNextActionTypeLabel,
+} from "./followupUtils";
 import { getLeadStatusColor } from "./leadStatusUtils";
 
 interface CompanyAsideProps {
@@ -41,9 +66,13 @@ export const CompanyAside = ({ link = "edit" }: CompanyAsideProps) => {
         )}
       </div>
 
+      <FollowUpSection record={record} />
+
       <CompanyInfo record={record} />
 
       <SwedishCrmInfo record={record} />
+
+      <EnrichmentInfo record={record} />
 
       <AddressInfo record={record} />
 
@@ -67,7 +96,12 @@ export const CompanyAside = ({ link = "edit" }: CompanyAsideProps) => {
 
 export const CompanyInfo = ({ record }: { record: Company }) => {
   const translate = useTranslate();
-  if (!record.website && !record.linkedin_url && !record.phone_number) {
+  if (
+    !record.website &&
+    !record.linkedin_url &&
+    !record.phone_number &&
+    !record.email
+  ) {
     return null;
   }
 
@@ -106,6 +140,17 @@ export const CompanyInfo = ({ record }: { record: Company }) => {
         <div className="flex flex-row items-center gap-1 min-h-[24px]">
           <Phone className="w-4 h-4" />
           <TextField source="phone_number" />
+        </div>
+      )}
+      {record.email && (
+        <div className="flex flex-row items-center gap-1 min-h-[24px]">
+          <Mail className="w-4 h-4" />
+          <a
+            className="underline hover:no-underline text-sm"
+            href={`mailto:${record.email}`}
+          >
+            {record.email}
+          </a>
         </div>
       )}
     </AsideSection>
@@ -193,7 +238,6 @@ export const SwedishCrmInfo = ({ record }: { record: Company }) => {
     !record.org_number &&
     !record.source &&
     !record.industry &&
-    !record.next_followup_date &&
     !record.assigned_to &&
     !record.tags?.length &&
     !record.employees_estimate
@@ -234,15 +278,6 @@ export const SwedishCrmInfo = ({ record }: { record: Company }) => {
           })}
         </div>
       )}
-      {record.next_followup_date && (
-        <div className="flex items-center gap-1 text-sm mb-1 text-orange-600 font-medium">
-          <Calendar className="w-4 h-4" />
-          <span>
-            Följ upp:{" "}
-            {new Date(record.next_followup_date).toLocaleDateString("sv-SE")}
-          </span>
-        </div>
-      )}
       {record.assigned_to && (
         <div className="text-sm mb-1">
           <span className="font-medium">Tilldelad:</span> {assignedToName}
@@ -264,6 +299,188 @@ export const SwedishCrmInfo = ({ record }: { record: Company }) => {
           ))}
         </div>
       )}
+    </AsideSection>
+  );
+};
+
+const FollowUpSection = ({ record }: { record: Company }) => {
+  const followupDate = record.next_followup_date;
+  if (!followupDate && !record.next_action_type && !record.next_action_note) {
+    return null;
+  }
+
+  const urgency = getFollowupUrgency(followupDate);
+  const colorClass = urgency ? getFollowupUrgencyColor(urgency) : "";
+  const relativeLabel = followupDate
+    ? getFollowupRelativeLabel(followupDate)
+    : null;
+
+  return (
+    <AsideSection title="Uppföljning">
+      {followupDate && (
+        <div className={`rounded-md p-2.5 -mx-1 ${colorClass}`}>
+          <div className="flex items-center gap-1.5 font-medium">
+            <Calendar className="w-4 h-4" />
+            <span>{new Date(followupDate).toLocaleDateString("sv-SE")}</span>
+          </div>
+          {relativeLabel && (
+            <div className="text-xs mt-0.5 opacity-80">{relativeLabel}</div>
+          )}
+        </div>
+      )}
+      {record.next_action_type && (
+        <div className="text-sm mt-1">
+          <span className="font-medium">Åtgärd:</span>{" "}
+          {getNextActionTypeLabel(record.next_action_type)}
+        </div>
+      )}
+      {record.next_action_note && (
+        <div className="text-sm text-muted-foreground mt-1">
+          {record.next_action_note}
+        </div>
+      )}
+    </AsideSection>
+  );
+};
+
+const getScoreColor = (score: number) => {
+  if (score >= 60)
+    return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+  if (score >= 35)
+    return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+  if (score >= 15)
+    return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
+  return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
+};
+
+const getSegmentLabel = (segment: string) => {
+  const labels: Record<string, string> = {
+    hot_lead: "Het lead",
+    warm_lead: "Varm lead",
+    cold_lead: "Kall lead",
+    nurture: "Nurture",
+    disqualified: "Diskvalificerad",
+  };
+  return labels[segment] || segment;
+};
+
+export const EnrichmentInfo = ({ record }: { record: Company }) => {
+  const dataProvider = useDataProvider<CrmDataProvider>();
+  const notify = useNotify();
+  const refresh = useRefresh();
+
+  const { mutate: enrich, isPending } = useMutation({
+    mutationFn: () => dataProvider.enrichCompany(record.id),
+    onSuccess: () => {
+      notify("Företaget har berikats", { type: "success" });
+      refresh();
+    },
+    onError: (error: Error) => {
+      notify(`Berikning misslyckades: ${error.message}`, { type: "error" });
+    },
+  });
+
+  const hasEnrichmentData =
+    record.lead_score ||
+    record.segment ||
+    record.has_facebook ||
+    record.has_instagram ||
+    record.website_score != null;
+
+  return (
+    <AsideSection title="Enrichment & Scoring">
+      {hasEnrichmentData && (
+        <>
+          {record.lead_score != null && (
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <TrendingUp className="w-4 h-4" />
+                <span className="text-sm font-medium">Lead Score</span>
+              </div>
+              <Badge className={getScoreColor(record.lead_score)}>
+                {record.lead_score}/100
+              </Badge>
+            </div>
+          )}
+
+          {record.segment && (
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm">Segment</span>
+              <Badge variant="outline">{getSegmentLabel(record.segment)}</Badge>
+            </div>
+          )}
+
+          {record.website_score != null && (
+            <div className="mb-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm">Webbplatskvalitet</span>
+                <span className="text-xs text-muted-foreground">
+                  {record.website_score}/100
+                </span>
+              </div>
+              <Progress value={record.website_score} className="h-1.5" />
+            </div>
+          )}
+
+          {(record.has_facebook || record.facebook_url) && (
+            <div className="flex items-center gap-1.5 text-sm mb-1">
+              <Facebook className="w-4 h-4 text-blue-600" />
+              {record.facebook_url ? (
+                <a
+                  href={record.facebook_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:no-underline truncate"
+                >
+                  Facebook
+                </a>
+              ) : (
+                <span>Facebook hittad</span>
+              )}
+            </div>
+          )}
+
+          {(record.has_instagram || record.instagram_url) && (
+            <div className="flex items-center gap-1.5 text-sm mb-1">
+              <Instagram className="w-4 h-4 text-pink-600" />
+              {record.instagram_url ? (
+                <a
+                  href={record.instagram_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:no-underline truncate"
+                >
+                  Instagram
+                </a>
+              ) : (
+                <span>Instagram hittad</span>
+              )}
+            </div>
+          )}
+
+          {record.enriched_at && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Berikad:{" "}
+              {new Date(record.enriched_at).toLocaleDateString("sv-SE")}
+            </p>
+          )}
+        </>
+      )}
+
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full mt-2"
+        onClick={() => enrich()}
+        disabled={isPending}
+      >
+        <Sparkles className="w-4 h-4 mr-1.5" />
+        {isPending
+          ? "Berikar..."
+          : hasEnrichmentData
+            ? "Berika igen"
+            : "Berika företag"}
+      </Button>
     </AsideSection>
   );
 };
@@ -323,20 +540,33 @@ export const AdditionalInfo = ({ record }: { record: Company }) => {
       )}
       {record.context_links && (
         <div className="flex flex-col">
-          {record.context_links.map((link, index) =>
-            link ? (
+          {record.context_links.map((link, index) => {
+            if (!link) return null;
+            const url =
+              typeof link === "string" ? link : (link as { url: string }).url;
+            const label =
+              typeof link === "string"
+                ? getBaseURL(link)
+                : (link as { title?: string; source?: string }).source ||
+                  getBaseURL(url);
+            const href = url.startsWith("http") ? url : `https://${url}`;
+            return (
               <a
                 key={index}
                 className="text-sm underline hover:no-underline mb-1"
-                href={link.startsWith("http") ? link : `https://${link}`}
+                href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                title={link}
+                title={
+                  typeof link === "string"
+                    ? link
+                    : (link as { title?: string }).title || url
+                }
               >
-                {getBaseURL(link)}
+                {label}
               </a>
-            ) : null,
-          )}
+            );
+          })}
         </div>
       )}
       {record.sales_id !== null && (

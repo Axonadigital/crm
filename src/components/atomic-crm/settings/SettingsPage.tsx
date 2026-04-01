@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { RotateCcw, Save } from "lucide-react";
+import { RotateCcw, Save, Upload } from "lucide-react";
 import type { RaRecord } from "ra-core";
 import {
   EditBase,
@@ -17,8 +17,12 @@ import { Separator } from "@/components/ui/separator";
 import { toSlug } from "@/lib/toSlug";
 import { ArrayInput } from "@/components/admin/array-input";
 import { AutocompleteInput } from "@/components/admin/autocomplete-input";
+import { BooleanInput } from "@/components/admin/boolean-input";
+import { NumberInput } from "@/components/admin/number-input";
+import { SelectInput } from "@/components/admin/select-input";
 import { SimpleFormIterator } from "@/components/admin/simple-form-iterator";
 import { TextInput } from "@/components/admin/text-input";
+import { Textarea } from "@/components/ui/textarea";
 
 import ImageEditorField from "../misc/ImageEditorField";
 import {
@@ -35,6 +39,16 @@ const SECTIONS = [
     fallback: "Branding",
   },
   {
+    id: "seller-company",
+    label: "crm.settings.sections.seller_company",
+    fallback: "Company Info",
+  },
+  {
+    id: "proposal-automation",
+    label: "crm.settings.sections.proposal_automation",
+    fallback: "Proposal Automation",
+  },
+  {
     id: "companies",
     label: "resources.companies.name",
     fallback: "Companies",
@@ -42,6 +56,11 @@ const SECTIONS = [
   { id: "deals", label: "resources.deals.name", fallback: "Deals" },
   { id: "notes", label: "resources.notes.name", fallback: "Notes" },
   { id: "tasks", label: "resources.tasks.name", fallback: "Tasks" },
+  {
+    id: "revenue-goals",
+    label: "crm.settings.sections.revenue_goals",
+    fallback: "Revenue Goals",
+  },
 ];
 
 /** Ensure every item in a { value, label } array has a value (slug from label). */
@@ -128,6 +147,13 @@ const transformFormValues = (data: Record<string, any>) => ({
     dealStages: ensureValues(data.dealStages),
     dealPipelineStatuses: data.dealPipelineStatuses,
     noteStatuses: ensureValues(data.noteStatuses),
+    sellerCompany: data.sellerCompany,
+    proposalKbTemplate: data.proposalKbTemplate,
+    revenueGoals: (data.revenueGoals ?? []).map((g: Record<string, any>) => ({
+      label: g.label ?? "",
+      amount: Number(g.amount) || 0,
+      period: g.period ?? "monthly",
+    })),
   } as ConfigurationContextValue,
 });
 
@@ -176,6 +202,9 @@ const SettingsForm = () => {
       dealStages: config.dealStages,
       dealPipelineStatuses: config.dealPipelineStatuses,
       noteStatuses: config.noteStatuses,
+      sellerCompany: config.sellerCompany,
+      proposalKbTemplate: config.proposalKbTemplate,
+      revenueGoals: config.revenueGoals,
     }),
     [config],
   );
@@ -304,6 +333,211 @@ const SettingsFormFields = () => {
                 />
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Seller Company Info */}
+        <Card id="seller-company">
+          <CardContent className="space-y-4">
+            <h2 className="text-xl font-semibold text-muted-foreground">
+              {translate("crm.settings.sections.seller_company", {
+                _: "Company Info",
+              })}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {translate("crm.settings.seller_company.description", {
+                _: "Your company details shown on quotes and invoices.",
+              })}
+            </p>
+
+            <h3 className="text-lg font-medium text-muted-foreground">
+              {translate("crm.settings.seller_company.basic_info", {
+                _: "Basic Information",
+              })}
+            </h3>
+            <TextInput
+              source="sellerCompany.companyName"
+              label="crm.settings.seller_company.company_name"
+              helperText={false}
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <TextInput
+                source="sellerCompany.orgNumber"
+                label="crm.settings.seller_company.org_number"
+                helperText={false}
+              />
+              <TextInput
+                source="sellerCompany.vatNumber"
+                label="crm.settings.seller_company.vat_number"
+                helperText={false}
+              />
+            </div>
+            <BooleanInput
+              source="sellerCompany.fSkatt"
+              label="crm.settings.seller_company.f_skatt"
+            />
+
+            <Separator />
+
+            <h3 className="text-lg font-medium text-muted-foreground">
+              {translate("crm.settings.seller_company.address_heading", {
+                _: "Address",
+              })}
+            </h3>
+            <TextInput
+              source="sellerCompany.address"
+              label="crm.settings.seller_company.address"
+              helperText={false}
+            />
+            <div className="grid grid-cols-3 gap-4">
+              <TextInput
+                source="sellerCompany.zipcode"
+                label="crm.settings.seller_company.zipcode"
+                helperText={false}
+              />
+              <TextInput
+                source="sellerCompany.city"
+                label="crm.settings.seller_company.city"
+                helperText={false}
+              />
+              <TextInput
+                source="sellerCompany.country"
+                label="crm.settings.seller_company.country"
+                helperText={false}
+              />
+            </div>
+
+            <Separator />
+
+            <h3 className="text-lg font-medium text-muted-foreground">
+              {translate("crm.settings.seller_company.contact_heading", {
+                _: "Contact",
+              })}
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <TextInput
+                source="sellerCompany.phone"
+                label="crm.settings.seller_company.phone"
+                helperText={false}
+              />
+              <TextInput
+                source="sellerCompany.email"
+                label="crm.settings.seller_company.email"
+                helperText={false}
+              />
+            </div>
+            <TextInput
+              source="sellerCompany.website"
+              label="crm.settings.seller_company.website"
+              helperText={false}
+            />
+
+            <Separator />
+
+            <h3 className="text-lg font-medium text-muted-foreground">
+              {translate("crm.settings.seller_company.bank_heading", {
+                _: "Bank Details",
+              })}
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <TextInput
+                source="sellerCompany.bankgiro"
+                label="crm.settings.seller_company.bankgiro"
+                helperText={false}
+              />
+              <TextInput
+                source="sellerCompany.plusgiro"
+                label="crm.settings.seller_company.plusgiro"
+                helperText={false}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <TextInput
+                source="sellerCompany.iban"
+                label="crm.settings.seller_company.iban"
+                helperText={false}
+              />
+              <TextInput
+                source="sellerCompany.bic"
+                label="crm.settings.seller_company.bic"
+                helperText={false}
+              />
+            </div>
+
+            <Separator />
+
+            <h3 className="text-lg font-medium text-muted-foreground">
+              {translate("crm.settings.seller_company.defaults_heading", {
+                _: "Default Quote Terms",
+              })}
+            </h3>
+            <TextInput
+              source="sellerCompany.defaultPaymentTerms"
+              label="crm.settings.seller_company.payment_terms"
+              helperText={false}
+            />
+            <TextInput
+              source="sellerCompany.defaultDeliveryTerms"
+              label="crm.settings.seller_company.delivery_terms"
+              helperText={false}
+            />
+            <TextAreaInput
+              source="sellerCompany.defaultTermsAndConditions"
+              label="crm.settings.seller_company.terms_and_conditions"
+              allowFileUpload
+            />
+            <h3 className="text-lg font-medium text-muted-foreground">
+              {translate("crm.settings.seller_company.quote_logo_heading", {
+                _: "Quote Branding",
+              })}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {translate("crm.settings.seller_company.quote_logo_description", {
+                _: "Logo shown on quotes (recommended: light background)",
+              })}
+            </p>
+            <div className="flex flex-col items-center gap-1">
+              <ImageEditorField
+                source="sellerCompany.quoteLogo"
+                width={120}
+                height={60}
+                linkPosition="bottom"
+                backgroundImageColor="#f5f5f5"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Proposal Automation */}
+        <Card id="proposal-automation">
+          <CardContent className="space-y-4">
+            <h2 className="text-xl font-semibold text-muted-foreground">
+              {translate("crm.settings.sections.proposal_automation", {
+                _: "Proposal Automation",
+              })}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {translate("crm.settings.proposal_automation.description", {
+                _: 'When a deal is moved to "Generating Proposal", the system automatically creates a quote, generates AI text, builds a PDF, and posts to Discord for approval. The KB template below is used as a style and structure reference for the AI.',
+              })}
+            </p>
+
+            <h3 className="text-lg font-medium text-muted-foreground">
+              {translate(
+                "crm.settings.proposal_automation.kb_template_heading",
+                { _: "Best Proposal Reference (KB Template)" },
+              )}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {translate("crm.settings.proposal_automation.kb_template_help", {
+                _: "Paste your single best proposal ever written. The AI uses this as a reference for tone, structure, and level of detail. This is NOT a template with blanks — it should be a complete, real proposal.",
+              })}
+            </p>
+            <TextAreaInput
+              source="proposalKbTemplate"
+              label="crm.settings.proposal_automation.kb_template"
+              allowFileUpload
+            />
           </CardContent>
         </Card>
 
@@ -462,6 +696,73 @@ const SettingsFormFields = () => {
             </ArrayInput>
           </CardContent>
         </Card>
+
+        {/* Revenue Goals */}
+        <Card id="revenue-goals">
+          <CardContent className="space-y-4">
+            <h2 className="text-xl font-semibold text-muted-foreground">
+              {translate("crm.settings.sections.revenue_goals", {
+                _: "Revenue Goals",
+              })}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {translate("crm.settings.revenue_goals.description", {
+                _: "Set revenue targets to track in your dashboard. Add goals for different time periods.",
+              })}
+            </p>
+            <ArrayInput source="revenueGoals" label={false} helperText={false}>
+              <SimpleFormIterator inline disableReordering disableClear>
+                <TextInput
+                  source="label"
+                  label={translate("crm.settings.revenue_goals.label", {
+                    _: "Goal Name",
+                  })}
+                  className="flex-1"
+                />
+                <NumberInput
+                  source="amount"
+                  label={translate("crm.settings.revenue_goals.amount", {
+                    _: "Target Amount",
+                  })}
+                  min={0}
+                />
+                <SelectInput
+                  source="period"
+                  label={translate("crm.settings.revenue_goals.period", {
+                    _: "Period",
+                  })}
+                  choices={[
+                    {
+                      id: "weekly",
+                      name: translate("crm.settings.revenue_goals.weekly", {
+                        _: "Weekly",
+                      }),
+                    },
+                    {
+                      id: "monthly",
+                      name: translate("crm.settings.revenue_goals.monthly", {
+                        _: "Monthly",
+                      }),
+                    },
+                    {
+                      id: "quarterly",
+                      name: translate("crm.settings.revenue_goals.quarterly", {
+                        _: "Quarterly",
+                      }),
+                    },
+                    {
+                      id: "yearly",
+                      name: translate("crm.settings.revenue_goals.yearly", {
+                        _: "Yearly",
+                      }),
+                    },
+                  ]}
+                  defaultValue="monthly"
+                />
+              </SimpleFormIterator>
+            </ArrayInput>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Sticky save button */}
@@ -503,6 +804,75 @@ const SettingsFormFields = () => {
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+/** A minimal textarea input compatible with ra-core's useInput, with optional file upload. */
+const TextAreaInput = ({
+  source,
+  label,
+  allowFileUpload,
+}: {
+  source: string;
+  label: string;
+  allowFileUpload?: boolean;
+}) => {
+  const { field } = useInput({ source });
+  const translate = useTranslate();
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result;
+      if (typeof text === "string") {
+        field.onChange(text);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-muted-foreground">
+          {translate(label, { _: label })}
+        </label>
+        {allowFileUpload && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-muted-foreground hover:text-foreground"
+            onClick={() =>
+              document.getElementById(`file-upload-${source}`)?.click()
+            }
+          >
+            <Upload className="w-3.5 h-3.5 mr-1" />
+            {translate("crm.settings.seller_company.load_from_file", {
+              _: "Load from file",
+            })}
+          </Button>
+        )}
+      </div>
+      <Textarea
+        {...field}
+        value={field.value || ""}
+        rows={6}
+        className="resize-y"
+      />
+      {allowFileUpload && (
+        <input
+          id={`file-upload-${source}`}
+          type="file"
+          accept=".txt,.md"
+          className="hidden"
+          onChange={handleFileUpload}
+        />
+      )}
     </div>
   );
 };

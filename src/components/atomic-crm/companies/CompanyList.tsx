@@ -10,6 +10,7 @@ import { CompanyEmpty } from "./CompanyEmpty";
 import { CompanyListFilter } from "./CompanyListFilter";
 import { ImageList } from "./GridList";
 import { GoogleMapsScraper } from "./GoogleMapsScraper";
+import { SearchProfiles } from "./SearchProfiles";
 
 export const CompanyList = () => {
   const { identity } = useGetIdentity();
@@ -48,8 +49,11 @@ const CompanyListActions = () => {
   const translate = useTranslate();
   return (
     <TopToolbar>
-      <SortButton fields={["name", "created_at", "nb_contacts", "lead_status"]} />
+      <SortButton
+        fields={["name", "created_at", "nb_contacts", "lead_status"]}
+      />
       <ExportButton />
+      <SearchProfiles />
       <GoogleMapsScraper />
       <CreateButton
         label={translate("resources.companies.action.new", {

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useCreate, useNotify } from "ra-core";
+import { useState, useCallback } from "react";
+import { useCreate, useNotify, useDataProvider } from "ra-core";
 import {
   Dialog,
   DialogContent,
@@ -22,10 +22,18 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Map, Search, Loader2, Building2 } from "lucide-react";
+import {
+  Map,
+  Search,
+  Loader2,
+  Building2,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 import { supabase } from "../providers/supabase/supabase";
 
 interface GoogleMapsPlace {
+  place_id: string;
   name: string;
   address?: string;
   phone?: string;
@@ -39,6 +47,7 @@ interface GoogleMapsPlace {
 
 interface ScrapedPlaceWithSelection extends GoogleMapsPlace {
   selected: boolean;
+  isDuplicate: boolean;
 }
 
 export const GoogleMapsScraper = () => {
@@ -48,8 +57,29 @@ export const GoogleMapsScraper = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [places, setPlaces] = useState<ScrapedPlaceWithSelection[]>([]);
+  const [duplicateCount, setDuplicateCount] = useState(0);
   const [create] = useCreate();
   const notify = useNotify();
+  const dataProvider = useDataProvider();
+
+  const checkDuplicates = useCallback(
+    async (placeIds: string[]): Promise<Set<string>> => {
+      try {
+        const { data } = await supabase
+          .from("companies")
+          .select("google_place_id")
+          .in("google_place_id", placeIds);
+        return new Set(
+          (data ?? []).map(
+            (row: { google_place_id: string }) => row.google_place_id,
+          ),
+        );
+      } catch {
+        return new Set();
+      }
+    },
+    [],
+  );
 
   const handleSearch = async () => {
     if (!query.trim()) {
@@ -91,19 +121,45 @@ export const GoogleMapsScraper = () => {
       const result = await response.json();
 
       if (result.success && result.data) {
-        setPlaces(
-          result.data.map((place: GoogleMapsPlace) => ({
+        const placeIds = result.data
+          .map((p: GoogleMapsPlace) => p.place_id)
+          .filter(Boolean);
+        const existingIds = await checkDuplicates(placeIds);
+        const dupes = placeIds.filter((id: string) =>
+          existingIds.has(id),
+        ).length;
+        setDuplicateCount(dupes);
+
+        // Only show new companies — filter out duplicates entirely
+        const newPlaces = result.data
+          .filter(
+            (place: GoogleMapsPlace) =>
+              !place.place_id || !existingIds.has(place.place_id),
+          )
+          .map((place: GoogleMapsPlace) => ({
             ...place,
-            selected: true, // Markera alla som valda som standard
-          })),
-        );
-        notify(`Hittade ${result.count} företag`, { type: "success" });
+            selected: true,
+            isDuplicate: false,
+          }));
+
+        setPlaces(newPlaces);
+
+        if (newPlaces.length === 0 && dupes > 0) {
+          notify(`Alla ${result.count} företag finns redan i CRM:et`, {
+            type: "info",
+          });
+        } else {
+          notify(
+            `Hittade ${newPlaces.length} nya företag${dupes > 0 ? ` (${dupes} redan importerade filtrerades bort)` : ""}`,
+            { type: "success" },
+          );
+        }
       } else {
         notify("Inga resultat hittades", { type: "info" });
         setPlaces([]);
+        setDuplicateCount(0);
       }
     } catch (error) {
-      console.error("Scraping fel:", error);
       notify(`Fel: ${(error as Error).message}`, { type: "error" });
       setPlaces([]);
     } finally {
@@ -127,47 +183,73 @@ export const GoogleMapsScraper = () => {
   };
 
   const handleImport = async () => {
-    const selectedPlaces = places.filter((p) => p.selected);
+    const selectedPlaces = places.filter((p) => p.selected && !p.isDuplicate);
 
     if (selectedPlaces.length === 0) {
-      notify("Välj minst ett företag att importera", { type: "warning" });
+      notify("Välj minst ett nytt företag att importera", { type: "warning" });
       return;
     }
 
     setIsImporting(true);
     let successCount = 0;
     let errorCount = 0;
+    const importedCompanyIds: number[] = [];
 
     for (const place of selectedPlaces) {
       try {
-        await create(
-          "companies",
-          {
-            data: {
-              name: place.name,
-              address: place.address || "",
-              city: extractCity(place.address || ""),
-              zipcode: extractZipcode(place.address || ""),
-              phone_number: place.phone || "",
-              website: place.website || "",
-              // Lägg till extra metadata i notes eller custom fält
-              // rating: place.rating,
-              // reviews_count: place.reviews_count,
+        const result = await new Promise<{ id: number }>((resolve, reject) => {
+          create(
+            "companies",
+            {
+              data: {
+                name: place.name,
+                address: place.address || "",
+                city: extractCity(place.address || ""),
+                zipcode: extractZipcode(place.address || ""),
+                phone_number: place.phone || "",
+                website: place.website || "",
+                source: "google_maps",
+                lead_status: "new",
+                google_place_id: place.place_id || null,
+                has_website:
+                  !!place.website &&
+                  !place.website.includes("facebook.com") &&
+                  !place.website.includes("instagram.com"),
+                industry: place.category || "",
+              },
             },
-          },
-          {
-            onSuccess: () => {
-              successCount++;
+            {
+              onSuccess: (data) => {
+                successCount++;
+                resolve(data as { id: number });
+              },
+              onError: (error) => {
+                errorCount++;
+                reject(error);
+              },
             },
-            onError: () => {
-              errorCount++;
-            },
-          },
-        );
-      } catch (error) {
-        console.error(`Misslyckades att importera ${place.name}:`, error);
+          );
+        });
+        importedCompanyIds.push(result.id);
+      } catch {
         errorCount++;
       }
+    }
+
+    // Auto-enrich imported companies in background
+    if (importedCompanyIds.length > 0) {
+      notify(`Enrichar ${importedCompanyIds.length} företag i bakgrunden...`, {
+        type: "info",
+      });
+      (dataProvider as any)
+        .bulkEnrichCompanies(importedCompanyIds)
+        .then((results: Array<{ id: number; success: boolean }>) => {
+          const enriched = results.filter((r) => r.success).length;
+          notify(`${enriched} företag enrichade`, { type: "success" });
+        })
+        .catch(() => {
+          notify("Enrichment misslyckades delvis", { type: "warning" });
+        });
     }
 
     setIsImporting(false);
@@ -179,10 +261,10 @@ export const GoogleMapsScraper = () => {
       notify(`${errorCount} misslyckades`, { type: "warning" });
     }
 
-    // Stäng dialog och rensa
     setOpen(false);
     setPlaces([]);
     setQuery("");
+    setDuplicateCount(0);
   };
 
   return (
@@ -258,6 +340,12 @@ export const GoogleMapsScraper = () => {
                     {places.length})
                   </Label>
                 </div>
+                {duplicateCount > 0 && (
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    {duplicateCount} redan importerade (filtrerade)
+                  </div>
+                )}
               </div>
 
               <div className="border rounded-md">

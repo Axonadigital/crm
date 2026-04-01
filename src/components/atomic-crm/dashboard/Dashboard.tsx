@@ -3,8 +3,13 @@ import { useGetList } from "ra-core";
 import type { Contact, ContactNote } from "../types";
 import { DashboardActivityLog } from "./DashboardActivityLog";
 import { DashboardStepper } from "./DashboardStepper";
+import { DealStageFunnel } from "./DealStageFunnel";
 import { DealsChart } from "./DealsChart";
-import { HotContacts } from "./HotContacts";
+import { FollowUpsDueToday } from "./FollowUpsDueToday";
+import { KpiSummaryRow } from "./KpiSummaryRow";
+import { LeadsMissingNextStep } from "./LeadsMissingNextStep";
+import { RevenueGoalsTracker } from "./RevenueGoalsTracker";
+import { RevenueTrendChart } from "./RevenueTrendChart";
 import { TasksList } from "./TasksList";
 import { UpcomingMeetings } from "./UpcomingMeetings";
 import { Welcome } from "./Welcome";
@@ -45,24 +50,33 @@ export const Dashboard = () => {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mt-1">
-      <div className="md:col-span-3">
-        <div className="flex flex-col gap-4">
-          {import.meta.env.VITE_IS_DEMO === "true" ? <Welcome /> : null}
-          <HotContacts />
-        </div>
-      </div>
-      <div className="md:col-span-6">
-        <div className="flex flex-col gap-6">
-          {totalDeal ? <DealsChart /> : null}
-          <DashboardActivityLog />
-        </div>
-      </div>
+    <div className="flex flex-col gap-6 mt-1">
+      {import.meta.env.VITE_IS_DEMO === "true" ? <Welcome /> : null}
 
-      <div className="md:col-span-3">
-        <div className="flex flex-col gap-6">
-          <UpcomingMeetings />
-          <TasksList />
+      {totalDeal ? <KpiSummaryRow /> : null}
+
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        <div className="md:col-span-8">
+          <div className="flex flex-col gap-6">
+            {totalDeal ? (
+              <>
+                <RevenueTrendChart />
+                <DealsChart />
+                <DealStageFunnel />
+              </>
+            ) : null}
+            <DashboardActivityLog />
+          </div>
+        </div>
+
+        <div className="md:col-span-4">
+          <div className="flex flex-col gap-4">
+            <RevenueGoalsTracker />
+            <FollowUpsDueToday />
+            <LeadsMissingNextStep />
+            <UpcomingMeetings />
+            <TasksList />
+          </div>
         </div>
       </div>
     </div>

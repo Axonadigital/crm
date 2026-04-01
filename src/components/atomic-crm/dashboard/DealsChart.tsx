@@ -32,6 +32,9 @@ export const DealsChart = memo(() => {
     ? navigator.languages || [navigator.language]
     : [DEFAULT_LOCALE];
   const wonLabel = findDealLabel(dealStages, "won") ?? "Won";
+  const pendingLabel = translate("crm.dashboard.deals_pending", {
+    _: "In Progress",
+  });
   const lostLabel = findDealLabel(dealStages, "lost") ?? "Lost";
 
   const { data, isPending } = useGetList<Deal>("deals", {
@@ -84,7 +87,22 @@ export const DealsChart = memo(() => {
       });
   }, [data]);
 
-  if (isPending) return null; // FIXME return skeleton instead
+  if (isPending)
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center mb-4">
+          <div className="mr-3 flex">
+            <TrendingUp className="text-muted-foreground w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-semibold text-muted-foreground">
+            {translate("crm.dashboard.deals_chart")}
+          </h2>
+        </div>
+        <div className="h-[400px] flex items-center justify-center">
+          <div className="w-full h-full animate-pulse bg-muted rounded-md" />
+        </div>
+      </div>
+    );
   const range = months.reduce(
     (acc, month) => {
       acc.min = Math.min(acc.min, month.lost);
@@ -108,7 +126,7 @@ export const DealsChart = memo(() => {
           data={months}
           indexBy="date"
           keys={["won", "pending", "lost"]}
-          colors={["#61cdbb", "#97e3d5", "#e25c3b"]}
+          colors={["#61cdbb", "#f4a261", "#e25c3b"]}
           margin={{ top: 30, right: 50, bottom: 30, left: 0 }}
           padding={0.3}
           valueScale={{
@@ -120,15 +138,33 @@ export const DealsChart = memo(() => {
           enableGridX={true}
           enableGridY={false}
           enableLabel={false}
-          tooltip={({ value, indexValue }) => (
-            <div className="p-2 bg-secondary rounded shadow inline-flex items-center gap-1 text-secondary-foreground">
-              <strong>{indexValue}: </strong>&nbsp;{value > 0 ? "+" : ""}
-              {value.toLocaleString(acceptedLanguages.at(0) ?? DEFAULT_LOCALE, {
-                style: "currency",
-                currency,
-              })}
-            </div>
-          )}
+          tooltip={({ id, value, indexValue, color }) => {
+            const label =
+              id === "won"
+                ? wonLabel
+                : id === "pending"
+                  ? pendingLabel
+                  : lostLabel;
+            return (
+              <div className="p-2 bg-secondary rounded shadow inline-flex items-center gap-1 text-secondary-foreground">
+                <span
+                  className="inline-block w-3 h-3 rounded-sm mr-1"
+                  style={{ backgroundColor: color }}
+                />
+                <strong>
+                  {indexValue} – {label}:
+                </strong>
+                &nbsp;{value > 0 ? "+" : ""}
+                {Math.abs(value).toLocaleString(
+                  acceptedLanguages.at(0) ?? DEFAULT_LOCALE,
+                  {
+                    style: "currency",
+                    currency,
+                  },
+                )}
+              </div>
+            );
+          }}
           axisTop={{
             tickSize: 0,
             tickPadding: 12,
@@ -180,17 +216,39 @@ export const DealsChart = memo(() => {
               },
             },
           }}
+          legends={[
+            {
+              dataFrom: "keys",
+              anchor: "top-right",
+              direction: "row",
+              translateY: -25,
+              itemWidth: 100,
+              itemHeight: 20,
+              itemDirection: "left-to-right",
+              symbolSize: 12,
+              symbolShape: "square",
+              itemTextColor: "var(--color-muted-foreground)",
+              data: [
+                {
+                  id: "won",
+                  label: wonLabel,
+                  color: "#61cdbb",
+                },
+                {
+                  id: "pending",
+                  label: pendingLabel,
+                  color: "#f4a261",
+                },
+                {
+                  id: "lost",
+                  label: lostLabel,
+                  color: "#e25c3b",
+                },
+              ],
+            },
+          ]}
           markers={
             [
-              {
-                axis: "y",
-                value: 0,
-                lineStyle: { strokeOpacity: 0 },
-                textStyle: { fill: "#2ebca6" },
-                legend: wonLabel,
-                legendPosition: "top-left",
-                legendOrientation: "vertical",
-              },
               {
                 axis: "y",
                 value: 0,
@@ -198,10 +256,6 @@ export const DealsChart = memo(() => {
                   stroke: "#f47560",
                   strokeWidth: 1,
                 },
-                textStyle: { fill: "#e25c3b" },
-                legend: lostLabel,
-                legendPosition: "bottom-left",
-                legendOrientation: "vertical",
               },
             ] as any
           }

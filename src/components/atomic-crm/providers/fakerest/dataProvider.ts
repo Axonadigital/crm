@@ -315,6 +315,18 @@ export const createDataProvider = ({
       });
       return config;
     },
+    generateQuoteText: async (_quoteId: Identifier) => {
+      return {
+        success: true,
+        message: "Demo mode: quote text generation skipped",
+      };
+    },
+    generateQuotePdf: async (_quoteId: Identifier) => {
+      return { success: true, message: "Demo mode: PDF generation skipped" };
+    },
+    sendQuoteForSigning: async (_quoteId: Identifier) => {
+      return { success: true, message: "Demo mode: signing skipped" };
+    },
   };
 
   const dataProvider = withLifecycleCallbacks(

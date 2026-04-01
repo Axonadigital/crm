@@ -19,3 +19,17 @@ Edge function conventions:
 
 Other conventions:
 - New tables need RLS policies and the auto-set `sales_id` trigger (see migration `20260108160722`)
+
+## Migration Safety (CRITICAL)
+
+Before writing ANY migration:
+1. **Never write destructive SQL** (`DROP`, `TRUNCATE`, `DELETE`, `ALTER COLUMN TYPE`) without explicit user approval
+2. Prefer `ADD COLUMN` over modifying existing columns
+3. Use `IF EXISTS` / `IF NOT EXISTS` guards on all DDL
+4. When removing a column: rename to `_deprecated_<name>` first, drop in a later migration after verification
+5. When removing a table: rename to `_archive_<name>` first
+
+Before deploying migrations to production:
+- Run `/safe-deploy` skill — this is **mandatory** before every `supabase db push`
+- Never run `supabase db reset` against production
+- Always confirm backup has been taken

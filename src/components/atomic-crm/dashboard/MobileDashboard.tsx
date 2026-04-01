@@ -4,6 +4,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Contact, ContactNote } from "../types";
 import { DashboardActivityLog } from "./DashboardActivityLog";
 import { DashboardStepper } from "./DashboardStepper";
+import { FollowUpsDueToday } from "./FollowUpsDueToday";
+import { KpiSummaryRow } from "./KpiSummaryRow";
+import { LeadsMissingNextStep } from "./LeadsMissingNextStep";
 import { Welcome } from "./Welcome";
 import MobileHeader from "../layout/MobileHeader";
 import { MobileContent } from "../layout/MobileContent";
@@ -81,8 +84,11 @@ export const MobileDashboard = () => {
 
   return (
     <Wrapper>
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mt-1">
+      <div className="flex flex-col gap-4 mt-1">
         {import.meta.env.VITE_IS_DEMO === "true" ? <Welcome /> : null}
+        <KpiSummaryRow />
+        <FollowUpsDueToday />
+        <LeadsMissingNextStep />
         <DashboardActivityLog />
       </div>
     </Wrapper>

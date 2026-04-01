@@ -37,5 +37,12 @@ dist/
 # Shadcn Registry
 public/r/
 
-!supabase/functions/.env
+supabase/functions/.env
+supabase/functions/.env.local
 .claude/settings.local.json
+
+# Backups
+backup_*.sql
+
+# Supabase secrets
+supabase/signing_keys.json

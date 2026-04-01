@@ -377,6 +377,15 @@ export const frenchCrmMessages = {
         agenda: "Agenda",
         week: "Semaine",
       },
+      modes: {
+        google: "Google Calendar",
+        crm: "Calendrier CRM",
+      },
+      embed: {
+        title: "Google Calendar",
+        description:
+          "Calendrier Google embarqué pour tester rapidement avant une intégration CRM plus profonde.",
+      },
       list: {
         description:
           "Gérez les rendez-vous, liens Meet et participants au même endroit.",
@@ -539,6 +548,34 @@ export const frenchCrmMessages = {
       app_title: "Titre de l'application",
       sections: {
         branding: "Image de marque",
+        seller_company: "Informations société",
+      },
+      seller_company: {
+        description:
+          "Les informations de votre société affichées sur les devis et factures.",
+        basic_info: "Informations de base",
+        company_name: "Raison sociale",
+        org_number: "N° SIRET",
+        vat_number: "N° TVA",
+        f_skatt: "Assujetti à la TVA",
+        address_heading: "Adresse",
+        address: "Adresse",
+        zipcode: "Code postal",
+        city: "Ville",
+        country: "Pays",
+        contact_heading: "Contact",
+        phone: "Téléphone",
+        email: "Email",
+        website: "Site web",
+        bank_heading: "Coordonnées bancaires",
+        bankgiro: "Bankgiro",
+        plusgiro: "Plusgiro",
+        iban: "IBAN",
+        bic: "BIC/SWIFT",
+        defaults_heading: "Conditions par défaut",
+        payment_terms: "Conditions de paiement",
+        delivery_terms: "Conditions de livraison",
+        terms_and_conditions: "Conditions générales",
       },
       validation: {
         duplicate: "%{display_name} en double : %{items}",

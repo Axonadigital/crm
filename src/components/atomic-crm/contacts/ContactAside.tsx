@@ -1,4 +1,10 @@
-import { useRecordContext, useTranslate } from "ra-core";
+import {
+  useGetList,
+  useLocaleState,
+  useRecordContext,
+  useTranslate,
+} from "ra-core";
+import { Link } from "react-router-dom";
 import { EditButton } from "@/components/admin/edit-button";
 import { DeleteButton } from "@/components/admin";
 import { ReferenceManyField } from "@/components/admin/reference-many-field";
@@ -10,10 +16,16 @@ import { TagsListEdit } from "./TagsListEdit";
 import { ContactPersonalInfo } from "./ContactPersonalInfo";
 import { ContactBackgroundInfo } from "./ContactBackgroundInfo";
 import { AsideSection } from "../misc/AsideSection";
-import type { Contact } from "../types";
+import { formatRelativeDate } from "../misc/RelativeDate";
+import { findDealLabel } from "../deals/dealUtils";
+import { useConfigurationContext } from "../root/ConfigurationContext";
+import type { Contact, Deal } from "../types";
 import { ContactMergeButton } from "./ContactMergeButton";
 import { ExportVCardButton } from "./ExportVCardButton";
 import { ContactCalendarEvents } from "./ContactCalendarEvents";
+import { SendEmailDialog } from "../templates/SendEmailDialog";
+import { EnrollSequenceDialog } from "../sequences/EnrollSequenceDialog";
+import { AnalyzeMeetingDialog } from "../meetings/AnalyzeMeetingDialog";
 
 export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
   const record = useRecordContext<Contact>();
@@ -68,9 +80,14 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
         <ContactCalendarEvents />
       </AsideSection>
 
+      <ContactDeals contactId={record.id} />
+
       {link !== "edit" && (
         <>
           <div className="mt-6 pt-6 border-t hidden sm:flex flex-col gap-2 items-start">
+            <SendEmailDialog />
+            <EnrollSequenceDialog />
+            <AnalyzeMeetingDialog />
             <ExportVCardButton />
             <ContactMergeButton />
           </div>
@@ -83,5 +100,51 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
         </>
       )}
     </div>
+  );
+};
+
+const ContactDeals = ({ contactId }: { contactId: number | string }) => {
+  const translate = useTranslate();
+  const [locale = "en"] = useLocaleState();
+  const { dealStages, currency } = useConfigurationContext();
+  const { data: deals, isPending } = useGetList<Deal>("deals", {
+    pagination: { page: 1, perPage: 10 },
+    sort: { field: "updated_at", order: "DESC" },
+    filter: { "contact_ids@cs": `{${contactId}}` },
+  });
+
+  if (isPending || !deals?.length) return null;
+
+  return (
+    <AsideSection
+      title={translate("resources.deals.name", { smart_count: deals.length })}
+    >
+      <div className="flex flex-col gap-1">
+        {deals.map((deal) => (
+          <Link
+            key={deal.id}
+            to={`/deals/${deal.id}/show`}
+            className="flex items-center justify-between hover:bg-muted py-1 px-1 rounded transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate">{deal.name}</div>
+              <div className="text-xs text-muted-foreground">
+                {findDealLabel(dealStages, deal.stage)} &middot;{" "}
+                {deal.amount.toLocaleString(locale, {
+                  notation: "compact",
+                  style: "currency",
+                  currency,
+                  currencyDisplay: "narrowSymbol",
+                  minimumSignificantDigits: 3,
+                })}
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground ml-2">
+              {formatRelativeDate(deal.updated_at, locale)}
+            </div>
+          </Link>
+        ))}
+      </div>
+    </AsideSection>
   );
 };

@@ -1,4 +1,4 @@
-import { Building, Handshake, Truck, Users } from "lucide-react";
+import { Building, Handshake, Sparkles, Truck, Users } from "lucide-react";
 import { FilterLiveForm, useGetIdentity, useTranslate } from "ra-core";
 import { ToggleFilterButton } from "@/components/admin/toggle-filter-button";
 import { SearchInput } from "@/components/admin/search-input";
@@ -8,20 +8,16 @@ import { useConfigurationContext } from "../root/ConfigurationContext";
 import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
 import { sizes } from "./sizes";
 
-const companiesInProgressFilter = {
-  "lead_status@in": "(contacted,interested,meeting_booked,proposal_sent,negotiation)",
-};
-
-const companiesClosedFilter = {
-  "lead_status@in": "(closed_won,closed_lost)",
-};
-
-const companiesNotActiveFilter = {
-  "lead_status@in": "(new,not_interested,bad_fit,closed_lost)",
-};
-
-const wonCustomersFilter = {
+const activeCustomersFilter = {
   "lead_status@eq": "closed_won",
+};
+
+const companiesUnderNegotiationFilter = {
+  "lead_status@in": "(proposal_sent,negotiation)",
+};
+
+const companiesForFollowupFilter = {
+  "lead_status@in": "(contacted,interested,meeting_booked)",
 };
 
 export const CompanyListFilter = () => {
@@ -77,34 +73,71 @@ export const CompanyListFilter = () => {
         />
       </FilterCategory>
 
-      <FilterCategory icon={<Handshake className="h-4 w-4" />} label="Relationsstatus">
+      <FilterCategory
+        icon={<Sparkles className="h-4 w-4" />}
+        label="Lead Segment"
+      >
         <ToggleFilterButton
           className="w-full justify-between"
-          label={translate("resources.companies.filters.in_progress", {
-            _: "Kunder vi jobbar med",
-          })}
-          value={companiesInProgressFilter}
+          label="Heta leads"
+          value={{ "segment@eq": "hot_lead" }}
         />
         <ToggleFilterButton
           className="w-full justify-between"
-          label={translate("resources.companies.filters.closed", {
-            _: "Stängda kunder",
-          })}
-          value={companiesClosedFilter}
+          label="Varma leads"
+          value={{ "segment@eq": "warm_lead" }}
         />
         <ToggleFilterButton
           className="w-full justify-between"
-          label={translate("resources.companies.filters.won", {
-            _: "Vunna kunder",
-          })}
-          value={wonCustomersFilter}
+          label="Kalla leads"
+          value={{ "segment@eq": "cold_lead" }}
         />
         <ToggleFilterButton
           className="w-full justify-between"
-          label={translate("resources.companies.filters.not_active", {
-            _: "Företag vi inte jobbar med",
+          label="Har Facebook"
+          value={{ "has_facebook@eq": true }}
+        />
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label="Har Instagram"
+          value={{ "has_instagram@eq": true }}
+        />
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label="Saknar hemsida"
+          value={{ "website_quality@eq": "none" }}
+        />
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label="Dålig hemsida"
+          value={{ "website_quality@eq": "poor" }}
+        />
+      </FilterCategory>
+
+      <FilterCategory
+        icon={<Handshake className="h-4 w-4" />}
+        label="Relationsstatus"
+      >
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label={translate("resources.companies.filters.active_customers", {
+            _: "Aktiva kunder",
           })}
-          value={companiesNotActiveFilter}
+          value={activeCustomersFilter}
+        />
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label={translate("resources.companies.filters.under_negotiation", {
+            _: "Under förhandling",
+          })}
+          value={companiesUnderNegotiationFilter}
+        />
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label={translate("resources.companies.filters.follow_up", {
+            _: "Att följa upp",
+          })}
+          value={companiesForFollowupFilter}
         />
       </FilterCategory>
     </div>

@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
-  useCreate,
-  useGetIdentity,
+  useDataProvider,
   useNotify,
   useRecordContext,
+  useRefresh,
 } from "ra-core";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Phone } from "lucide-react";
 import type { CallLog, Company } from "../types";
-import { supabase } from "../providers/supabase/supabase";
+import type { CrmDataProvider } from "../providers/supabase/dataProvider";
 
 export const CallLogModal = () => {
   const [open, setOpen] = useState(false);
@@ -34,63 +34,44 @@ export const CallLogModal = () => {
   const [notes, setNotes] = useState("");
   const [followupDate, setFollowupDate] = useState("");
   const [followupNote, setFollowupNote] = useState("");
-  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
 
   const company = useRecordContext<Company>();
-  const { identity } = useGetIdentity();
-  const [create, { isPending }] = useCreate();
+  const dataProvider = useDataProvider() as CrmDataProvider;
   const notify = useNotify();
-
-  // Get the actual Supabase auth user ID (UUID)
-  useEffect(() => {
-    const getAuthUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setAuthUserId(user?.id || null);
-    };
-    getAuthUser();
-  }, []);
+  const refresh = useRefresh();
 
   const handleSubmit = async () => {
     if (!company?.id) return;
 
+    setIsPending(true);
     try {
-      // Convert datetime-local string to ISO timestamp if followupDate exists
       const followupTimestamp = followupDate
         ? new Date(followupDate).toISOString()
-        : undefined;
+        : null;
 
-      await create(
-        "call_logs",
-        {
-          data: {
-            company_id: company.id,
-            user_id: authUserId, // Use the Supabase auth UUID
-            call_outcome: outcome,
-            notes: notes || undefined,
-            followup_date: followupTimestamp,
-            followup_note: followupNote || undefined,
-            created_at: new Date().toISOString(),
-          },
-        },
-        {
-          onSuccess: () => {
-            notify("Samtalslogg sparad", { type: "success" });
-            setOpen(false);
-            // Reset form
-            setOutcome("no_answer");
-            setNotes("");
-            setFollowupDate("");
-            setFollowupNote("");
-          },
-          onError: (error) => {
-            notify(`Fel: ${error.message}`, { type: "error" });
-          },
-        },
-      );
+      await dataProvider.logCall({
+        company_id: Number(company.id),
+        call_outcome: outcome,
+        notes: notes || null,
+        followup_date: followupTimestamp,
+        followup_note: followupNote || null,
+      });
+
+      notify("Samtalslogg sparad", { type: "success" });
+      refresh();
+      setOpen(false);
+      setOutcome("no_answer");
+      setNotes("");
+      setFollowupDate("");
+      setFollowupNote("");
     } catch (error) {
-      notify("Kunde inte spara samtalslogg", { type: "error" });
+      notify(
+        `Fel: ${error instanceof Error ? error.message : "Kunde inte spara samtalslogg"}`,
+        { type: "error" },
+      );
+    } finally {
+      setIsPending(false);
     }
   };
 

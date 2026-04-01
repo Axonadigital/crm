@@ -95,8 +95,8 @@ const updateDealStageLocal = (
   dealsByStage: DealsByStage,
 ) => {
   if (source.stage === destination.stage) {
-    // moving deal inside the same column
-    const column = dealsByStage[source.stage];
+    // moving deal inside the same column (immutable)
+    const column = [...dealsByStage[source.stage]];
     column.splice(source.index, 1);
     column.splice(destination.index ?? column.length + 1, 0, sourceDeal);
     return {
@@ -104,9 +104,9 @@ const updateDealStageLocal = (
       [destination.stage]: column,
     };
   } else {
-    // moving deal across columns
-    const sourceColumn = dealsByStage[source.stage];
-    const destinationColumn = dealsByStage[destination.stage];
+    // moving deal across columns (immutable)
+    const sourceColumn = [...dealsByStage[source.stage]];
+    const destinationColumn = [...dealsByStage[destination.stage]];
     sourceColumn.splice(source.index, 1);
     destinationColumn.splice(
       destination.index ?? destinationColumn.length + 1,

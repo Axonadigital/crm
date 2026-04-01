@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { MouseEvent } from "react";
 import { Upload, Loader2 } from "lucide-react";
 import { Form, useRefresh, useTranslate } from "ra-core";
@@ -15,7 +15,11 @@ import { FormToolbar } from "@/components/admin/simple-form";
 import { FileInput } from "@/components/admin/file-input";
 import { FileField } from "@/components/admin/file-field";
 
-import { usePapaParse } from "../misc/usePapaParse";
+import {
+  mapHeadersToCanonical,
+  parseUniversalFile,
+  remapRows,
+} from "../misc/parseUniversalFile";
 import type { ContactImportSchema } from "./useContactImport";
 import { useContactImport } from "./useContactImport";
 import * as sampleCsv from "./contacts_export.csv?raw";
@@ -55,6 +59,18 @@ type ContactImportModalProps = {
   onClose(): void;
 };
 
+type ImportState =
+  | { state: "idle" }
+  | { state: "parsing" }
+  | {
+      state: "running" | "complete";
+      rowCount: number;
+      importCount: number;
+      errorCount: number;
+      remainingTime: number | null;
+    }
+  | { state: "error"; error: Error };
+
 export function ContactImportDialog({
   open,
   onClose,
@@ -62,12 +78,13 @@ export function ContactImportDialog({
   const translate = useTranslate();
   const refresh = useRefresh();
   const processBatch = useContactImport();
-  const { importer, parseCsv, reset } = usePapaParse<ContactImportSchema>({
-    batchSize: 10,
-    processBatch,
-  });
-
+  const [importer, setImporter] = useState<ImportState>({ state: "idle" });
   const [file, setFile] = useState<File | null>(null);
+
+  const reset = useCallback(() => {
+    setImporter({ state: "idle" });
+    setFile(null);
+  }, []);
 
   useEffect(() => {
     if (importer.state === "complete") {
@@ -79,9 +96,95 @@ export function ContactImportDialog({
     setFile(file);
   };
 
-  const startImport = () => {
+  const startImport = async () => {
     if (!file) return;
-    parseCsv(file);
+    setImporter({ state: "parsing" });
+
+    try {
+      const parsed = await parseUniversalFile(file);
+      const mapping = mapHeadersToCanonical(parsed.headers);
+      const mappedRows = remapRows(parsed.rows, parsed.headers, mapping);
+
+      // Convert to ContactImportSchema format
+      const rows: ContactImportSchema[] = mappedRows.map((row) => ({
+        first_name: row.first_name ?? "",
+        last_name: row.last_name ?? "",
+        company: row.company ?? "",
+        phone_work: row.phone_work ?? "",
+        email_work: row.email_work ?? "",
+        tags: row.tags ?? "",
+        gender: row.gender,
+        title: row.title,
+        email_home: row.email_home,
+        email_other: row.email_other,
+        phone_home: row.phone_home,
+        phone_other: row.phone_other,
+        background: row.background,
+        avatar: row.avatar,
+        first_seen: row.first_seen,
+        last_seen: row.last_seen,
+        has_newsletter: row.has_newsletter,
+        status: row.status,
+        linkedin_url: row.linkedin_url,
+      }));
+
+      if (rows.length === 0) {
+        setImporter({
+          state: "error",
+          error: new Error("No importable rows found in the file."),
+        });
+        return;
+      }
+
+      setImporter({
+        state: "running",
+        rowCount: rows.length,
+        errorCount: 0,
+        importCount: 0,
+        remainingTime: null,
+      });
+
+      const batchSize = 10;
+      let totalTime = 0;
+      for (let i = 0; i < rows.length; i += batchSize) {
+        const batch = rows.slice(i, i + batchSize);
+        try {
+          const start = Date.now();
+          await processBatch(batch);
+          totalTime += Date.now() - start;
+
+          const meanTime = totalTime / (i + batch.length);
+          setImporter((prev) => {
+            if (prev.state === "running") {
+              const importCount = prev.importCount + batch.length;
+              return {
+                ...prev,
+                importCount,
+                remainingTime: meanTime * (rows.length - importCount),
+              };
+            }
+            return prev;
+          });
+        } catch {
+          setImporter((prev) =>
+            prev.state === "running"
+              ? { ...prev, errorCount: prev.errorCount + batch.length }
+              : prev,
+          );
+        }
+      }
+
+      setImporter((prev) =>
+        prev.state === "running"
+          ? { ...prev, state: "complete", remainingTime: null }
+          : prev,
+      );
+    } catch (err) {
+      setImporter({
+        state: "error",
+        error: err instanceof Error ? err : new Error(String(err)),
+      });
+    }
   };
 
   const handleClose = () => {
@@ -180,7 +283,6 @@ export function ContactImportDialog({
                 <FileInput
                   source="csv"
                   label="resources.contacts.import.csv_file"
-                  accept={{ "text/csv": [".csv"] }}
                   onChange={handleFileChange}
                 >
                   <FileField source="src" title="title" target="_blank" />

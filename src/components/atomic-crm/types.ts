@@ -56,6 +56,7 @@ export type Company = {
   linkedin_url: string;
   website: string;
   phone_number: string;
+  email?: string;
   address: string;
   zipcode: string;
   city: string;
@@ -66,7 +67,7 @@ export type Company = {
   revenue: string;
   tax_identifier: string;
   country: string;
-  context_links?: string[];
+  context_links?: (string | { url: string; title: string; source: string })[];
   nb_contacts?: number;
   nb_deals?: number;
   // Swedish CRM fields
@@ -74,13 +75,71 @@ export type Company = {
   google_business_url?: string;
   has_website?: boolean;
   website_quality?: "none" | "poor" | "ok" | "good";
-  source?: "google_maps" | "hitta" | "allabolag" | "eniro" | "manual" | "referral" | "field";
-  lead_status?: "new" | "contacted" | "interested" | "meeting_booked" | "proposal_sent" | "negotiation" | "closed_won" | "closed_lost" | "not_interested" | "bad_fit";
+  source?:
+    | "google_maps"
+    | "hitta"
+    | "allabolag"
+    | "eniro"
+    | "manual"
+    | "referral"
+    | "field";
+  lead_status?:
+    | "new"
+    | "contacted"
+    | "interested"
+    | "meeting_booked"
+    | "proposal_sent"
+    | "negotiation"
+    | "closed_won"
+    | "closed_lost"
+    | "not_interested"
+    | "bad_fit";
   next_followup_date?: string;
   assigned_to?: string;
   tags?: string[];
   industry?: string;
   employees_estimate?: number;
+  // Enrichment fields
+  lead_score?: number;
+  enrichment_data?: Record<string, unknown>;
+  enriched_at?: string;
+  segment?: "hot_lead" | "warm_lead" | "cold_lead" | "nurture" | "disqualified";
+  facebook_url?: string;
+  instagram_url?: string;
+  has_facebook?: boolean;
+  has_instagram?: boolean;
+  website_score?: number;
+  // Operational fields
+  owner_sales_id?: Identifier;
+  last_touch_at?: string;
+  last_touch_type?: "call" | "email" | "meeting" | "note" | "quote";
+  next_action_at?: string;
+  next_action_type?:
+    | "call"
+    | "email"
+    | "meeting"
+    | "follow_up"
+    | "send_quote"
+    | "other";
+  next_action_note?: string;
+  pipeline_state?:
+    | "new"
+    | "qualified"
+    | "contact_attempted"
+    | "contacted"
+    | "meeting_booked"
+    | "proposal_pending"
+    | "negotiation"
+    | "won"
+    | "lost"
+    | "nurture";
+  priority_score?: number;
+  data_quality_status?:
+    | "complete"
+    | "missing_contact"
+    | "possible_duplicate"
+    | "missing_owner"
+    | "missing_next_step";
 } & Pick<RaRecord, "id">;
 
 export type EmailAndType = {
@@ -202,11 +261,97 @@ export type CallLog = {
   company_id: Identifier;
   contact_id?: Identifier | null;
   user_id?: string;
-  call_outcome: "no_answer" | "busy" | "wrong_number" | "spoke_gatekeeper" | "spoke_decision_maker" | "interested" | "not_interested" | "meeting_booked" | "send_info" | "callback_requested";
+  call_outcome:
+    | "no_answer"
+    | "busy"
+    | "wrong_number"
+    | "spoke_gatekeeper"
+    | "spoke_decision_maker"
+    | "interested"
+    | "not_interested"
+    | "meeting_booked"
+    | "send_info"
+    | "callback_requested";
   notes?: string;
   call_duration_seconds?: number;
   followup_date?: string;
   followup_note?: string;
+  created_at: string;
+} & Pick<RaRecord, "id">;
+
+export type QuoteStatus =
+  | "draft"
+  | "generated"
+  | "sent"
+  | "viewed"
+  | "signed"
+  | "declined"
+  | "expired";
+
+export type QuoteHighlightCard = {
+  icon: string;
+  title: string;
+  text: string;
+};
+
+export type QuoteGeneratedSections = {
+  summary_pitch: string;
+  highlight_cards: QuoteHighlightCard[];
+  design_demo_description?: string | null;
+  proposal_body: string;
+};
+
+export type QuoteReferenceImage = {
+  title: string;
+  url: string;
+  link: string;
+  type: string;
+  description: string;
+};
+
+export type Quote = {
+  title: string;
+  quote_number?: string;
+  template_type?: string;
+  company_id: Identifier;
+  contact_id?: Identifier | null;
+  deal_id?: Identifier | null;
+  sales_id?: Identifier;
+  status: QuoteStatus;
+  generated_text?: string;
+  custom_text?: string;
+  generated_sections?: QuoteGeneratedSections | null;
+  accent_color?: string;
+  reference_images?: QuoteReferenceImage[];
+  subtotal: number;
+  vat_rate: number;
+  vat_amount: number;
+  discount_percent: number;
+  total_amount: number;
+  currency: string;
+  payment_terms?: string;
+  delivery_terms?: string;
+  customer_reference?: string;
+  terms_and_conditions?: string;
+  notes_internal?: string;
+  valid_until?: string;
+  docuseal_submission_id?: string;
+  docuseal_document_url?: string;
+  pdf_url?: string;
+  signed_at?: string;
+  sent_at?: string;
+  created_at: string;
+  updated_at: string;
+} & Pick<RaRecord, "id">;
+
+export type QuoteLineItem = {
+  quote_id: Identifier;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  vat_rate?: number;
+  total: number;
+  sort_order: number;
   created_at: string;
 } & Pick<RaRecord, "id">;
 

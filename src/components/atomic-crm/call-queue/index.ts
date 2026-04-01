@@ -1,1 +1,2 @@
-export { CallQueue } from "./CallQueue";
+export { CallQueue, CallQueueContent } from "./CallQueue";
+export { MobileCallQueue } from "./MobileCallQueue";

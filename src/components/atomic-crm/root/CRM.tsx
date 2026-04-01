@@ -21,6 +21,9 @@ import calendarEvents from "../calendar";
 import { Dashboard } from "../dashboard/Dashboard";
 import { MobileDashboard } from "../dashboard/MobileDashboard";
 import deals from "../deals";
+import quotes from "../quotes";
+import emailTemplates from "../templates";
+import sequences from "../sequences";
 import { Layout } from "../layout/Layout";
 import { MobileLayout } from "../layout/MobileLayout";
 import { SignupPage } from "../login/SignupPage";
@@ -59,8 +62,15 @@ import { ContactListMobile } from "../contacts/ContactList.tsx";
 import { ContactShow } from "../contacts/ContactShow.tsx";
 import { CompanyShow } from "../companies/CompanyShow.tsx";
 import { NoteShowPage } from "../notes/NoteShowPage.tsx";
-import { CallQueue } from "../call-queue";
+import { CallQueue, MobileCallQueue } from "../call-queue";
 import { CalendarPage } from "../calendar";
+import { CompanyListMobile } from "../companies/CompanyListMobile";
+import { MobileDealsList } from "../deals/MobileDealsList";
+import { DealShow } from "../deals/DealShow";
+import { MobileQuotesList } from "../quotes/MobileQuotesList";
+import { QuoteShow } from "../quotes/QuoteShow";
+import { QuoteCreate } from "../quotes/QuoteCreate";
+import { QuoteEdit } from "../quotes/QuoteEdit";
 
 const defaultStore = localStorageStore(undefined, "CRM");
 
@@ -253,34 +263,47 @@ const DesktopAdmin = (props: CoreAdminProps) => {
         <Route path="/calendar" element={<CalendarPage />} />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
+      <Resource name="quotes" {...quotes} />
       <Resource name="contacts" {...contacts} />
       <Resource name="companies" {...companies} />
       <Resource name="contact_notes" />
       <Resource name="deal_notes" />
       <Resource name="call_logs" />
+      <Resource name="quote_line_items" />
       <Resource name="tasks" />
       <Resource name="calendar_events" {...calendarEvents} />
       <Resource name="sales" {...sales} />
+      <Resource name="email_templates" {...emailTemplates} />
+      <Resource name="email_sends" />
+      <Resource name="sequences" {...sequences} />
+      <Resource name="sequence_steps" />
+      <Resource name="sequence_enrollments" />
+      <Resource name="meeting_transcriptions" />
       <Resource name="tags" />
     </Admin>
   );
 };
 
 const MobileAdmin = (props: CoreAdminProps) => {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        gcTime: 1000 * 60 * 60 * 24, // 24 hours
-        networkMode: "offlineFirst",
-      },
-      mutations: {
-        networkMode: "offlineFirst",
-      },
-    },
-  });
-  const asyncStoragePersister = createAsyncStoragePersister({
-    storage: localStorage,
-  });
+  const queryClient = useMemo(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            gcTime: 1000 * 60 * 60 * 24, // 24 hours
+            networkMode: "offlineFirst",
+          },
+          mutations: {
+            networkMode: "offlineFirst",
+          },
+        },
+      }),
+    [],
+  );
+  const asyncStoragePersister = useMemo(
+    () => createAsyncStoragePersister({ storage: localStorage }),
+    [],
+  );
 
   return (
     <PersistQueryClientProvider
@@ -312,6 +335,7 @@ const MobileAdmin = (props: CoreAdminProps) => {
             element={<SettingsPageMobile />}
           />
           <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/call-queue" element={<MobileCallQueue />} />
         </CustomRoutes>
         <Resource
           name="contacts"
@@ -321,8 +345,25 @@ const MobileAdmin = (props: CoreAdminProps) => {
         >
           <Route path=":id/notes/:noteId" element={<NoteShowPage />} />
         </Resource>
-        <Resource name="companies" show={CompanyShow} />
+        <Resource
+          name="companies"
+          list={CompanyListMobile}
+          show={CompanyShow}
+        />
+        <Resource name="deals" list={MobileDealsList} show={DealShow} />
+        <Resource name="quotes" list={MobileQuotesList} />
+        <Resource name="deal_notes" />
+        <Resource name="call_logs" />
+        <Resource name="quote_line_items" />
         <Resource name="tasks" list={MobileTasksList} />
+        <Resource name="sales" />
+        <Resource name="email_templates" />
+        <Resource name="email_sends" />
+        <Resource name="sequences" />
+        <Resource name="sequence_steps" />
+        <Resource name="sequence_enrollments" />
+        <Resource name="meeting_transcriptions" />
+        <Resource name="tags" />
         <Resource name="calendar_events" {...calendarEvents} />
       </Admin>
     </PersistQueryClientProvider>

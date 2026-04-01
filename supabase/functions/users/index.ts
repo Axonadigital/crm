@@ -116,7 +116,7 @@ async function inviteUser(req: Request, currentUserSale: any) {
 
       const sale = await createSale(user.id, {
         email,
-        password,
+        password: "", // Never store plaintext passwords in the sales table
         first_name,
         last_name,
         disabled,
