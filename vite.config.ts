@@ -24,7 +24,9 @@ export default defineConfig(({ command }) => ({
             registerType: "autoUpdate",
             workbox: {
               globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
+              globIgnores: ["**/quote.html"],
               maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB
+              navigateFallbackDenylist: [/^\/quote\.html/],
             },
             manifest: false, // Use existing manifest.json from public/
           }),
