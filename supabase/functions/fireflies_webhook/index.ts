@@ -242,7 +242,16 @@ Deno.serve(async (req: Request) =>
       const incomingSignature = normalizeSignature(signatureHeader);
 
       if (!incomingSignature || incomingSignature !== expectedSignature) {
-        return createErrorResponse(401, "Invalid webhook signature");
+        console.error("Invalid webhook signature", {
+          hasIncoming: !!incomingSignature,
+        });
+        return new Response(
+          JSON.stringify({ received: true, error: "invalid_signature" }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
       }
 
       // 2. Parse payload
@@ -250,8 +259,20 @@ Deno.serve(async (req: Request) =>
       const meetingId = body.meetingId;
       const eventType = body.eventType;
 
+      console.log("Fireflies webhook received:", { meetingId, eventType });
+
       if (!meetingId) {
-        return createErrorResponse(400, "Missing meetingId in payload");
+        return new Response(
+          JSON.stringify({
+            received: true,
+            skipped: true,
+            reason: "no_meeting_id",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
       }
 
       if (eventType !== "Transcription completed") {
