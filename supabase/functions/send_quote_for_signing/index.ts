@@ -1,195 +1,180 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
-import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import { buildSubmissionPayload } from "../_shared/contractFields.ts";
 
 Deno.serve(async (req: Request) =>
-  OptionsMiddleware(req, async (req) =>
-    AuthMiddleware(req, async (req) =>
-      UserMiddleware(req, async (req, _user) => {
-        if (req.method !== "POST") {
-          return createErrorResponse(405, "Method Not Allowed");
+  OptionsMiddleware(req, async (req) => {
+    if (req.method !== "POST")
+      return createErrorResponse(405, "Method Not Allowed");
+
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.replace("Bearer ", "");
+    if (!token) return createErrorResponse(401, "Missing authorization token");
+
+    let isServiceRole = false;
+    try {
+      const payloadB64 = token.split(".")[1];
+      if (payloadB64) {
+        const payload = JSON.parse(atob(payloadB64));
+        isServiceRole = payload.role === "service_role";
+      }
+    } catch {
+      /* not a JWT */
+    }
+
+    if (!isServiceRole) {
+      try {
+        const { data: userData } = await supabaseAdmin.auth.getUser(token);
+        if (!userData?.user) return createErrorResponse(401, "Unauthorized");
+      } catch {
+        return createErrorResponse(401, "Unauthorized");
+      }
+    }
+
+    try {
+      const { quote_id } = await req.json();
+      if (!quote_id) return createErrorResponse(400, "Missing quote_id");
+
+      const docusealApiKey = Deno.env.get("DOCUSEAL_API_KEY");
+      const docusealTemplateId = Deno.env.get("DOCUSEAL_TEMPLATE_ID");
+      if (!docusealApiKey || !docusealTemplateId) {
+        return createErrorResponse(
+          500,
+          "DOCUSEAL_API_KEY or DOCUSEAL_TEMPLATE_ID not configured",
+        );
+      }
+
+      const docusealBaseUrl =
+        Deno.env.get("DOCUSEAL_BASE_URL") || "https://sign.axonadigital.se";
+      const supabase = supabaseAdmin;
+
+      const { data: quote, error: quoteError } = await supabase
+        .from("quotes")
+        .select("*")
+        .eq("id", quote_id)
+        .single();
+      if (quoteError || !quote)
+        return createErrorResponse(404, "Quote not found");
+
+      let signerEmail = "";
+      let signerName = "";
+      if (quote.contact_id) {
+        const { data: contact } = await supabase
+          .from("contacts")
+          .select("*")
+          .eq("id", quote.contact_id)
+          .single();
+        if (contact) {
+          signerName = `${contact.first_name} ${contact.last_name}`.trim();
+          const emails = contact.email_jsonb || [];
+          if (emails.length > 0) signerEmail = emails[0].email;
         }
+      }
+      if (!signerEmail)
+        return createErrorResponse(400, "No email found for the contact");
 
-        try {
-          const { quote_id } = await req.json();
-          if (!quote_id) {
-            return createErrorResponse(400, "Missing quote_id");
-          }
+      let companyName = "";
+      let companyOrgNumber = "";
+      if (quote.company_id) {
+        const { data: company } = await supabase
+          .from("companies")
+          .select("name, org_number")
+          .eq("id", quote.company_id)
+          .single();
+        companyName = company?.name || "";
+        companyOrgNumber = company?.org_number || "";
+      }
 
-          const docusealApiKey = Deno.env.get("DOCUSEAL_API_KEY");
-          if (!docusealApiKey) {
-            return createErrorResponse(500, "DOCUSEAL_API_KEY not configured");
-          }
+      const { data: lineItems } = await supabase
+        .from("quote_line_items")
+        .select("description, quantity, unit_price, total")
+        .eq("quote_id", quote.id)
+        .order("sort_order");
 
-          const docusealBaseUrl =
-            Deno.env.get("DOCUSEAL_BASE_URL") || "https://api.docuseal.com";
+      const crmPublicUrl =
+        Deno.env.get("CRM_PUBLIC_URL") ||
+        Deno.env.get("ALLOWED_ORIGIN") ||
+        "http://localhost:5173";
+      const proposalUrl =
+        quote.pdf_url || `${crmPublicUrl}/quote.html?id=${quote.id}`;
 
-          const supabase = supabaseAdmin;
+      const submissionPayload = buildSubmissionPayload({
+        templateId: Number(docusealTemplateId),
+        quote: {
+          id: quote.id,
+          quote_number: quote.quote_number,
+          valid_until: quote.valid_until,
+          total_amount: quote.total_amount,
+          subtotal: quote.subtotal,
+          vat_amount: quote.vat_amount,
+          vat_rate: quote.vat_rate,
+          payment_terms: quote.payment_terms,
+          delivery_terms: quote.delivery_terms,
+          terms_and_conditions: quote.terms_and_conditions,
+          generated_text: quote.generated_text,
+          currency: quote.currency,
+        },
+        company: { name: companyName, org_number: companyOrgNumber },
+        contact: { name: signerName, email: signerEmail },
+        lineItems: lineItems || [],
+        proposalUrl,
+      });
 
-          // Fetch quote
-          const { data: quote, error: quoteError } = await supabase
-            .from("quotes")
-            .select("*")
-            .eq("id", quote_id)
-            .single();
+      const docusealResponse = await fetch(
+        `${docusealBaseUrl}/api/submissions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Auth-Token": docusealApiKey,
+          },
+          body: JSON.stringify(submissionPayload),
+        },
+      );
 
-          if (quoteError || !quote) {
-            return createErrorResponse(404, "Quote not found");
-          }
+      if (!docusealResponse.ok) {
+        const errorText = await docusealResponse.text();
+        console.error("DocuSeal submission error:", errorText);
+        return createErrorResponse(502, "Failed to create signing submission");
+      }
 
-          if (!quote.pdf_url) {
-            return createErrorResponse(
-              400,
-              "Quote has no PDF — generate PDF first",
-            );
-          }
+      const submissionResult = await docusealResponse.json();
+      const submitter = Array.isArray(submissionResult)
+        ? submissionResult[0]
+        : submissionResult;
+      const submissionId = submitter?.submission_id || submitter?.id;
+      const signingSlug = submitter?.slug;
+      const signingUrl = signingSlug
+        ? `${docusealBaseUrl}/s/${signingSlug}`
+        : null;
 
-          // Fetch contact email
-          let signerEmail = "";
-          let signerName = "";
-          if (quote.contact_id) {
-            const { data: contact } = await supabase
-              .from("contacts")
-              .select("*")
-              .eq("id", quote.contact_id)
-              .single();
+      await supabase
+        .from("quotes")
+        .update({
+          docuseal_submission_id: String(submissionId),
+          docuseal_signing_url: signingUrl,
+          status: "sent",
+          sent_at: new Date().toISOString(),
+        })
+        .eq("id", quote_id);
 
-            if (contact) {
-              signerName = `${contact.first_name} ${contact.last_name}`;
-              // Get first email from email_jsonb
-              const emails = contact.email_jsonb || [];
-              if (emails.length > 0) {
-                signerEmail = emails[0].email;
-              }
-            }
-          }
-
-          if (!signerEmail) {
-            return createErrorResponse(
-              400,
-              "No email found for the contact — add an email to the contact first",
-            );
-          }
-
-          // Validate pdf_url to prevent SSRF
-          const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-          const apiExternalUrl = Deno.env.get("API_EXTERNAL_URL") || "";
-          const allowedPrefixes = [
-            `${supabaseUrl}/storage/`,
-            `${apiExternalUrl}/storage/`,
-          ].filter(Boolean);
-
-          const isAllowedUrl = allowedPrefixes.some((prefix) =>
-            quote.pdf_url.startsWith(prefix),
-          );
-          if (!isAllowedUrl) {
-            return createErrorResponse(
-              400,
-              "Invalid PDF URL — must be a Supabase Storage URL",
-            );
-          }
-
-          // Step 1: Create a DocuSeal template from the HTML document URL
-          const templateResponse = await fetch(
-            `${docusealBaseUrl}/api/templates/html`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Auth-Token": docusealApiKey,
-              },
-              body: JSON.stringify({
-                html: await fetch(quote.pdf_url).then((r) => r.text()),
-                name: `Offert ${quote.quote_number || quote.id}`,
-              }),
-            },
-          );
-
-          if (!templateResponse.ok) {
-            const errorText = await templateResponse.text();
-            console.error("DocuSeal template creation error:", errorText);
-            return createErrorResponse(
-              502,
-              "Failed to create signing template",
-            );
-          }
-
-          const template = await templateResponse.json();
-
-          // Step 2: Create a submission (signing request) from the template
-          const submissionPayload = {
-            template_id: template.id,
-            send_email: true,
-            submitters: [
-              {
-                role: "First Party",
-                email: signerEmail,
-                name: signerName,
-              },
-            ],
-          };
-
-          const docusealResponse = await fetch(
-            `${docusealBaseUrl}/api/submissions`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Auth-Token": docusealApiKey,
-              },
-              body: JSON.stringify(submissionPayload),
-            },
-          );
-
-          if (!docusealResponse.ok) {
-            const errorText = await docusealResponse.text();
-            console.error("DocuSeal submission error:", errorText);
-            return createErrorResponse(
-              502,
-              "Failed to create signing submission",
-            );
-          }
-
-          const submissionResult = await docusealResponse.json();
-          const submissionId = submissionResult[0]?.id || submissionResult.id;
-
-          // Update quote with Docuseal info
-          await supabase
-            .from("quotes")
-            .update({
-              docuseal_submission_id: String(submissionId),
-              status: "sent",
-              sent_at: new Date().toISOString(),
-            })
-            .eq("id", quote_id);
-
-          // Extract signing URL from response
-          const signingUrl = Array.isArray(submissionResult)
-            ? submissionResult[0]?.embed_src || submissionResult[0]?.signing_url
-            : submissionResult.signing_url;
-
-          return new Response(
-            JSON.stringify({
-              submission_id: submissionId,
-              signing_url: signingUrl,
-            }),
-            {
-              headers: {
-                "Content-Type": "application/json",
-                ...corsHeaders,
-              },
-            },
-          );
-        } catch (error) {
-          console.error("send_quote_for_signing error:", error);
-          return createErrorResponse(
-            500,
-            `Failed to send quote for signing: ${error instanceof Error ? error.message : "Unknown error"}`,
-          );
-        }
-      }),
-    ),
-  ),
+      return new Response(
+        JSON.stringify({
+          submission_id: submissionId,
+          signing_url: signingUrl,
+        }),
+        {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        },
+      );
+    } catch (error) {
+      console.error("send_quote_for_signing error:", error);
+      return createErrorResponse(
+        500,
+        `Failed to send quote for signing: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
+  }),
 );

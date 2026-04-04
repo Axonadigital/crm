@@ -24,6 +24,34 @@
     }
     .error h1 { font-size: 20px; color: #0a0a0a; margin-bottom: 8px; }
     .error p { font-size: 14px; color: #525252; line-height: 1.6; }
+    .signing-banner {
+      display: none; position: fixed; bottom: 0; left: 0; right: 0;
+      background: #fff; border-top: 1px solid #e5e5e5;
+      box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+      padding: 16px 24px; z-index: 1000;
+      font-family: Inter, -apple-system, sans-serif;
+    }
+    .signing-banner.visible { display: flex; }
+    .signing-inner {
+      max-width: 800px; margin: 0 auto; width: 100%;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .signing-text { font-size: 14px; color: #525252; line-height: 1.4; }
+    .signing-text strong { color: #0a0a0a; }
+    .signing-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; background: #2563eb; color: #fff;
+      text-decoration: none; border-radius: 8px;
+      font-size: 15px; font-weight: 600; white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .signing-btn:hover { background: #1d4ed8; }
+    .signing-btn svg { width: 18px; height: 18px; }
+    body.has-banner iframe { height: calc(100% - 72px); }
+    @media (max-width: 600px) {
+      .signing-inner { flex-direction: column; text-align: center; }
+      .signing-btn { width: 100%; justify-content: center; }
+    }
   </style>
 </head>
 <body>
@@ -32,31 +60,50 @@
   <div id="error" class="error" style="display:none">
     <div class="error-card">
       <h1>Offert hittades inte</h1>
-      <p>Offerten kunde inte laddas. Kontrollera länken eller kontakta avsändaren.</p>
+      <p>Offerten kunde inte laddas. Kontrollera lanken eller kontakta avsandaren.</p>
+    </div>
+  </div>
+  <div id="signing-banner" class="signing-banner">
+    <div class="signing-inner">
+      <div class="signing-text">
+        <strong>Nojd med offerten?</strong><br>
+        Signera avtalet digitalt for att komma igang.
+      </div>
+      <a id="signing-btn" class="signing-btn" href="#" target="_blank" rel="noopener">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+        </svg>
+        Signera avtalet
+      </a>
     </div>
   </div>
   <script>
     (async function() {
-      const params = new URLSearchParams(window.location.search);
-      const id = params.get('id');
+      var params = new URLSearchParams(window.location.search);
+      var id = params.get('id');
       if (!id) { showError(); return; }
 
       try {
-        const apiBase = 'https://hgyusrlrzdahucljvqsz.supabase.co/functions/v1';
-        const res = await fetch(apiBase + '/serve_quote?id=' + encodeURIComponent(id) + '&raw=1');
+        var apiBase = 'https://hgyusrlrzdahucljvqsz.supabase.co/functions/v1';
+        var res = await fetch(apiBase + '/serve_quote?id=' + encodeURIComponent(id));
         if (!res.ok) { showError(); return; }
 
-        const data = await res.json();
+        var data = await res.json();
         if (!data.html) { showError(); return; }
 
         document.getElementById('loading').style.display = 'none';
-        const iframe = document.getElementById('viewer');
+        var iframe = document.getElementById('viewer');
         iframe.style.display = 'block';
         iframe.srcdoc = data.html;
 
-        // Update page title from quote
-        const m = data.html.match(/<title>(.*?)<\/title>/);
+        var m = data.html.match(/<title>(.*?)<\/title>/);
         if (m) document.title = m[1];
+
+        if (data.signing_url) {
+          document.getElementById('signing-btn').href = data.signing_url;
+          document.getElementById('signing-banner').classList.add('visible');
+          document.body.classList.add('has-banner');
+        }
       } catch (e) {
         showError();
       }
