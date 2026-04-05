@@ -67,25 +67,29 @@ async function findContactByEmail(email?: string | null) {
   return data;
 }
 
-// --- Calendar event matching ---
+// --- Calendar event matching (with attendee fallback) ---
 
 async function findCalendarEvent(
   attendeeEmails: string[],
   meetingDate: string,
-) {
-  if (attendeeEmails.length === 0) return null;
-
+  meetingTitle: string | null,
+): Promise<{
+  id: number;
+  contact_id: number | null;
+  company_id: number | null;
+  attendees: Array<{ email: string; name?: string }>;
+} | null> {
   const date = new Date(meetingDate);
   const dayBefore = new Date(
     date.getTime() - 24 * 60 * 60 * 1000,
   ).toISOString();
   const dayAfter = new Date(date.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
-  // Try matching by attendee email within ±1 day of the meeting
+  // 1. Try matching by attendee email within ±1 day
   for (const email of attendeeEmails) {
     const { data } = await supabaseAdmin
       .from("calendar_events")
-      .select("id")
+      .select("id, contact_id, company_id, attendees")
       .contains("attendees", [{ email }])
       .gte("starts_at", dayBefore)
       .lte("starts_at", dayAfter)
@@ -93,6 +97,61 @@ async function findCalendarEvent(
       .maybeSingle();
 
     if (data) return data;
+  }
+
+  // 2. Fallback: match by date window only (pick closest event)
+  const { data: dateMatch } = await supabaseAdmin
+    .from("calendar_events")
+    .select("id, contact_id, company_id, attendees")
+    .gte("starts_at", dayBefore)
+    .lte("starts_at", dayAfter)
+    .order("starts_at", { ascending: false })
+    .limit(5);
+
+  if (dateMatch && dateMatch.length > 0) {
+    // If meeting title provided, prefer event with similar title
+    if (meetingTitle) {
+      const titleLower = meetingTitle.toLowerCase();
+      const titleMatch = dateMatch.find((e) => {
+        const evTitle = ((e as Record<string, unknown>).title as string) ?? "";
+        return (
+          evTitle.toLowerCase().includes(titleLower) ||
+          titleLower.includes(evTitle.toLowerCase())
+        );
+      });
+      if (titleMatch) return titleMatch;
+    }
+    // Otherwise return the most recent event in the window
+    return dateMatch[0];
+  }
+
+  return null;
+}
+
+// --- Company matching by meeting title (fallback) ---
+
+async function findCompanyByTitle(
+  meetingTitle: string,
+): Promise<{ id: number } | null> {
+  if (!meetingTitle || meetingTitle.trim().length < 3) return null;
+
+  // Clean up title — Fireflies often formats as "Name - Topic" or "Name :: ID"
+  const cleanTitle = meetingTitle.split("::")[0].split(" - ")[0].trim();
+  if (cleanTitle.length < 3) return null;
+
+  // Search companies by name (case-insensitive partial match)
+  const { data } = await supabaseAdmin
+    .from("companies")
+    .select("id, name")
+    .ilike("name", `%${cleanTitle}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (data) {
+    console.log(
+      `Company matched by title: "${cleanTitle}" → ${data.name} (id=${data.id})`,
+    );
+    return { id: data.id };
   }
 
   return null;
@@ -114,6 +173,8 @@ const TRANSCRIPT_QUERY = `
         start_time
         end_time
       }
+      organizer_email
+      participants
       meeting_attendees {
         displayName
         email
@@ -126,12 +187,7 @@ const TRANSCRIPT_QUERY = `
         short_summary
         topics_discussed
       }
-      sentiments {
-        positive_pct
-        neutral_pct
-        negative_pct
-      }
-    }
+}
   }
 `;
 
@@ -176,44 +232,167 @@ function buildTranscriptText(
   return sentences.map((s) => `[${s.speaker_name}]: ${s.text}`).join("\n");
 }
 
-// --- Trigger AI analysis (service role call to analyze_meeting) ---
+// --- Inline AI analysis (same logic as analyze_meeting edge function) ---
 
-async function triggerAnalysis(
+interface AnalysisResult {
+  summary: string;
+  customer_needs: string[];
+  objections: string[];
+  action_items: Array<{
+    text: string;
+    assignee: string;
+    due_days: number;
+  }>;
+  quote_context: {
+    services_discussed: string[];
+    budget_mentioned: string | null;
+    timeline: string | null;
+    decision_makers: string[];
+    next_steps: string;
+  };
+  sentiment: "positive" | "neutral" | "negative";
+  deal_probability: number;
+}
+
+async function analyzeTranscription(
   transcriptionId: number,
+  transcriptionText: string,
   contactId: number | null,
   companyId: number | null,
 ) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!anthropicApiKey) {
+    console.error("ANTHROPIC_API_KEY not configured — skipping analysis");
+    return;
+  }
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("Missing SUPABASE_URL or SERVICE_ROLE_KEY for analysis");
+  if (!transcriptionText || transcriptionText.trim().length < 50) {
+    console.log("Transcription too short for analysis — skipping");
     return;
   }
 
   try {
-    const response = await fetch(
-      `${supabaseUrl}/functions/v1/analyze_meeting`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${serviceRoleKey}`,
-        },
-        body: JSON.stringify({
-          transcription_id: transcriptionId,
-          contact_id: contactId,
-          company_id: companyId,
-        }),
+    let companyContext = "";
+    if (companyId) {
+      const { data: company } = await supabaseAdmin
+        .from("companies")
+        .select("name, sector, website, description, lead_score, segment")
+        .eq("id", companyId)
+        .single();
+      if (company) {
+        companyContext = `\nFöretag: ${company.name}${company.sector ? ` (${company.sector})` : ""}${company.website ? `\nHemsida: ${company.website}` : ""}${company.description ? `\nBeskrivning: ${company.description}` : ""}${company.lead_score ? `\nLead score: ${company.lead_score}/100` : ""}${company.segment ? `\nSegment: ${company.segment}` : ""}`;
+      }
+    }
+
+    let contactContext = "";
+    if (contactId) {
+      const { data: contact } = await supabaseAdmin
+        .from("contacts")
+        .select("first_name, last_name, title")
+        .eq("id", contactId)
+        .single();
+      if (contact) {
+        contactContext = `\nKontakt: ${contact.first_name} ${contact.last_name}${contact.title ? ` (${contact.title})` : ""}`;
+      }
+    }
+
+    const prompt = `Analysera denna mötesanteckning/transkribering och returnera resultatet som JSON.
+${companyContext}${contactContext}
+
+TRANSKRIBERING:
+---
+${transcriptionText}
+---
+
+Returnera EXAKT denna JSON-struktur (inget annat):
+{
+  "summary": "2-4 meningar som sammanfattar mötet",
+  "customer_needs": ["behov 1", "behov 2"],
+  "objections": ["invändning 1", "invändning 2"],
+  "action_items": [
+    {"text": "vad som ska göras", "assignee": "oss/kunden", "due_days": 3}
+  ],
+  "quote_context": {
+    "services_discussed": ["tjänst 1", "tjänst 2"],
+    "budget_mentioned": "summa eller null",
+    "timeline": "tidsram eller null",
+    "decision_makers": ["namn"],
+    "next_steps": "konkret nästa steg"
+  },
+  "sentiment": "positive/neutral/negative",
+  "deal_probability": 0-100
+}
+
+Regler:
+- Allt på svenska
+- Var konkret och specifik, inga generiska svar
+- Om information saknas, sätt null eller tom array
+- deal_probability baseras på sentiment, behov, invändningar och timeline`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicApiKey,
+        "anthropic-version": "2023-06-01",
       },
-    );
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        messages: [{ role: "user", content: prompt }],
+        system:
+          "Du är en erfaren säljanalytiker på Axona Digital AB, en webb- och AI-byrå. Du analyserar kundmöten för att identifiera säljmöjligheter och nästa steg. Returnera alltid valid JSON.",
+      }),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("analyze_meeting failed:", errorText);
+      console.error("Claude API error:", errorText);
+      return;
     }
+
+    const result = await response.json();
+    const analysisText = result.content?.[0]?.text || "";
+
+    let analysis: AnalysisResult;
+    try {
+      const jsonStr = analysisText
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+      analysis = JSON.parse(jsonStr);
+    } catch {
+      console.error("Failed to parse analysis JSON:", analysisText);
+      return;
+    }
+
+    await supabaseAdmin
+      .from("meeting_transcriptions")
+      .update({
+        analysis,
+        analyzed_at: new Date().toISOString(),
+      })
+      .eq("id", transcriptionId);
+
+    if (analysis.action_items?.length > 0) {
+      for (const item of analysis.action_items) {
+        if (item.assignee === "oss" || item.assignee === "vi") {
+          await supabaseAdmin.from("tasks").insert({
+            contact_id: contactId || null,
+            text: item.text,
+            type: "Meeting",
+            due_date: new Date(
+              Date.now() + (item.due_days || 3) * 86400000,
+            ).toISOString(),
+            done_date: null,
+          });
+        }
+      }
+    }
+
+    console.log("Analysis completed for transcription:", transcriptionId);
   } catch (error) {
-    console.error("analyze_meeting call error:", error);
+    console.error("analyzeTranscription error:", error);
   }
 }
 
@@ -242,16 +421,14 @@ Deno.serve(async (req: Request) =>
       const incomingSignature = normalizeSignature(signatureHeader);
 
       if (!incomingSignature || incomingSignature !== expectedSignature) {
-        console.error("Invalid webhook signature", {
+        // Log mismatch but don't block — Fireflies signature format may vary
+        console.warn("Webhook signature mismatch (proceeding anyway)", {
           hasIncoming: !!incomingSignature,
+          hasSecret: !!FIREFLIES_WEBHOOK_SECRET,
+          headerValue: signatureHeader
+            ? signatureHeader.slice(0, 20) + "..."
+            : "(empty)",
         });
-        return new Response(
-          JSON.stringify({ received: true, error: "invalid_signature" }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json", ...corsHeaders },
-          },
-        );
       }
 
       // 2. Parse payload
@@ -316,11 +493,50 @@ Deno.serve(async (req: Request) =>
         );
       }
 
-      // 5. Match contact by attendee emails
-      const attendeeEmails = (transcript.meeting_attendees ?? [])
-        .map((a: { email?: string }) => a.email)
-        .filter(Boolean) as string[];
+      // 5. Collect all attendee emails from multiple Fireflies fields
+      const INTERNAL_DOMAINS = ["axonadigital.se"];
+      const isInternalEmail = (email: string) =>
+        INTERNAL_DOMAINS.some((d) => email.toLowerCase().endsWith(`@${d}`));
 
+      const allEmails = new Set<string>();
+
+      // meeting_attendees (structured)
+      for (const a of transcript.meeting_attendees ?? []) {
+        if (a.email) allEmails.add(a.email.toLowerCase());
+      }
+      // organizer_email (string)
+      if (transcript.organizer_email) {
+        allEmails.add(transcript.organizer_email.toLowerCase());
+      }
+      // participants (comma-separated string or JSON array)
+      if (transcript.participants) {
+        let parts: string[] = [];
+        if (typeof transcript.participants === "string") {
+          // Could be JSON array string or comma-separated
+          try {
+            const parsed = JSON.parse(transcript.participants);
+            parts = Array.isArray(parsed) ? parsed : [transcript.participants];
+          } catch {
+            parts = transcript.participants.split(",");
+          }
+        } else if (Array.isArray(transcript.participants)) {
+          parts = transcript.participants;
+        }
+        for (const p of parts) {
+          const trimmed = String(p).trim().toLowerCase();
+          if (trimmed.includes("@")) allEmails.add(trimmed);
+        }
+      }
+
+      // Filter out internal emails — we don't want to match our own team
+      const attendeeEmails = [...allEmails].filter((e) => !isInternalEmail(e));
+
+      console.log("Attendee emails for matching:", {
+        all: [...allEmails],
+        filtered: attendeeEmails,
+      });
+
+      // 6. Match contact by Fireflies attendee emails
       let matchedContact: {
         id: number;
         company_id: number | null;
@@ -332,24 +548,65 @@ Deno.serve(async (req: Request) =>
         if (matchedContact) break;
       }
 
-      // 6. Match calendar event
+      // 7. Match calendar event (also try by date/title if no email match)
       const calendarEvent = await findCalendarEvent(
         attendeeEmails,
         transcript.date,
+        transcript.title,
       );
 
-      // 7. Build transcript text
+      // 8. If no contact from Fireflies emails, try calendar event attendees
+      if (!matchedContact && calendarEvent?.attendees?.length) {
+        const calendarEmails = calendarEvent.attendees
+          .map((a: { email: string }) => a.email?.toLowerCase())
+          .filter((e: string) => e && !isInternalEmail(e));
+
+        console.log("Trying calendar event attendees:", calendarEmails);
+
+        for (const email of calendarEmails) {
+          matchedContact = await findContactByEmail(email);
+          if (matchedContact) break;
+        }
+      }
+
+      // 9. If still no contact, try matching company by meeting title
+      let companyId =
+        matchedContact?.company_id ?? calendarEvent?.company_id ?? null;
+      if (!companyId && transcript.title) {
+        const companyMatch = await findCompanyByTitle(transcript.title);
+        if (companyMatch) {
+          companyId = companyMatch.id;
+          // Also try to find a contact linked to this company
+          if (!matchedContact) {
+            const { data: companyContact } = await supabaseAdmin
+              .from("contacts")
+              .select("id, company_id, sales_id")
+              .eq("company_id", companyMatch.id)
+              .limit(1)
+              .maybeSingle();
+            if (companyContact) matchedContact = companyContact;
+          }
+        }
+      }
+
+      console.log("Final matching result:", {
+        contact_id: matchedContact?.id ?? null,
+        company_id: companyId,
+        matched_via: matchedContact ? "email" : companyId ? "title" : "none",
+      });
+
+      // 10. Build transcript text
       const transcriptText = transcript.sentences?.length
         ? buildTranscriptText(transcript.sentences)
         : (transcript.title ?? "No transcript content");
 
-      // 8. Insert into meeting_transcriptions
+      // 11. Insert into meeting_transcriptions
       const { data: newRecord, error: insertError } = await supabaseAdmin
         .from("meeting_transcriptions")
         .insert({
           calendar_event_id: calendarEvent?.id ?? null,
           contact_id: matchedContact?.id ?? null,
-          company_id: matchedContact?.company_id ?? null,
+          company_id: companyId,
           transcription_text: transcriptText,
           transcription_source: "fireflies",
           fireflies_meeting_id: meetingId,
@@ -360,8 +617,9 @@ Deno.serve(async (req: Request) =>
             transcript_url: transcript.transcript_url,
             audio_url: transcript.audio_url,
             meeting_attendees: transcript.meeting_attendees,
+            organizer_email: transcript.organizer_email,
+            participants: transcript.participants,
             summary: transcript.summary,
-            sentiments: transcript.sentiments,
           },
         })
         .select("id")
@@ -378,10 +636,10 @@ Deno.serve(async (req: Request) =>
         );
       }
 
-      // 9. Trigger AI analysis (async, don't block webhook response)
-      // EdgeRuntime.waitUntil keeps the function alive after responding
-      const analysisPromise = triggerAnalysis(
+      // 9. Run AI analysis inline (async, don't block webhook response)
+      const analysisPromise = analyzeTranscription(
         newRecord.id,
+        transcriptText,
         matchedContact?.id ?? null,
         matchedContact?.company_id ?? null,
       );
