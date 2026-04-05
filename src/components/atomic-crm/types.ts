@@ -402,6 +402,58 @@ export type Activity = RaRecord &
     | ActivityDealNoteCreated
   );
 
+export type MeetingTranscription = {
+  id: Identifier;
+  calendar_event_id: Identifier | null;
+  contact_id: Identifier | null;
+  company_id: Identifier | null;
+  transcription_text: string;
+  transcription_source: "manual" | "fireflies" | "whisper" | "google_meet";
+  analysis: {
+    summary: string;
+    customer_needs: string[];
+    objections: string[];
+    action_items: Array<{
+      text: string;
+      assignee: string;
+      due_days: number;
+    }>;
+    quote_context: {
+      services_discussed: string[];
+      budget_mentioned: string | null;
+      timeline: string | null;
+      decision_makers: string[];
+      next_steps: string;
+    };
+    sentiment: "positive" | "neutral" | "negative";
+    deal_probability: number;
+  } | null;
+  analyzed_at: string | null;
+  fireflies_meeting_id: string | null;
+  fireflies_data: {
+    title: string;
+    date: string;
+    duration: number;
+    transcript_url: string;
+    audio_url: string;
+    meeting_attendees: Array<{ displayName: string; email: string }>;
+    summary: {
+      keywords: string[];
+      action_items: string[];
+      overview: string;
+      short_summary: string;
+      topics_discussed: string[];
+    };
+    sentiments: {
+      positive_pct: number;
+      neutral_pct: number;
+      negative_pct: number;
+    };
+  } | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export interface RAFile {
   src: string;
   title: string;

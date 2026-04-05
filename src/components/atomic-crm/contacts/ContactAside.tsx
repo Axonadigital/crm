@@ -26,6 +26,7 @@ import { ContactCalendarEvents } from "./ContactCalendarEvents";
 import { SendEmailDialog } from "../templates/SendEmailDialog";
 import { EnrollSequenceDialog } from "../sequences/EnrollSequenceDialog";
 import { AnalyzeMeetingDialog } from "../meetings/AnalyzeMeetingDialog";
+import { ContactTranscriptions } from "../meetings/ContactTranscriptions";
 
 export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
   const record = useRecordContext<Contact>();
@@ -78,6 +79,10 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
         title={translate("resources.calendar_events.name", { smart_count: 2 })}
       >
         <ContactCalendarEvents />
+      </AsideSection>
+
+      <AsideSection title="Mötesanalyser">
+        <ContactTranscriptions />
       </AsideSection>
 
       <ContactDeals contactId={record.id} />
