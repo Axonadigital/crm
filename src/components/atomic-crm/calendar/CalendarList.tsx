@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Identifier,
   useGetIdentity,
@@ -46,7 +46,10 @@ const filterByStatus = (
   nextWeek.setDate(nextWeek.getDate() + 7);
 
   if (mode === "today") {
-    return eventStarts >= todayStart && eventStarts < new Date(todayStart.getTime() + 86400000);
+    return (
+      eventStarts >= todayStart &&
+      eventStarts < new Date(todayStart.getTime() + 86400000)
+    );
   }
 
   return eventStarts >= now && eventStarts < nextWeek;
@@ -58,16 +61,17 @@ export const CalendarList = () => {
   const { identity } = useGetIdentity();
   const [searchParams] = useSearchParams();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [filterMode, setFilterMode] = useState<"today" | "upcoming" | "cancelled" | "all">(
-    "upcoming",
-  );
+  const [filterMode, setFilterMode] = useState<
+    "today" | "upcoming" | "cancelled" | "all"
+  >("upcoming");
   const [viewMode, setViewMode] = useState<"agenda" | "week">("agenda");
   const googleCalendarEmbedUrl = import.meta.env.VITE_GOOGLE_CALENDAR_EMBED_URL;
-  const [calendarMode, setCalendarMode] = useState<"google" | "crm">(
-    "crm",
-  );
+  const [calendarMode, setCalendarMode] = useState<"google" | "crm">("crm");
   const [googleEmbedLoaded, setGoogleEmbedLoaded] = useState(false);
   const [googleEmbedFailed, setGoogleEmbedFailed] = useState(false);
+  const embedTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(
+    null,
+  );
 
   const filterContactId = searchParams.get("contact_id");
 
@@ -81,11 +85,16 @@ export const CalendarList = () => {
     setGoogleEmbedLoaded(false);
     setGoogleEmbedFailed(false);
 
-    const timeoutId = window.setTimeout(() => {
+    embedTimeoutRef.current = window.setTimeout(() => {
       setGoogleEmbedFailed(true);
     }, GOOGLE_EMBED_TIMEOUT_MS);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      if (embedTimeoutRef.current !== null) {
+        window.clearTimeout(embedTimeoutRef.current);
+        embedTimeoutRef.current = null;
+      }
+    };
   }, [calendarMode, googleCalendarEmbedUrl]);
 
   const { data: calendarEvents, isPending } = useGetList<CalendarEvent>(
@@ -102,15 +111,15 @@ export const CalendarList = () => {
       },
     },
     {
-      enabled:
-        filterContactId != null
-          ? true
-          : identity != null,
+      enabled: filterContactId != null ? true : identity != null,
     },
   );
 
   const filteredEvents = useMemo(
-    () => (calendarEvents || []).filter((event) => filterByStatus(event, filterMode)),
+    () =>
+      (calendarEvents || []).filter((event) =>
+        filterByStatus(event, filterMode),
+      ),
     [calendarEvents, filterMode],
   );
 
@@ -120,7 +129,9 @@ export const CalendarList = () => {
     source: "crm",
     starts_at: new Date().toISOString(),
     ends_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    ...(filterContactId ? { contact_id: Number(filterContactId) as Identifier } : {}),
+    ...(filterContactId
+      ? { contact_id: Number(filterContactId) as Identifier }
+      : {}),
   };
 
   const parseAttendees = (value: string | undefined) =>
@@ -177,9 +188,9 @@ export const CalendarList = () => {
             {googleEmbedFailed ? (
               <div className="rounded-lg border bg-background p-6 space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Google Calendar could not be embedded here. This usually means the
-                  embed URL is invalid, the calendar is not embeddable, or the browser
-                  is blocking the Google session inside the iframe.
+                  Google Calendar could not be embedded here. This usually means
+                  the embed URL is invalid, the calendar is not embeddable, or
+                  the browser is blocking the Google session inside the iframe.
                 </p>
                 <Button asChild>
                   <a
@@ -203,6 +214,10 @@ export const CalendarList = () => {
                   title={translate("resources.calendar_events.embed.title")}
                   className="h-[72vh] min-h-[720px] w-full"
                   onLoad={() => {
+                    if (embedTimeoutRef.current !== null) {
+                      window.clearTimeout(embedTimeoutRef.current);
+                      embedTimeoutRef.current = null;
+                    }
                     setGoogleEmbedLoaded(true);
                     setGoogleEmbedFailed(false);
                   }}
@@ -264,7 +279,9 @@ export const CalendarList = () => {
           </div>
 
           <Card>
-            <CardHeader>{translate("crm.dashboard.upcoming_meetings")}</CardHeader>
+            <CardHeader>
+              {translate("crm.dashboard.upcoming_meetings")}
+            </CardHeader>
             <CardContent>
               {viewMode === "agenda" ? (
                 <CalendarAgenda events={filteredEvents} isPending={isPending} />
@@ -283,7 +300,11 @@ export const CalendarList = () => {
               {translate("resources.calendar_events.action.create")}
             </DialogTitle>
           </DialogHeader>
-          <CreateBase resource="calendar_events" redirect={false} record={defaultRecord}>
+          <CreateBase
+            resource="calendar_events"
+            redirect={false}
+            record={defaultRecord}
+          >
             <Form className="space-y-4">
               <CalendarForm />
               <DialogFooter>
@@ -324,7 +345,9 @@ export const CalendarList = () => {
 
       {filterContactId ? (
         <Button asChild variant="ghost" size="sm" className="px-0">
-          <Link to="/calendar">{translate("resources.calendar_events.action.create_new")}</Link>
+          <Link to="/calendar">
+            {translate("resources.calendar_events.action.create_new")}
+          </Link>
         </Button>
       ) : null}
     </div>

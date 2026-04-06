@@ -354,6 +354,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/providers/fakerest/dataGenerator/salesEntries.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/providers/fakerest/dataGenerator/sales.ts",
           "type": "registry:component"
         },
@@ -686,6 +690,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/deals/DealEditSheet.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/deals/DealEdit.tsx",
           "type": "registry:component"
         },
@@ -714,6 +722,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/dashboard/useSalesTracking.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/dashboard/useDashboardDeals.ts",
           "type": "registry:component"
         },
@@ -727,6 +739,14 @@
         },
         {
           "path": "src/components/atomic-crm/dashboard/TasksList.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/dashboard/SalesTrackingWidget.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/dashboard/SalesEntryDialog.tsx",
           "type": "registry:component"
         },
         {
@@ -947,6 +967,10 @@
         },
         {
           "path": "src/components/atomic-crm/companies/CompanyEmpty.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/companies/CompanyEditSheet.tsx",
           "type": "registry:component"
         },
         {
