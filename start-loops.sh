@@ -47,10 +47,9 @@ REGLER:
 - En uppgift per iteration
 - Vid osäkerhet: gör mindre, inte mer
 
-SISTA STEGET (OBLIGATORISKT): När du är helt klar med iterationen MÅSTE du köra detta bash-kommando:
-bash scripts/discord-notify.sh "crm-frontend" "TITEL" "SAMMANFATTNING"
-Ersätt TITEL med kort beskrivning av vad du gjort.
-Ersätt SAMMANFATTNING med: vilka filer du ändrade, antal tester, om make test passerade.
+SISTA STEGET (OBLIGATORISKT): Skicka Discord-notis med detta EXAKTA format:
+bash scripts/discord-notify.sh "crm-frontend" "Kort titel" "Uppgift" "- Vad du valde att jobba på" "Vad jag gjort" "- Punkt 1\n- Punkt 2\n- Punkt 3" "Filer" "- fil1.tsx\n- fil2.tsx" "Status" "make test: PASSERAR (X tester)"
+Varje fält-par (namn + värde) visas som en tydlig sektion i Discord. Använd \n mellan punkter.
 Hoppa ALDRIG över detta steg.'
 
 BACKEND_PROMPT='Du är en backend-specialist för Atomic CRM. Läs CLAUDE.md och TASKS.md.
@@ -81,10 +80,9 @@ REGLER:
 - Radera ALDRIG filer i projektroten (TASKS.md, CHANGELOG.md, etc)
 - En förbättring per iteration
 
-SISTA STEGET (OBLIGATORISKT): När du är helt klar med iterationen MÅSTE du köra detta bash-kommando:
-bash scripts/discord-notify.sh "crm-backend" "TITEL" "SAMMANFATTNING"
-Ersätt TITEL med kort beskrivning.
-Ersätt SAMMANFATTNING med: vilka filer du ändrade, vad du förbättrade, om make test passerade.
+SISTA STEGET (OBLIGATORISKT): Skicka Discord-notis med detta EXAKTA format:
+bash scripts/discord-notify.sh "crm-backend" "Kort titel" "Uppgift" "- Vad du valde att jobba på" "Vad jag gjort" "- Punkt 1\n- Punkt 2\n- Punkt 3" "Filer" "- fil1.ts\n- fil2.ts" "Status" "make test: PASSERAR"
+Varje fält-par (namn + värde) visas som en tydlig sektion i Discord. Använd \n mellan punkter.
 Hoppa ALDRIG över detta steg.'
 
 REVIEW_PROMPT='Du är en senior kodgranskare för Atomic CRM. Läs CLAUDE.md.
@@ -109,8 +107,9 @@ REGLER:
 - Radera ALDRIG filer i projektroten
 - Jobba ALDRIG direkt på main
 
-SISTA STEGET (OBLIGATORISKT): När du är helt klar MÅSTE du köra:
-bash scripts/discord-notify.sh "crm-review" "TITEL" "SAMMANFATTNING"
+SISTA STEGET (OBLIGATORISKT): Skicka Discord-notis med detta EXAKTA format:
+bash scripts/discord-notify.sh "crm-review" "Kodgranskning klar" "Branches granskade" "- branch1\n- branch2" "CRITICAL" "- Problem 1\n- Problem 2" "WARNING" "- Problem 1" "Nya förslag i TASKS.md" "- Förslag 1\n- Förslag 2"
+Om inga CRITICAL/WARNING: skriv "Inga" som värde. Använd \n mellan punkter.
 Hoppa ALDRIG över detta steg.'
 
 RESEARCH_PROMPT='Du är en CRM-analytiker för Atomic CRM (Axona Digital AB). Läs CLAUDE.md.
@@ -134,8 +133,9 @@ REGLER:
 - Radera ALDRIG filer i projektroten
 - Var konkret
 
-SISTA STEGET (OBLIGATORISKT): När du är helt klar MÅSTE du köra:
-bash scripts/discord-notify.sh "crm-research" "TITEL" "SAMMANFATTNING"
+SISTA STEGET (OBLIGATORISKT): Skicka HELA analysen till Discord med detta format:
+bash scripts/discord-notify.sh "crm-research" "Research: [Fokusområde]" "Sammanfattning" "- Vad du analyserade\n- Huvudsakliga fynd" "Topp-förslag" "- 1. Förslag med motivering\n- 2. Förslag med motivering\n- 3. Förslag med motivering" "Komplexitet" "- Förslag 1: liten\n- Förslag 2: medel\n- Förslag 3: stor" "Tillagt i TASKS.md" "- Antal nya [FÖRSLAG]-rader tillagda"
+Var detaljerad i Discord-meddelandet. Rasmus ska kunna läsa hela analysen direkt i Discord utan att behöva öppna RESEARCH.md.
 Hoppa ALDRIG över detta steg.'
 
 # ─── Funktioner ───────────────────────────────────────────────────────
