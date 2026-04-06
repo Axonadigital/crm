@@ -69,8 +69,6 @@ import { MobileDealsList } from "../deals/MobileDealsList";
 import { DealShow } from "../deals/DealShow";
 import { MobileQuotesList } from "../quotes/MobileQuotesList";
 import { QuoteShow } from "../quotes/QuoteShow";
-import { QuoteCreate } from "../quotes/QuoteCreate";
-import { QuoteEdit } from "../quotes/QuoteEdit";
 
 const defaultStore = localStorageStore(undefined, "CRM");
 
@@ -351,7 +349,7 @@ const MobileAdmin = (props: CoreAdminProps) => {
           show={CompanyShow}
         />
         <Resource name="deals" list={MobileDealsList} show={DealShow} />
-        <Resource name="quotes" list={MobileQuotesList} />
+        <Resource name="quotes" list={MobileQuotesList} show={QuoteShow} />
         <Resource name="deal_notes" />
         <Resource name="call_logs" />
         <Resource name="quote_line_items" />

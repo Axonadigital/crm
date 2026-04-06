@@ -6,6 +6,7 @@ import { generateDealNotes } from "./dealNotes";
 import { generateDeals } from "./deals";
 import { finalize } from "./finalize";
 import { generateSales } from "./sales";
+import { generateSalesEntries } from "./salesEntries";
 import { generateTags } from "./tags";
 import { generateTasks } from "./tasks";
 import type { Db } from "./types";
@@ -21,6 +22,7 @@ export default (): Db => {
   db.deal_notes = generateDealNotes(db);
   db.tasks = generateTasks(db);
   db.calendar_events = generateCalendarEvents(db);
+  db.sales_entries = generateSalesEntries(db);
   db.configuration = [
     {
       id: 1,

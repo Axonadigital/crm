@@ -1,6 +1,6 @@
 // Based on https://github.com/supabase/supabase/blob/master/examples/edge-functions/supabase/functions/_shared/jwt/default.ts
 import * as jose from "jsr:@panva/jose@6";
-import { createClient, type User } from "jsr:@supabase/supabase-js@2";
+import { type User } from "jsr:@supabase/supabase-js@2";
 import { createErrorResponse } from "./utils.ts";
 
 const SUPABASE_JWT_ISSUER =
@@ -29,6 +29,18 @@ function verifySupabaseJWT(jwt: string) {
   });
 }
 
+async function getAuthenticatedUser(req: Request) {
+  const token = getAuthToken(req);
+  const { payload } = await verifySupabaseJWT(token);
+  const userId = payload.sub;
+
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+
+  return { id: userId } as User;
+}
+
 /**
  * Validates the Authorization header to ensure that a user is authenticated.
  */
@@ -39,12 +51,9 @@ export const AuthMiddleware = async (
   if (req.method === "OPTIONS") return await next(req);
 
   try {
-    const token = getAuthToken(req);
-    const isValidJWT = await verifySupabaseJWT(token);
+    await getAuthenticatedUser(req);
+    return await next(req);
 
-    if (isValidJWT) return await next(req);
-
-    return createErrorResponse(401, "Invalid authentication");
   } catch (e) {
     return createErrorResponse(401, e?.toString() || "Unauthorized");
   }
@@ -61,19 +70,8 @@ export const UserMiddleware = async (
   if (req.method === "OPTIONS") return await next(req);
 
   try {
-    const authHeader = req.headers.get("Authorization")!;
-    const localClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SB_PUBLISHABLE_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const { data, error: authError } = await localClient.auth.getUser();
-    if (!data?.user || authError) {
-      return createErrorResponse(401, "Unauthorized");
-    }
-
-    return next(req, data.user);
+    const user = await getAuthenticatedUser(req);
+    return next(req, user);
   } catch (err) {
     return createErrorResponse(401, err?.toString() || "Unauthorized");
   }

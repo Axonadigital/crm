@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { UserPlus, FileText } from "lucide-react";
+import { UserPlus, FileText, Pencil } from "lucide-react";
+import { useState } from "react";
 import {
   RecordContextProvider,
   ShowBase,
@@ -43,6 +44,7 @@ import {
   ContextInfo,
 } from "./CompanyAside";
 import { CompanyAvatar } from "./CompanyAvatar";
+import { CompanyEditSheet } from "./CompanyEditSheet";
 import { CallLogModal } from "./CallLogModal";
 import { CallLogHistory } from "./CallLogHistory";
 
@@ -59,34 +61,137 @@ export const CompanyShow = () => {
 const CompanyShowContentMobile = () => {
   const translate = useTranslate();
   const { record, isPending } = useShowContext<Company>();
+  const [editOpen, setEditOpen] = useState(false);
+  const { total: nbQuotes = 0 } = useGetList<Quote>(
+    "quotes",
+    {
+      pagination: { page: 1, perPage: 1 },
+      filter: { company_id: record?.id },
+    },
+    { enabled: !!record?.id },
+  );
+
   if (isPending || !record) return null;
+
+  const hasDeals = !!record.nb_deals;
+  const hasQuotes = nbQuotes > 0;
 
   return (
     <>
+      <CompanyEditSheet
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        companyId={record.id}
+      />
       <MobileHeader>
         <MobileBackButton resource="companies" />
-        <div className="flex flex-1">
-          <Link to="/companies">
-            <h1 className="text-xl font-semibold">
-              {translate("resources.companies.forcedCaseName")}
-            </h1>
+        <div className="flex flex-1 min-w-0">
+          <Link to="/companies" className="flex-1 min-w-0">
+            <h1 className="truncate text-xl font-semibold">{record.name}</h1>
           </Link>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="rounded-full"
+          onClick={() => setEditOpen(true)}
+        >
+          <Pencil className="size-5" />
+          <span className="sr-only">{translate("ra.action.edit")}</span>
+        </Button>
       </MobileHeader>
 
       <MobileContent>
-        <div className="mb-6">
+        <div className="mb-4">
           <div className="flex items-center mb-4">
             <CompanyAvatar />
-            <div className="mx-3 flex-1">
-              <h2 className="text-2xl font-bold">{record.name}</h2>
+            <div className="mx-3 flex-1 min-w-0">
+              <h2 className="text-2xl font-bold truncate">{record.name}</h2>
             </div>
+            <CallLogModal />
           </div>
         </div>
-        <CompanyInfo record={record} />
-        <AddressInfo record={record} />
-        <ContextInfo record={record} />
-        <AdditionalInfo record={record} />
+
+        <Tabs defaultValue="activity" className="w-full">
+          <TabsList className="grid w-full grid-cols-3 h-10">
+            <TabsTrigger value="activity">
+              {translate("crm.common.activity")}
+            </TabsTrigger>
+            <TabsTrigger value="contacts">
+              {translate("resources.contacts.name", { smart_count: 2 })}
+              {record.nb_contacts ? ` (${record.nb_contacts})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="info">
+              {translate("crm.common.details")}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="activity" className="mt-2">
+            <div className="space-y-4">
+              <CallLogHistory />
+              <ActivityLog companyId={record.id} context="company" />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="contacts" className="mt-2">
+            {record.nb_contacts ? (
+              <ReferenceManyField
+                reference="contacts_summary"
+                target="company_id"
+                sort={{ field: "last_name", order: "ASC" }}
+              >
+                <ContactsIterator />
+              </ReferenceManyField>
+            ) : (
+              <div className="py-8 text-center text-muted-foreground">
+                {translate("resources.companies.no_contacts")}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="info" className="mt-2">
+            <div className="space-y-4">
+              <CompanyInfo record={record} />
+              <AddressInfo record={record} />
+              <ContextInfo record={record} />
+              <AdditionalInfo record={record} />
+
+              {hasDeals && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">
+                    {translate("resources.deals.name", { smart_count: 2 })}
+                  </h3>
+                  <ReferenceManyField
+                    reference="deals"
+                    target="company_id"
+                    sort={{ field: "name", order: "ASC" }}
+                  >
+                    <DealsIterator />
+                  </ReferenceManyField>
+                </div>
+              )}
+
+              {hasQuotes && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">
+                    {translate("resources.quotes.name", {
+                      smart_count: 2,
+                      _: "Offerter",
+                    })}
+                  </h3>
+                  <ReferenceManyField
+                    reference="quotes"
+                    target="company_id"
+                    sort={{ field: "created_at", order: "DESC" }}
+                  >
+                    <QuotesIterator />
+                  </ReferenceManyField>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </MobileContent>
     </>
   );

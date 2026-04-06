@@ -10,6 +10,7 @@ import { KpiSummaryRow } from "./KpiSummaryRow";
 import { LeadsMissingNextStep } from "./LeadsMissingNextStep";
 import { RevenueGoalsTracker } from "./RevenueGoalsTracker";
 import { RevenueTrendChart } from "./RevenueTrendChart";
+import { SalesTrackingWidget } from "./SalesTrackingWidget";
 import { TasksList } from "./TasksList";
 import { UpcomingMeetings } from "./UpcomingMeetings";
 import { Welcome } from "./Welcome";
@@ -65,6 +66,7 @@ export const Dashboard = () => {
                 <DealStageFunnel />
               </>
             ) : null}
+            <SalesTrackingWidget />
             <DashboardActivityLog />
           </div>
         </div>

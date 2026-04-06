@@ -94,6 +94,9 @@
 - [ ] [FÖRSLAG] **Breadcrumbs på detaljsidor (desktop)** – DealShow, CompanyShow, ContactShow saknar hierarkisk navigering. LÅG-MEDEL komplexitet.
 - [ ] [FÖRSLAG] **ContactAside dold på mobil utan indikation** – ContactAside.tsx:37. Samma problem som CompanyAside. MEDEL komplexitet.
 - [ ] [FÖRSLAG] **Kanban saknar tangentbordsnavigering (WCAG)** – DealListContent.tsx. hello-pangea/dnd behöver ARIA-config. MEDEL komplexitet.
+- [ ] [FÖRSLAG] **Begränsa antal variabler i send_email** – send_email validerar variabel-längd men inte antal. Potentiell DoS med tusentals nycklar. Lägg till max 50 variabler.
+- [ ] [FÖRSLAG] **Ersätt google_maps_scraper felfiltrering** – `!error.message.includes("key")` är fragilt. Använd alltid generiskt felmeddelande i response, logga fullt till console.error.
+- [ ] [FÖRSLAG] **Commit registry.json template-ändringar** – Ostagade ändringar lägger till template-komponenter. Bör committas med relevant feature eller separat.
 
 ---
 

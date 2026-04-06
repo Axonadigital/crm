@@ -25,19 +25,25 @@ export const ContactInputs = () => {
   const isMobile = useIsMobile();
 
   return (
-    <div className="flex flex-col gap-2 p-1 relative md:static">
-      <div className="absolute top-0 right-1 md:static">
-        <Avatar />
-      </div>
-      <div className="flex gap-10 md:gap-6 flex-col md:flex-row">
-        <div className="flex flex-col gap-10 flex-1">
+    <div className="flex flex-col gap-2 p-1">
+      {isMobile ? (
+        <div className="flex justify-center mb-2">
+          <Avatar />
+        </div>
+      ) : (
+        <div>
+          <Avatar />
+        </div>
+      )}
+      <div className="flex gap-4 md:gap-6 flex-col md:flex-row">
+        <div className="flex flex-col gap-4 md:gap-10 flex-1">
           <ContactIdentityInputs />
           <ContactPositionInputs />
         </div>
         {isMobile ? null : (
           <Separator orientation="vertical" className="flex-shrink-0" />
         )}
-        <div className="flex flex-col gap-10 flex-1">
+        <div className="flex flex-col gap-4 md:gap-10 flex-1">
           <ContactPersonalInformationInputs />
           <ContactMiscInputs />
         </div>

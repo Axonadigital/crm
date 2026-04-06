@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Identifier,
   useGetIdentity,
@@ -22,6 +22,8 @@ import { CalendarForm } from "./CalendarForm";
 import { Form, CreateBase } from "ra-core";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import type { CalendarEvent } from "./types";
+
+const GOOGLE_EMBED_TIMEOUT_MS = 8000;
 
 const filterByStatus = (
   event: CalendarEvent,
@@ -62,10 +64,29 @@ export const CalendarList = () => {
   const [viewMode, setViewMode] = useState<"agenda" | "week">("agenda");
   const googleCalendarEmbedUrl = import.meta.env.VITE_GOOGLE_CALENDAR_EMBED_URL;
   const [calendarMode, setCalendarMode] = useState<"google" | "crm">(
-    googleCalendarEmbedUrl ? "google" : "crm",
+    "crm",
   );
+  const [googleEmbedLoaded, setGoogleEmbedLoaded] = useState(false);
+  const [googleEmbedFailed, setGoogleEmbedFailed] = useState(false);
 
   const filterContactId = searchParams.get("contact_id");
+
+  useEffect(() => {
+    if (calendarMode !== "google" || !googleCalendarEmbedUrl) {
+      setGoogleEmbedLoaded(false);
+      setGoogleEmbedFailed(false);
+      return;
+    }
+
+    setGoogleEmbedLoaded(false);
+    setGoogleEmbedFailed(false);
+
+    const timeoutId = window.setTimeout(() => {
+      setGoogleEmbedFailed(true);
+    }, GOOGLE_EMBED_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [calendarMode, googleCalendarEmbedUrl]);
 
   const { data: calendarEvents, isPending } = useGetList<CalendarEvent>(
     "calendar_events",
@@ -153,13 +174,41 @@ export const CalendarList = () => {
             <p className="text-sm text-muted-foreground">
               {translate("resources.calendar_events.embed.description")}
             </p>
-            <div className="overflow-hidden rounded-lg border bg-background">
-              <iframe
-                src={googleCalendarEmbedUrl}
-                title={translate("resources.calendar_events.embed.title")}
-                className="h-[72vh] min-h-[720px] w-full"
-              />
-            </div>
+            {googleEmbedFailed ? (
+              <div className="rounded-lg border bg-background p-6 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Google Calendar could not be embedded here. This usually means the
+                  embed URL is invalid, the calendar is not embeddable, or the browser
+                  is blocking the Google session inside the iframe.
+                </p>
+                <Button asChild>
+                  <a
+                    href={googleCalendarEmbedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open Google Calendar
+                  </a>
+                </Button>
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-lg border bg-background">
+                {!googleEmbedLoaded ? (
+                  <div className="flex h-[72vh] min-h-[720px] items-center justify-center text-sm text-muted-foreground">
+                    Loading Google Calendar...
+                  </div>
+                ) : null}
+                <iframe
+                  src={googleCalendarEmbedUrl}
+                  title={translate("resources.calendar_events.embed.title")}
+                  className="h-[72vh] min-h-[720px] w-full"
+                  onLoad={() => {
+                    setGoogleEmbedLoaded(true);
+                    setGoogleEmbedFailed(false);
+                  }}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : null}

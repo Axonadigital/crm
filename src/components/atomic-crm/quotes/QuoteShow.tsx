@@ -27,16 +27,29 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import { CompanyAvatar } from "../companies/CompanyAvatar";
+import MobileHeader from "../layout/MobileHeader";
+import { MobileContent } from "../layout/MobileContent";
+import { MobileBackButton } from "../misc/MobileBackButton";
 import type { Quote, QuoteGeneratedSections } from "../types";
 import { quoteStatusColors } from "./quoteStatuses";
 
 export const QuoteShow = ({ open, id }: { open: boolean; id?: string }) => {
+  const isMobile = useIsMobile();
   const redirect = useRedirect();
   const handleClose = () => {
     redirect("list", "quotes");
   };
+
+  if (isMobile) {
+    return id ? (
+      <ShowBase id={id}>
+        <QuoteShowMobileWrapper />
+      </ShowBase>
+    ) : null;
+  }
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && handleClose()}>
@@ -50,6 +63,177 @@ export const QuoteShow = ({ open, id }: { open: boolean; id?: string }) => {
     </Dialog>
   );
 };
+
+const QuoteShowMobileWrapper = () => {
+  const record = useRecordContext<Quote>();
+  const translate = useTranslate();
+
+  if (!record) return null;
+
+  const displayText = record.custom_text || record.generated_text;
+  const fmtNum = (n: number) =>
+    Number(n).toLocaleString("sv-SE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  return (
+    <>
+      <MobileHeader>
+        <MobileBackButton />
+        <div className="flex flex-1 min-w-0">
+          <h1 className="truncate text-xl font-semibold">{record.title}</h1>
+        </div>
+        {record.status === "draft" && <EditButton />}
+      </MobileHeader>
+      <MobileContent>
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-4">
+          <ReferenceField source="company_id" reference="companies" link="show">
+            <CompanyAvatar width={40} height={40} />
+          </ReferenceField>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-semibold truncate">{record.title}</h2>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <Badge variant={quoteStatusColors[record.status]}>
+                {translate(`resources.quotes.statuses.${record.status}`, {
+                  _: record.status,
+                })}
+              </Badge>
+              {record.quote_number && (
+                <span className="text-sm text-muted-foreground">
+                  {record.quote_number}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Key metrics grid */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <MetaFieldMobile
+            label={translate("resources.quotes.fields.total_amount", {
+              _: "Total inkl. moms",
+            })}
+            value={`${fmtNum(record.total_amount)} ${record.currency}`}
+            bold
+          />
+          <MetaFieldMobile
+            label={translate("resources.quotes.fields.subtotal", {
+              _: "Subtotal",
+            })}
+            value={`${fmtNum(record.subtotal)} ${record.currency}`}
+          />
+          {record.discount_percent > 0 && (
+            <MetaFieldMobile
+              label={translate("resources.quotes.fields.discount_percent", {
+                _: "Rabatt",
+              })}
+              value={`${record.discount_percent}%`}
+            />
+          )}
+          <MetaFieldMobile
+            label={translate("resources.quotes.fields.vat_rate", { _: "Moms" })}
+            value={`${record.vat_rate}%`}
+          />
+          {record.valid_until && (
+            <MetaFieldMobile
+              label={translate("resources.quotes.fields.valid_until", {
+                _: "Giltig till",
+              })}
+              value={new Date(record.valid_until).toLocaleDateString("sv-SE")}
+            />
+          )}
+          {record.payment_terms && (
+            <MetaFieldMobile
+              label={translate("resources.quotes.fields.payment_terms", {
+                _: "Betalningsvillkor",
+              })}
+              value={record.payment_terms}
+            />
+          )}
+        </div>
+
+        <Separator className="my-4" />
+
+        {/* Action buttons */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <DuplicateQuoteButton />
+          {(record.status === "draft" || record.status === "generated") && (
+            <GenerateTextButton />
+          )}
+          {(record.status === "draft" || record.status === "generated") && (
+            <PreviewPdfButton />
+          )}
+          {(record.status === "generated" || record.status === "draft") &&
+            displayText && <SendForSigningButton />}
+          {record.pdf_url && (
+            <Button variant="outline" size="sm" asChild>
+              <a
+                href={record.pdf_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Download className="w-4 h-4 mr-1" />
+                {translate("resources.quotes.action.download_pdf", {
+                  _: "Ladda ner PDF",
+                })}
+              </a>
+            </Button>
+          )}
+        </div>
+
+        {/* Text sections */}
+        {displayText && (
+          <>
+            <Separator className="mb-4" />
+            <EditableField
+              field="custom_text"
+              labelKey="resources.quotes.fields.generated_text"
+              labelFallback="Offerttext"
+              rows={8}
+            />
+          </>
+        )}
+
+        {record.generated_sections && (
+          <PremiumSectionsPreview
+            sections={record.generated_sections}
+            accentColor={record.accent_color}
+          />
+        )}
+
+        {record.notes_internal && (
+          <div className="mt-4">
+            <span className="text-xs text-muted-foreground tracking-wide">
+              {translate("resources.quotes.fields.notes_internal", {
+                _: "Interna anteckningar",
+              })}
+            </span>
+            <div className="mt-2 p-3 border rounded-md bg-yellow-50 dark:bg-yellow-950/30 whitespace-pre-wrap text-sm leading-6 border-yellow-200 dark:border-yellow-800">
+              {record.notes_internal}
+            </div>
+          </div>
+        )}
+      </MobileContent>
+    </>
+  );
+};
+
+const MetaFieldMobile = ({
+  label,
+  value,
+  bold,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+}) => (
+  <div className="flex flex-col">
+    <span className="text-xs text-muted-foreground">{label}</span>
+    <span className={`text-sm ${bold ? "font-semibold" : ""}`}>{value}</span>
+  </div>
+);
 
 const QuoteShowContent = () => {
   const translate = useTranslate();
@@ -620,7 +804,7 @@ const PremiumSectionsPreview = ({
       </div>
 
       {/* Highlight cards */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         {(isEditing ? draft.highlight_cards : sections.highlight_cards)?.map(
           (card, i) => (
             <div

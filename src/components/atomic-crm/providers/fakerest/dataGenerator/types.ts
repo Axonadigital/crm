@@ -6,6 +6,7 @@ import type {
   Deal,
   DealNote,
   Sale,
+  SalesEntry,
   Tag,
   Task,
 } from "../../../types";
@@ -18,6 +19,7 @@ export interface Db {
   deals: Deal[];
   deal_notes: DealNote[];
   sales: Sale[];
+  sales_entries: SalesEntry[];
   tags: Tag[];
   tasks: Task[];
   calendar_events: CalendarEvent[];

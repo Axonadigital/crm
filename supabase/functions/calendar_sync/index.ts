@@ -1,5 +1,4 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import * as jose from "jsr:@panva/jose@6";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
@@ -26,14 +25,28 @@ type CalendarEventPayload = {
   metadata?: Record<string, unknown> | null;
 };
 
-type ServiceAccountConfig = {
-  client_email: string;
-  private_key: string;
-  token_uri: string;
-};
-
 const GOOGLE_CALENDAR_ID = Deno.env.get("GOOGLE_CALENDAR_ID");
-const GOOGLE_SERVICE_ACCOUNT_JSON = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
+const GOOGLE_OAUTH_CLIENT_ID = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID");
+const GOOGLE_OAUTH_CLIENT_SECRET = Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET");
+const GOOGLE_OAUTH_REFRESH_TOKEN = Deno.env.get("GOOGLE_OAUTH_REFRESH_TOKEN");
+
+function assertGoogleCalendarConfigured() {
+  if (!GOOGLE_CALENDAR_ID) {
+    throw new Error("GOOGLE_CALENDAR_ID not configured");
+  }
+
+  if (!GOOGLE_OAUTH_CLIENT_ID) {
+    throw new Error("GOOGLE_OAUTH_CLIENT_ID not configured");
+  }
+
+  if (!GOOGLE_OAUTH_CLIENT_SECRET) {
+    throw new Error("GOOGLE_OAUTH_CLIENT_SECRET not configured");
+  }
+
+  if (!GOOGLE_OAUTH_REFRESH_TOKEN) {
+    throw new Error("GOOGLE_OAUTH_REFRESH_TOKEN not configured");
+  }
+}
 
 function normalizeIso(value: string | undefined) {
   if (!value) return undefined;
@@ -44,20 +57,6 @@ function normalizeIso(value: string | undefined) {
   return date.toISOString();
 }
 
-function normalizeServiceAccount(): ServiceAccountConfig | null {
-  if (!GOOGLE_SERVICE_ACCOUNT_JSON) {
-    return null;
-  }
-  const parsed = JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON) as ServiceAccountConfig;
-  if (!parsed.client_email || !parsed.private_key || !parsed.token_uri) {
-    return null;
-  }
-  return {
-    ...parsed,
-    private_key: parsed.private_key.replace(/\\n/g, "\n"),
-  };
-}
-
 async function sha256Hex(input: string) {
   const encoded = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", encoded);
@@ -66,26 +65,17 @@ async function sha256Hex(input: string) {
     .join("");
 }
 
-async function getGoogleAccessToken(serviceAccount: ServiceAccountConfig) {
-  const now = Math.floor(Date.now() / 1000);
-  const privateKey = await jose.importPKCS8(serviceAccount.private_key, "RS256");
-  const assertion = await new jose.SignJWT({
-    scope: "https://www.googleapis.com/auth/calendar",
-  })
-    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
-    .setIssuer(serviceAccount.client_email)
-    .setSubject(serviceAccount.client_email)
-    .setAudience(serviceAccount.token_uri)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 3600)
-    .sign(privateKey);
+async function getGoogleAccessToken() {
+  assertGoogleCalendarConfigured();
 
-  const tokenResponse = await fetch(serviceAccount.token_uri, {
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion,
+      client_id: GOOGLE_OAUTH_CLIENT_ID,
+      client_secret: GOOGLE_OAUTH_CLIENT_SECRET,
+      refresh_token: GOOGLE_OAUTH_REFRESH_TOKEN,
+      grant_type: "refresh_token",
     }),
   });
 
@@ -141,12 +131,8 @@ function extractMeetLink(googleEvent: any): string | null {
 }
 
 async function createGoogleEvent(payload: CalendarEventPayload) {
-  const serviceAccount = normalizeServiceAccount();
-  if (!serviceAccount || !GOOGLE_CALENDAR_ID) {
-    return { google_event_id: null, meet_link: null };
-  }
-
-  const token = await getGoogleAccessToken(serviceAccount);
+  assertGoogleCalendarConfigured();
+  const token = await getGoogleAccessToken();
   const response = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
       GOOGLE_CALENDAR_ID,
@@ -178,12 +164,8 @@ async function updateGoogleEvent(
   payload: CalendarEventPayload,
   cancelOnly = false,
 ) {
-  const serviceAccount = normalizeServiceAccount();
-  if (!serviceAccount || !GOOGLE_CALENDAR_ID) {
-    return { meet_link: payload.meet_link ?? null };
-  }
-
-  const token = await getGoogleAccessToken(serviceAccount);
+  assertGoogleCalendarConfigured();
+  const token = await getGoogleAccessToken();
   const body = cancelOnly
     ? { status: "cancelled" }
     : buildGoogleEventBody(payload);

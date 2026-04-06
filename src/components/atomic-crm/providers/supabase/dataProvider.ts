@@ -123,7 +123,18 @@ const dataProviderWithCustomMethods = {
 
       if (error || !data?.data) {
         console.error("calendar_sync create error:", error);
-        throw new Error(error?.message || "Failed to create calendar event");
+        const errorDetails = await (async () => {
+          try {
+            return (await error?.context?.json()) ?? {};
+          } catch {
+            return {};
+          }
+        })();
+        throw new Error(
+          errorDetails?.message ||
+            error?.message ||
+            "Failed to create calendar event",
+        );
       }
 
       return { data: data.data };
@@ -144,7 +155,18 @@ const dataProviderWithCustomMethods = {
 
       if (error || !data?.data) {
         console.error("calendar_sync update error:", error);
-        throw new Error(error?.message || "Failed to update calendar event");
+        const errorDetails = await (async () => {
+          try {
+            return (await error?.context?.json()) ?? {};
+          } catch {
+            return {};
+          }
+        })();
+        throw new Error(
+          errorDetails?.message ||
+            error?.message ||
+            "Failed to update calendar event",
+        );
       }
 
       return { data: data.data };
@@ -164,7 +186,18 @@ const dataProviderWithCustomMethods = {
 
       if (error || !data?.data) {
         console.error("calendar_sync delete error:", error);
-        throw new Error(error?.message || "Failed to cancel calendar event");
+        const errorDetails = await (async () => {
+          try {
+            return (await error?.context?.json()) ?? {};
+          } catch {
+            return {};
+          }
+        })();
+        throw new Error(
+          errorDetails?.message ||
+            error?.message ||
+            "Failed to cancel calendar event",
+        );
       }
 
       return { data: data.data };

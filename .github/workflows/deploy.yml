@@ -105,10 +105,16 @@ jobs:
             IS_SUPABASE_CONFIGURED: ${{ secrets.SUPABASE_ACCESS_TOKEN && secrets.SUPABASE_DB_PASSWORD && secrets.SUPABASE_PROJECT_ID && secrets.SUPABASE_URL && secrets.SB_PUBLISHABLE_KEY }}
             VITE_IS_DEMO: ${{ vars.VITE_IS_DEMO }}
             VITE_INBOUND_EMAIL: ${{ vars.VITE_INBOUND_EMAIL }}
+            VITE_GOOGLE_CALENDAR_EMBED_URL: ${{ vars.VITE_GOOGLE_CALENDAR_EMBED_URL }}
             PRODUCTION_REMOTE: https://git:${{ secrets.DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ vars.DEPLOY_REPOSITORY }}
             POSTMARK_WEBHOOK_USER: ${{secrets.POSTMARK_WEBHOOK_USER}}
             POSTMARK_WEBHOOK_PASSWORD: ${{secrets.POSTMARK_WEBHOOK_PASSWORD}}
             POSTMARK_WEBHOOK_AUTHORIZED_IPS: ${{secrets.POSTMARK_WEBHOOK_AUTHORIZED_IPS}}
+            SB_PUBLISHABLE_KEY: ${{ secrets.SB_PUBLISHABLE_KEY }}
+            GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+            GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+            GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+            GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
             VITE_GOOGLE_WORKPLACE_DOMAIN: ${{secrets.VITE_GOOGLE_WORKPLACE_DOMAIN}}
 
         steps:
@@ -146,13 +152,18 @@ jobs:
               name: 📡 Push supabase migrations
               run: npx supabase db push
 
-            - if: ${{ env.IS_SUPABASE_CONFIGURED && env.POSTMARK_WEBHOOK_USER && env.POSTMARK_WEBHOOK_PASSWORD && env.POSTMARK_WEBHOOK_AUTHORIZED_IPS }}
-              name: 📡 Push supabase postmark webhook user secret
+            - if: ${{ env.IS_SUPABASE_CONFIGURED }}
+              name: 📡 Push supabase runtime secrets
               run: |
-                  npx supabase secrets set POSTMARK_WEBHOOK_USER=${{ env.POSTMARK_WEBHOOK_USER }}
-                  npx supabase secrets set POSTMARK_WEBHOOK_PASSWORD=${{ env.POSTMARK_WEBHOOK_PASSWORD }}
-                  npx supabase secrets set POSTMARK_WEBHOOK_AUTHORIZED_IPS=${{ env.POSTMARK_WEBHOOK_AUTHORIZED_IPS }}
-                  npx supabase secrets set VITE_INBOUND_EMAIL=${{ env.VITE_INBOUND_EMAIL }}
+                  if [ -n "${{ env.SB_PUBLISHABLE_KEY }}" ]; then npx supabase secrets set SB_PUBLISHABLE_KEY=${{ env.SB_PUBLISHABLE_KEY }}; fi
+                  if [ -n "${{ env.GOOGLE_CALENDAR_ID }}" ]; then npx supabase secrets set GOOGLE_CALENDAR_ID=${{ env.GOOGLE_CALENDAR_ID }}; fi
+                  if [ -n "${{ env.GOOGLE_OAUTH_CLIENT_ID }}" ]; then npx supabase secrets set GOOGLE_OAUTH_CLIENT_ID=${{ env.GOOGLE_OAUTH_CLIENT_ID }}; fi
+                  if [ -n "${{ env.GOOGLE_OAUTH_CLIENT_SECRET }}" ]; then npx supabase secrets set GOOGLE_OAUTH_CLIENT_SECRET=${{ env.GOOGLE_OAUTH_CLIENT_SECRET }}; fi
+                  if [ -n "${{ env.GOOGLE_OAUTH_REFRESH_TOKEN }}" ]; then npx supabase secrets set GOOGLE_OAUTH_REFRESH_TOKEN=${{ env.GOOGLE_OAUTH_REFRESH_TOKEN }}; fi
+                  if [ -n "${{ env.POSTMARK_WEBHOOK_USER }}" ]; then npx supabase secrets set POSTMARK_WEBHOOK_USER=${{ env.POSTMARK_WEBHOOK_USER }}; fi
+                  if [ -n "${{ env.POSTMARK_WEBHOOK_PASSWORD }}" ]; then npx supabase secrets set POSTMARK_WEBHOOK_PASSWORD=${{ env.POSTMARK_WEBHOOK_PASSWORD }}; fi
+                  if [ -n "${{ env.POSTMARK_WEBHOOK_AUTHORIZED_IPS }}" ]; then npx supabase secrets set POSTMARK_WEBHOOK_AUTHORIZED_IPS=${{ env.POSTMARK_WEBHOOK_AUTHORIZED_IPS }}; fi
+                  if [ -n "${{ env.VITE_INBOUND_EMAIL }}" ]; then npx supabase secrets set VITE_INBOUND_EMAIL=${{ env.VITE_INBOUND_EMAIL }}; fi
 
             - if: ${{ env.IS_SUPABASE_CONFIGURED }}
               name: 📡 Deploy supabase functions
@@ -177,6 +188,26 @@ jobs:
             - if: ${{ !env.VITE_SB_PUBLISHABLE_KEY }}
               name: Check SB_PUBLISHABLE_KEY secret
               run: echo ':warning:SB_PUBLISHABLE_KEY secret is missing' >> $GITHUB_STEP_SUMMARY
+
+            - if: ${{ !env.VITE_GOOGLE_CALENDAR_EMBED_URL }}
+              name: Check VITE_GOOGLE_CALENDAR_EMBED_URL variable
+              run: echo ':warning:VITE_GOOGLE_CALENDAR_EMBED_URL variable is missing' >> $GITHUB_STEP_SUMMARY
+
+            - if: ${{ !env.GOOGLE_CALENDAR_ID }}
+              name: Check GOOGLE_CALENDAR_ID secret
+              run: echo ':warning:GOOGLE_CALENDAR_ID secret is missing' >> $GITHUB_STEP_SUMMARY
+
+            - if: ${{ !env.GOOGLE_OAUTH_CLIENT_ID }}
+              name: Check GOOGLE_OAUTH_CLIENT_ID secret
+              run: echo ':warning:GOOGLE_OAUTH_CLIENT_ID secret is missing' >> $GITHUB_STEP_SUMMARY
+
+            - if: ${{ !env.GOOGLE_OAUTH_CLIENT_SECRET }}
+              name: Check GOOGLE_OAUTH_CLIENT_SECRET secret
+              run: echo ':warning:GOOGLE_OAUTH_CLIENT_SECRET secret is missing' >> $GITHUB_STEP_SUMMARY
+
+            - if: ${{ !env.GOOGLE_OAUTH_REFRESH_TOKEN }}
+              name: Check GOOGLE_OAUTH_REFRESH_TOKEN secret
+              run: echo ':warning:GOOGLE_OAUTH_REFRESH_TOKEN secret is missing' >> $GITHUB_STEP_SUMMARY
 
             - if: ${{ !env.POSTMARK_WEBHOOK_USER }}
               name: Check POSTMARK_WEBHOOK_USER secret

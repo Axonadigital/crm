@@ -87,7 +87,9 @@ export const MobileNavigation = () => {
         // We use box-sizing: border-box, so the height contains the padding.
         // To actually increase the padding, we need to increase the height as well
         height:
-          "calc(var(--spacing)) * 6" + (isPwa && isWebiOS ? " + 15px" : ""),
+          isPwa && isWebiOS
+            ? "calc(var(--spacing) * 6 + 15px)"
+            : "calc(var(--spacing) * 6)",
       }}
     >
       <div className="flex justify-center">

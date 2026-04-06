@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { isValid } from "date-fns";
-import { Archive, ArchiveRestore } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil } from "lucide-react";
+import { useState } from "react";
 import {
   ShowBase,
   useDataProvider,
@@ -11,6 +12,7 @@ import {
   useTranslate,
   useUpdate,
 } from "ra-core";
+import { Link } from "react-router";
 import { DeleteButton } from "@/components/admin/delete-button";
 import { EditButton } from "@/components/admin/edit-button";
 import { ReferenceArrayField } from "@/components/admin/reference-array-field";
@@ -20,20 +22,35 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import { CompanyAvatar } from "../companies/CompanyAvatar";
+import MobileHeader from "../layout/MobileHeader";
+import { MobileContent } from "../layout/MobileContent";
+import { MobileBackButton } from "../misc/MobileBackButton";
 import { NoteCreate } from "../notes/NoteCreate";
 import { NotesIterator } from "../notes/NotesIterator";
+import { NoteCreateSheet } from "../notes/NoteCreateSheet";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 import { ContactList } from "./ContactList";
+import { DealEditSheet } from "./DealEditSheet";
 import { findDealLabel, formatISODateString } from "./dealUtils";
 
 export const DealShow = ({ open, id }: { open: boolean; id?: string }) => {
+  const isMobile = useIsMobile();
   const redirect = useRedirect();
   const handleClose = () => {
     redirect("list", "deals");
   };
+
+  if (isMobile) {
+    return id ? (
+      <ShowBase id={id}>
+        <DealShowContentMobile />
+      </ShowBase>
+    ) : null;
+  }
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && handleClose()}>
@@ -179,6 +196,166 @@ const DealShowContent = () => {
           </div>
         </div>
       </div>
+    </>
+  );
+};
+
+const DealShowContentMobile = () => {
+  const translate = useTranslate();
+  const { dealStages, dealCategories, currency } = useConfigurationContext();
+  const record = useRecordContext<Deal>();
+  const [noteCreateOpen, setNoteCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+
+  if (!record) return null;
+
+  return (
+    <>
+      <NoteCreateSheet open={noteCreateOpen} onOpenChange={setNoteCreateOpen} />
+      <DealEditSheet
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        dealId={record.id}
+      />
+      <MobileHeader>
+        <MobileBackButton />
+        <div className="flex flex-1 min-w-0">
+          <Link to="/deals" className="flex-1 min-w-0">
+            <h1 className="truncate text-xl font-semibold">{record.name}</h1>
+          </Link>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="rounded-full"
+          onClick={() => setEditOpen(true)}
+        >
+          <Pencil className="size-5" />
+          <span className="sr-only">{translate("ra.action.edit")}</span>
+        </Button>
+      </MobileHeader>
+      <MobileContent>
+        {record.archived_at ? <ArchivedTitle /> : null}
+
+        <div className="flex items-center gap-3 mb-4">
+          <ReferenceField source="company_id" reference="companies" link="show">
+            <CompanyAvatar width={40} height={40} />
+          </ReferenceField>
+          <h2 className="text-2xl font-bold flex-1 min-w-0 truncate">
+            {record.name}
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="flex flex-col">
+            <span className="text-xs text-muted-foreground">
+              {translate("resources.deals.fields.expected_closing_date")}
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-sm">
+                {isValid(new Date(record.expected_closing_date))
+                  ? formatISODateString(record.expected_closing_date)
+                  : translate("resources.deals.invalid_date")}
+              </span>
+              {new Date(record.expected_closing_date) < new Date() ? (
+                <Badge variant="destructive" className="text-[10px] px-1 py-0">
+                  {translate("crm.common.past")}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-col">
+            <span className="text-xs text-muted-foreground">
+              {translate("resources.deals.fields.amount")}
+            </span>
+            <span className="text-sm">
+              {record.amount.toLocaleString("en-US", {
+                notation: "compact",
+                style: "currency",
+                currency,
+                currencyDisplay: "narrowSymbol",
+                minimumSignificantDigits: 3,
+              })}
+            </span>
+          </div>
+
+          {record.category && (
+            <div className="flex flex-col">
+              <span className="text-xs text-muted-foreground">
+                {translate("resources.deals.fields.category")}
+              </span>
+              <span className="text-sm">
+                {dealCategories.find((c) => c.value === record.category)
+                  ?.label ?? record.category}
+              </span>
+            </div>
+          )}
+
+          <div className="flex flex-col">
+            <span className="text-xs text-muted-foreground">
+              {translate("resources.deals.fields.stage")}
+            </span>
+            <span className="text-sm">
+              {findDealLabel(dealStages, record.stage)}
+            </span>
+          </div>
+        </div>
+
+        {!!record.contact_ids?.length && (
+          <div className="mb-4">
+            <span className="text-xs text-muted-foreground">
+              {translate("resources.deals.fields.contact_ids")}
+            </span>
+            <ReferenceArrayField
+              source="contact_ids"
+              reference="contacts_summary"
+            >
+              <ContactList />
+            </ReferenceArrayField>
+          </div>
+        )}
+
+        {record.description && (
+          <div className="mb-4 whitespace-pre-line">
+            <span className="text-xs text-muted-foreground">
+              {translate("resources.deals.fields.description")}
+            </span>
+            <p className="text-sm leading-6">{record.description}</p>
+          </div>
+        )}
+
+        <Separator className="mb-4" />
+        <ReferenceManyField
+          target="deal_id"
+          reference="deal_notes"
+          sort={{ field: "date", order: "DESC" }}
+          empty={
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <p className="text-muted-foreground mb-4">
+                {translate("resources.notes.empty")}
+              </p>
+              <Button variant="outline" onClick={() => setNoteCreateOpen(true)}>
+                {translate("resources.notes.action.add")}
+              </Button>
+            </div>
+          }
+        >
+          <NotesIterator reference="deals" />
+        </ReferenceManyField>
+
+        {record.archived_at ? null : (
+          <div className="flex gap-2 mt-4">
+            <ArchiveButton record={record} />
+          </div>
+        )}
+        {record.archived_at ? (
+          <div className="flex gap-2 mt-4">
+            <UnarchiveButton record={record} />
+          </div>
+        ) : null}
+      </MobileContent>
     </>
   );
 };

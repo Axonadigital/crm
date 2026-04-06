@@ -355,6 +355,19 @@ export type QuoteLineItem = {
   created_at: string;
 } & Pick<RaRecord, "id">;
 
+export type SalesEntry = {
+  amount: number;
+  period_type: "day" | "week" | "month";
+  period_date: string;
+  description?: string;
+  sales_id: Identifier;
+  deal_id?: Identifier | null;
+  company_id?: Identifier | null;
+  contact_id?: Identifier | null;
+  created_at: string;
+  updated_at: string;
+} & Pick<RaRecord, "id">;
+
 export type ActivityCompanyCreated = {
   type: typeof COMPANY_CREATED;
   company_id: Identifier;
