@@ -79,6 +79,21 @@
 - [ ] [FÖRSLAG] **Retry/backoff för externa API-anrop** – Exponential backoff i _shared/.
 - [ ] [FÖRSLAG] **Fortnox-integration** – Auto-faktura vid signerad offert.
 - [ ] [FÖRSLAG] **"Behöver ändringar"-knapp i proposal Discord** – Reject/review-länk.
+- [ ] [FÖRSLAG] **Konsolidera valideringshelpers till _shared/validators.ts** – isPositiveInteger, EMAIL_REGEX, isValidEmail dupliceras i 7+ edge functions. Extrahera efter merge av valideringsbranches.
+- [ ] [FÖRSLAG] **Enhetstester för edge function-validering** – Ingen valideringsbranch har tester. Lägg till efter konsolidering.
+- [ ] [FÖRSLAG] **Ersätt discord_bot felklassificering med ValidationError-klass** – `message.includes("is required")` är fragilt, bör använda custom error-klass.
+- [ ] [FÖRSLAG] **Lös users/index.ts dirty state vs branch-konflikt** – Två olika valideringsimplementationer (main dirty state vs backend/users-validation-v2). Välj en.
+
+### UX-problem (analys 2026-04-06, iteration 2, se RESEARCH.md)
+
+- [ ] [FÖRSLAG] **Obligatoriska fält saknar visuell markering** – form.tsx:80. Lägg till asterisk (*) på required fält. LÅG komplexitet, HÖG allvarlighet.
+- [ ] [FÖRSLAG] **Task-radering utan bekräftelsedialog** – Task.tsx:204. Direkt delete utan "Är du säker?". LÅG komplexitet, HÖG allvarlighet.
+- [ ] [FÖRSLAG] **Blank sida under listladdning** – DealList.tsx:73 returnerar null vid isPending. Lägg till skeleton/spinner. LÅG komplexitet, HÖG allvarlighet.
+- [ ] [FÖRSLAG] **Formulärfält döljer valideringsfel** – helperText={false} i DealInputs.tsx. Aktivera inline-validering. LÅG-MEDEL komplexitet.
+- [ ] [FÖRSLAG] **Tomma listor utan onboarding-CTA** – ListNoResults.tsx:18. Visa "Skapa din första..." med knapp. LÅG komplexitet.
+- [ ] [FÖRSLAG] **Breadcrumbs på detaljsidor (desktop)** – DealShow, CompanyShow, ContactShow saknar hierarkisk navigering. LÅG-MEDEL komplexitet.
+- [ ] [FÖRSLAG] **ContactAside dold på mobil utan indikation** – ContactAside.tsx:37. Samma problem som CompanyAside. MEDEL komplexitet.
+- [ ] [FÖRSLAG] **Kanban saknar tangentbordsnavigering (WCAG)** – DealListContent.tsx. hello-pangea/dnd behöver ARIA-config. MEDEL komplexitet.
 
 ---
 
