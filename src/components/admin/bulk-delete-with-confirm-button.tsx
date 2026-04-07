@@ -1,21 +1,23 @@
 import * as React from "react";
 import { Trash } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { RaRecord, UseBulkDeleteControllerParams } from "ra-core";
-import { useBulkDeleteController, useListContext } from "ra-core";
+import type { RaRecord } from "ra-core";
+import {
+  useDeleteMany,
+  useListContext,
+  useRefresh,
+  useResourceContext,
+} from "ra-core";
 import { cn } from "@/lib/utils";
 import { Confirm } from "./confirm";
 
-export type BulkDeleteWithConfirmButtonProps<
-  RecordType extends RaRecord = RaRecord,
-  MutationOptionsError = unknown,
-> = {
+export type BulkDeleteWithConfirmButtonProps = {
   label?: string;
   icon?: React.ReactNode;
   className?: string;
   confirmTitle?: string;
   confirmContent?: string;
-} & UseBulkDeleteControllerParams<RecordType, MutationOptionsError>;
+};
 
 /**
  * A bulk delete button that requires user confirmation before deleting selected records.
@@ -25,30 +27,38 @@ export type BulkDeleteWithConfirmButtonProps<
  */
 export const BulkDeleteWithConfirmButton = <
   RecordType extends RaRecord = RaRecord,
-  MutationOptionsError = unknown,
 >({
   icon = <Trash />,
   label,
   className,
   confirmTitle = "Radera markerade?",
   confirmContent,
-  ...props
-}: BulkDeleteWithConfirmButtonProps<RecordType, MutationOptionsError>) => {
+}: BulkDeleteWithConfirmButtonProps) => {
   const [isOpen, setIsOpen] = React.useState(false);
-  const { selectedIds } = useListContext();
-  const { handleDelete, isPending } = useBulkDeleteController({
-    mutationMode: "pessimistic",
-    ...props,
-  });
+  const { selectedIds, onUnselectItems } = useListContext();
+  const resource = useResourceContext();
+  const refresh = useRefresh();
+
+  const [deleteMany, { isPending }] = useDeleteMany<RecordType>(
+    resource,
+    { ids: selectedIds },
+    {
+      mutationMode: "pessimistic",
+      onSuccess: () => {
+        onUnselectItems();
+        setIsOpen(false);
+        refresh();
+      },
+    },
+  );
 
   const count = selectedIds?.length ?? 0;
   const resolvedContent =
     confirmContent ??
     `Du är på väg att radera ${count} ${count === 1 ? "post" : "poster"}. Åtgärden kan inte ångras.`;
 
-  const handleConfirm = (e: React.MouseEvent<HTMLButtonElement>) => {
-    handleDelete(e as unknown as React.MouseEvent<HTMLElement>);
-    setIsOpen(false);
+  const handleConfirm = () => {
+    deleteMany();
   };
 
   return (
