@@ -18,6 +18,8 @@
 - [x] **Fixa trasiga tester** – 2 failande tester i `getContactAvatar.spec.ts`
 - [x] **Öka testtäckning: deals-modulen** – Deals är kärnfunktionalitet. Bara 1 testfil.
 - [ ] **Öka testtäckning: quotes-modulen** – Nybyggd modul utan tester. Affärskritiskt.
+- [ ] **Ta bort krav på efternamn för kontakt** – Ta bort `required()` på `last_name` i `ContactInputs.tsx`. Snabb fix.
+- [ ] **Fixa mobilvy: navbar och layout** – Navbaren längst ner syns bara till hälften. Rutor och text utanför skärmen. Granska `MobileLayout`, `MobileNavigation` och alla mobil-komponenter. Säkerställ full paritet med desktop-funktioner.
 
 ### Prio 2 – Högt värde
 
@@ -25,12 +27,20 @@
 - [ ] **Öka testtäckning: companies-modulen** – Saknar tester helt.
 - [ ] **E2E-tester för kritiska flöden** – Playwright konfigurerat men inga tester.
 - [ ] **Edge function input-validering** – Flera edge functions saknar robust validering.
+- [ ] **Föreslå telefon/mejl från företagsprofil vid kontaktskapande** – När man skapar en kontakt under ett företag, visa företagets befintliga telefonnummer/mejl som förslag. Koppla `AutocompleteCompanyInput` till att populera suggestions i `ContactInputs.tsx`.
+- [ ] **Lägg till löpande kostnad på deals** – Ny kolumn `recurring_amount` (+ ev. `recurring_interval`) på `deals`-tabellen. Uppdatera `DealInputs.tsx`, dealkort och revenue-beräkningar i dashboard. Kräver migration.
+- [ ] **Ta bort signeringsruta från 12-sidors offert + fixa avtalslayout** – Ta bort `buildTermsAndSignatureSection` från premium-PDF:en (`generate_quote_pdf/index.ts`). Förbättra layouten på DocuSeal-signeringsavtalet så det matchar offertens design.
+- [ ] **Mata in call_logs i offertens AI-analys** – Utöka `generate_quote_text` så den hämtar `call_logs` (samtalsanteckningar, outcome, notes) för företaget/dealen och inkluderar dem i Claude-prompten utöver Fireflies-mötesanalysen.
+- [ ] **Scraper: stöd för flera telefonnummer** – `auto_scrape` och `enrich_company` hämtar bara ett telefonnummer. Spara alla hittade nummer (t.ex. `phone_numbers` JSONB-array). Kräver migration + uppdatering av scraper-logik.
 
 ### Prio 3 – Förbättringar
 
 - [ ] **Prestandaoptimering: databasvyer** – Granska N+1-problem och saknade index.
 - [ ] **Konsistent felhantering i edge functions** – Standardisera error responses.
 - [ ] **Refaktorering av stora filer** – Bryt ut logik från filer >400 rader.
+- [ ] **Förbättra personalisering av 12-sidors offert** – AI-texterna blir för lika mellan kunder. Inkludera mer kundspecifik kontext (call_logs, branschdata, specifika behov) i prompten. Refaktorera prompt-strukturen. Beror på att call_logs matas in först.
+- [ ] **Kundanpassade referensbilder i offerten** – Byt ut hårdkodade `DEFAULT_REFERENCES` mot dynamiskt urval baserat på bransch/behov. Ev. admin-UI för att välja referensprojekt per offert.
+- [ ] **Optimera Loops-förbrukning** – Byt modell (haiku för enklare loops, sonnet för review), öka intervallet (30min+), ev. Opus bara för planering. Granska `start-loops.sh`.
 
 ---
 
@@ -38,6 +48,12 @@
 
 > Dessa har identifierats av Claude genom research och kodgranskning.
 > Godkänn genom att flytta upp till "Godkända uppgifter" och ta bort [FÖRSLAG].
+
+### Större projekt (kräver planering)
+
+- [ ] [FÖRSLAG] **Dashboard: close revenues med företagslista och datum** – Utöka dashboard så man kan se vilka företag/deals som ingår i stängd revenue, med belopp och datum. Gör dashboarden mer motiverande. STÖRRE PROJEKT.
+- [ ] [FÖRSLAG] **Uppföljningssystem efter kundgodkännande** – Koppla `approve_proposal`-flödet till sekvens-systemet. Auto-mejl som påminner om info vi behöver + påminnelser vid uteblivet svar. STÖRRE PROJEKT.
+- [ ] [FÖRSLAG] **Sociala medier-material för kunder (Remotion?)** – Skapa bild/video-material kunden kan lägga ut på Facebook/Instagram om att hemsidan är live. Utred Remotion vs Canva API vs statiska templates. STÖRRE PROJEKT.
 
 ### Säkerhet
 

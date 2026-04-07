@@ -517,6 +517,7 @@ async function enrichCompany(companyId: number): Promise<boolean> {
 
     const googleApiKey = Deno.env.get("GOOGLE_CUSTOM_SEARCH_API_KEY");
     const googleCx = Deno.env.get("GOOGLE_CUSTOM_SEARCH_CX");
+    const serperApiKey = Deno.env.get("SERPER_API_KEY");
 
     let socialResults = {
       facebook_url: null as string | null,
@@ -525,41 +526,150 @@ async function enrichCompany(companyId: number): Promise<boolean> {
       has_instagram: false,
     };
 
+    let discoveredPhone: string | null = null;
+    let discoveredEmail: string | null = null;
+
+    // Step 0: Serper discovery for phone, email, and social media (fallback)
+    if (serperApiKey && company.name) {
+      try {
+        const cleanName = company.name
+          .replace(
+            /\b(ab|hb|kb|ek\.?\s*för\.?|aktiebolag|handelsbolag|enskild firma|kommanditbolag|ekonomisk förening)\b/gi,
+            "",
+          )
+          .replace(/\s+/g, " ")
+          .trim()
+          .split(/\s+/)
+          .filter((w: string) => w.length > 1)
+          .join(" ");
+        const cityAlreadyInName = company.city
+          ? cleanName.toLowerCase().includes(company.city.toLowerCase())
+          : true;
+        const serperQuery =
+          company.city && !cityAlreadyInName
+            ? `${cleanName} ${company.city}`
+            : cleanName;
+
+        const serperResponse = await fetch("https://google.serper.dev/search", {
+          method: "POST",
+          headers: {
+            "X-API-KEY": serperApiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            q: serperQuery,
+            gl: "se",
+            hl: "sv",
+            num: 10,
+          }),
+        });
+
+        if (serperResponse.ok) {
+          const serperData = await serperResponse.json();
+
+          // Extract phone from Knowledge Graph
+          if (serperData.knowledgeGraph?.phoneNumber && !company.phone_number) {
+            discoveredPhone = serperData.knowledgeGraph.phoneNumber;
+          }
+
+          // Extract phone/email from organic snippets
+          if (serperData.organic) {
+            for (const item of serperData.organic) {
+              const snippet = item.snippet || "";
+
+              // Phone from snippet
+              if (!discoveredPhone && !company.phone_number) {
+                const phoneMatch = snippet.match(
+                  /(?:Tel(?:efon)?[:\s]*)?(\+?46[\s-]?\(?\d\)?[\d\s-]{6,14}\d|0\d{1,3}[\s-]?\d[\d\s-]{4,10}\d)/,
+                );
+                if (phoneMatch) {
+                  discoveredPhone = phoneMatch[1].trim();
+                }
+              }
+
+              // Email from snippet
+              if (!discoveredEmail && !company.email) {
+                const emailMatch = snippet.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+                if (emailMatch) {
+                  discoveredEmail = emailMatch[0].replace(/\.$/, "");
+                }
+              }
+
+              // Social media from organic results
+              const link = item.link.toLowerCase();
+              if (
+                !socialResults.facebook_url &&
+                link.includes("facebook.com/") &&
+                !link.includes("/posts/") &&
+                !link.includes("/photos/")
+              ) {
+                socialResults.facebook_url = item.link;
+                socialResults.has_facebook = true;
+              }
+              if (
+                !socialResults.instagram_url &&
+                link.includes("instagram.com/") &&
+                !link.includes("/p/") &&
+                !link.includes("/reel/")
+              ) {
+                socialResults.instagram_url = item.link;
+                socialResults.has_instagram = true;
+              }
+            }
+          }
+
+          console.log(
+            `Serper discovery for ${company.name}: phone=${discoveredPhone}, email=${discoveredEmail}, fb=${socialResults.has_facebook}, ig=${socialResults.has_instagram}`,
+          );
+        }
+      } catch (err) {
+        console.error("Serper discovery failed in auto_scrape:", err);
+      }
+    }
+
     // Social media discovery (uses Google Custom Search — 100 free queries/day)
+    // Skip if Serper already found both social profiles
     let searchQuotaExhausted = false;
 
-    if (googleApiKey && googleCx && company.name) {
+    if (
+      googleApiKey &&
+      googleCx &&
+      company.name &&
+      (!socialResults.has_facebook || !socialResults.has_instagram)
+    ) {
       try {
         const locationSuffix = company.city ? ` "${company.city}"` : "";
 
-        // Facebook
-        const fbQuery = encodeURIComponent(
-          `"${company.name}"${locationSuffix} site:facebook.com`,
-        );
-        const fbResponse = await fetch(
-          `https://www.googleapis.com/customsearch/v1?key=${googleApiKey}&cx=${googleCx}&q=${fbQuery}&num=3`,
-        );
-        if (fbResponse.status === 429) {
-          console.warn(
-            "Google Custom Search quota exhausted — skipping social media & Allabolag",
+        // Facebook (skip if Serper already found it)
+        if (!socialResults.has_facebook) {
+          const fbQuery = encodeURIComponent(
+            `"${company.name}"${locationSuffix} site:facebook.com`,
           );
-          searchQuotaExhausted = true;
-        } else if (fbResponse.ok) {
-          const fbData = await fbResponse.json();
-          const fbPage = fbData.items?.find(
-            (item: { link: string }) =>
-              item.link.includes("facebook.com/") &&
-              !item.link.includes("/posts/") &&
-              !item.link.includes("/photos/"),
+          const fbResponse = await fetch(
+            `https://www.googleapis.com/customsearch/v1?key=${googleApiKey}&cx=${googleCx}&q=${fbQuery}&num=3`,
           );
-          if (fbPage) {
-            socialResults.facebook_url = fbPage.link;
-            socialResults.has_facebook = true;
+          if (fbResponse.status === 429) {
+            console.warn(
+              "Google Custom Search quota exhausted — skipping social media & Allabolag",
+            );
+            searchQuotaExhausted = true;
+          } else if (fbResponse.ok) {
+            const fbData = await fbResponse.json();
+            const fbPage = fbData.items?.find(
+              (item: { link: string }) =>
+                item.link.includes("facebook.com/") &&
+                !item.link.includes("/posts/") &&
+                !item.link.includes("/photos/"),
+            );
+            if (fbPage) {
+              socialResults.facebook_url = fbPage.link;
+              socialResults.has_facebook = true;
+            }
           }
         }
 
-        // Instagram (skip if quota exhausted)
-        if (!searchQuotaExhausted) {
+        // Instagram (skip if Serper already found it or quota exhausted)
+        if (!socialResults.has_instagram && !searchQuotaExhausted) {
           await new Promise((r) => setTimeout(r, 300));
 
           const igQuery = encodeURIComponent(
@@ -586,6 +696,45 @@ async function enrichCompany(companyId: number): Promise<boolean> {
         }
       } catch (err) {
         console.error("Social media discovery failed:", err);
+      }
+    }
+
+    // Google Places API fallback for phone number
+    const googleMapsApiKey = Deno.env.get("GOOGLE_MAPS_API_KEY");
+    if (
+      !discoveredPhone &&
+      !company.phone_number &&
+      googleMapsApiKey &&
+      company.name
+    ) {
+      try {
+        const placeQuery = company.city
+          ? `${company.name} ${company.city}`
+          : company.name;
+        const findPlaceUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(placeQuery)}&inputtype=textquery&fields=place_id&key=${googleMapsApiKey}`;
+        const findResponse = await fetch(findPlaceUrl);
+        const findData = await findResponse.json();
+
+        if (findData.status === "OK" && findData.candidates?.length > 0) {
+          const placeId = findData.candidates[0].place_id;
+          const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,international_phone_number&key=${googleMapsApiKey}`;
+          const detailsResponse = await fetch(detailsUrl);
+          const detailsData = await detailsResponse.json();
+
+          if (detailsData.status === "OK" && detailsData.result) {
+            const phone =
+              detailsData.result.formatted_phone_number ||
+              detailsData.result.international_phone_number;
+            if (phone) {
+              discoveredPhone = phone;
+              console.log(
+                `Found phone via Google Places API for ${company.name}: ${phone}`,
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Google Places phone lookup failed:", err);
       }
     }
 
@@ -736,9 +885,9 @@ async function enrichCompany(companyId: number): Promise<boolean> {
       score += 5;
     }
 
-    // Contact info (max 10)
-    if (company.phone_number) score += 5;
-    if (company.email) score += 5;
+    // Contact info (max 10) — include discovered phone/email
+    if (company.phone_number || discoveredPhone) score += 5;
+    if (company.email || discoveredEmail) score += 5;
 
     score = Math.max(0, Math.min(100, score));
 
@@ -764,6 +913,14 @@ async function enrichCompany(companyId: number): Promise<boolean> {
       segment,
       enriched_at: new Date().toISOString(),
     };
+
+    // Add discovered phone/email from Serper
+    if (discoveredPhone && !company.phone_number) {
+      updateData.phone_number = discoveredPhone;
+    }
+    if (discoveredEmail && !company.email) {
+      updateData.email = discoveredEmail;
+    }
 
     // Add Allabolag data if found
     if (allabolagData) {

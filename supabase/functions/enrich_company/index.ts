@@ -50,8 +50,11 @@ function extractContactFromSnippet(
 ): void {
   if (!snippet) return;
   if (!result.phone) {
+    // Match Swedish phone numbers in various formats:
+    // +46 70-123 45 67, 0640-10150, 070-123 45 67, 08-123 456,
+    // 0701234567, +46701234567, 063-12 34 56
     const phoneMatch = snippet.match(
-      /(?:Tel(?:efon)?[:\s]*)?(\+?46[\s-]?\d[\d\s-]{6,12}\d|\d{2,4}[\s-]\d{2,3}[\s-]?\d{2,3}[\s-]?\d{2,3})/,
+      /(?:Tel(?:efon)?[:\s]*)?(\+?46[\s-]?\(?\d\)?[\d\s-]{6,14}\d|0\d{1,3}[\s-]?\d[\d\s-]{4,10}\d)/,
     );
     if (phoneMatch) {
       result.phone = phoneMatch[1].trim();
@@ -850,6 +853,57 @@ Deno.serve(async (req: Request) =>
                 status: "failed",
                 error_message: String(err),
               });
+            }
+          }
+
+          // Step 2: Google Places API fallback for phone number
+          // If Serper didn't find phone, try Google Places API (more reliable for Business Profile data)
+          const googleMapsApiKey = Deno.env.get("GOOGLE_MAPS_API_KEY");
+          if (
+            !discoveredPhone &&
+            !company.phone_number &&
+            googleMapsApiKey &&
+            company.name
+          ) {
+            try {
+              const placeQuery = company.city
+                ? `${company.name} ${company.city}`
+                : company.name;
+              const findPlaceUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(placeQuery)}&inputtype=textquery&fields=place_id&key=${googleMapsApiKey}`;
+              const findResponse = await fetch(findPlaceUrl);
+              const findData = await findResponse.json();
+
+              if (findData.status === "OK" && findData.candidates?.length > 0) {
+                const placeId = findData.candidates[0].place_id;
+                const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,international_phone_number&key=${googleMapsApiKey}`;
+                const detailsResponse = await fetch(detailsUrl);
+                const detailsData = await detailsResponse.json();
+
+                if (detailsData.status === "OK" && detailsData.result) {
+                  const phone =
+                    detailsData.result.formatted_phone_number ||
+                    detailsData.result.international_phone_number;
+                  if (phone) {
+                    discoveredPhone = phone;
+                    enrichmentData.phone_source = "google_places_api";
+                    console.log(
+                      `Found phone via Google Places API for ${company.name}: ${phone}`,
+                    );
+                  }
+                }
+              }
+
+              await supabaseAdmin.from("enrichment_log").insert({
+                company_id,
+                source: "google_places_phone",
+                status: discoveredPhone ? "success" : "no_result",
+                enrichment_data: {
+                  phone: discoveredPhone,
+                  query: placeQuery,
+                },
+              });
+            } catch (err) {
+              console.error("Google Places phone lookup failed:", err);
             }
           }
 

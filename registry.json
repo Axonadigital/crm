@@ -730,6 +730,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/dashboard/WidgetErrorBoundary.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/dashboard/Welcome.tsx",
           "type": "registry:component"
         },
