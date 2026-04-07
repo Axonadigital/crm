@@ -77,9 +77,19 @@ const dataProviderWithCustomMethods = {
         };
       }
 
-      // Special filter: never_contacted = companies with lead_status = 'new' OR NULL
-      if (params.filter?.never_contacted) {
-        const { never_contacted, ...rest } = params.filter;
+      // status_preset: translate quick-filter presets to lead_status OR conditions
+      const STATUS_PRESET_MAP: Record<string, string> = {
+        active_customers: "lead_status.eq.closed_won",
+        under_negotiation: "lead_status.eq.proposal_sent",
+        follow_up: "lead_status.in.(contacted,interested,meeting_booked)",
+        never_contacted: "lead_status.eq.new,lead_status.is.null",
+        no_response: "lead_status.eq.no_response",
+        not_interested: "lead_status.in.(not_interested,bad_fit)",
+      };
+
+      if (params.filter?.status_preset) {
+        const { status_preset, ...rest } = params.filter;
+        const orClause = STATUS_PRESET_MAP[status_preset as string];
         const { page, perPage } = params.pagination ?? { page: 1, perPage: 25 };
         const { field, order } = params.sort ?? { field: "name", order: "ASC" };
         const from = (page - 1) * perPage;
@@ -88,11 +98,11 @@ const dataProviderWithCustomMethods = {
         let query = supabase
           .from("companies_summary")
           .select("*", { count: "exact" })
-          .or("lead_status.eq.new,lead_status.is.null")
+          .or(orClause)
           .range(from, to)
           .order(field, { ascending: order === "ASC", nullsFirst: false });
 
-        // Apply remaining filters
+        // Apply any additional filters (size, sector, sales_id, etc.)
         for (const [key, value] of Object.entries(rest)) {
           const atIdx = key.lastIndexOf("@");
           if (atIdx === -1) {
@@ -116,7 +126,7 @@ const dataProviderWithCustomMethods = {
 
         const { data, error, count } = await query;
         if (error) {
-          console.error("never_contacted filter error:", error);
+          console.error("status_preset filter error:", error);
           return baseDataProvider.getList("companies_summary", {
             ...params,
             filter: rest,

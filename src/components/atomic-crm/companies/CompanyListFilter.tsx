@@ -8,29 +8,13 @@ import { useConfigurationContext } from "../root/ConfigurationContext";
 import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
 import { sizes } from "./sizes";
 
-const activeCustomersFilter = {
-  "lead_status@eq": "closed_won",
-};
-
-const companiesUnderNegotiationFilter = {
-  "lead_status@in": "(proposal_sent)",
-};
-
-const companiesForFollowupFilter = {
-  "lead_status@in": "(contacted,interested,meeting_booked)",
-};
-
-const neverContactedFilter = {
-  never_contacted: true,
-};
-
-const contactedNoResponseFilter = {
-  "lead_status@eq": "contacted",
-};
-
-const notInterestedFilter = {
-  "lead_status@in": "(not_interested,bad_fit)",
-};
+// All relationsstatus-filter use a unique key "status_preset" to avoid key conflicts
+const activeCustomersFilter = { status_preset: "active_customers" };
+const companiesUnderNegotiationFilter = { status_preset: "under_negotiation" };
+const companiesForFollowupFilter = { status_preset: "follow_up" };
+const neverContactedFilter = { status_preset: "never_contacted" };
+const contactedNoResponseFilter = { status_preset: "no_response" };
+const notInterestedFilter = { status_preset: "not_interested" };
 
 export const CompanyListFilter = () => {
   const { identity } = useGetIdentity();
