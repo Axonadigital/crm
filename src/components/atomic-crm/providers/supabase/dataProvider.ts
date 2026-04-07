@@ -135,7 +135,13 @@ const dataProviderWithCustomMethods = {
         return { data: data ?? [], total: count ?? 0 };
       }
 
-      return baseDataProvider.getList("companies_summary", params);
+      // Strip any leftover custom filter keys before passing to baseDataProvider
+      const { status_preset, never_contacted, ...cleanFilter } =
+        params.filter ?? {};
+      return baseDataProvider.getList("companies_summary", {
+        ...params,
+        filter: cleanFilter,
+      });
     }
     if (resource === "contacts") {
       return baseDataProvider.getList("contacts_summary", params);
