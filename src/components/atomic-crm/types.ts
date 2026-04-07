@@ -88,6 +88,7 @@ export type Company = {
     | "contacted"
     | "no_response"
     | "info_sent"
+    | "send_info"
     | "interested"
     | "meeting_booked"
     | "proposal_sent"

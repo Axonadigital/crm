@@ -164,6 +164,12 @@ const CompanyContextInputs = () => {
       }),
     },
     {
+      id: "send_info",
+      name: translate("resources.companies.lead_status.send_info", {
+        _: "Skicka info/komplettering",
+      }),
+    },
+    {
       id: "interested",
       name: translate("resources.companies.lead_status.interested", {
         _: "Intresserad",

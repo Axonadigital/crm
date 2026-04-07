@@ -28,6 +28,24 @@ import { Phone } from "lucide-react";
 import type { CallLog, Company } from "../types";
 import type { CrmDataProvider } from "../providers/supabase/dataProvider";
 
+// Mapping from call outcome → company lead_status
+// null = don't change the company status
+const OUTCOME_TO_LEAD_STATUS: Record<
+  CallLog["call_outcome"],
+  Company["lead_status"] | null
+> = {
+  no_answer: "no_response",
+  busy: "no_response",
+  wrong_number: null,
+  spoke_gatekeeper: "contacted",
+  spoke_decision_maker: "contacted",
+  interested: "interested",
+  not_interested: "not_interested",
+  meeting_booked: "meeting_booked",
+  send_info: "send_info",
+  callback_requested: "contacted",
+};
+
 export const CallLogModal = () => {
   const [open, setOpen] = useState(false);
   const [outcome, setOutcome] = useState<CallLog["call_outcome"]>("no_answer");
@@ -57,6 +75,16 @@ export const CallLogModal = () => {
         followup_date: followupTimestamp,
         followup_note: followupNote || null,
       });
+
+      // Auto-update company lead_status based on call outcome
+      const newStatus = OUTCOME_TO_LEAD_STATUS[outcome];
+      if (newStatus) {
+        await dataProvider.update("companies", {
+          id: company.id,
+          data: { lead_status: newStatus },
+          previousData: company,
+        });
+      }
 
       notify("Samtalslogg sparad", { type: "success" });
       refresh();
