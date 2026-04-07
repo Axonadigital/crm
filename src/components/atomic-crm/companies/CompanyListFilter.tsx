@@ -21,7 +21,10 @@ const companiesForFollowupFilter = {
 };
 
 const neverContactedFilter = {
-  "lead_status@eq": "new",
+  "@or": {
+    "lead_status@eq": "new",
+    "lead_status@is": null,
+  },
 };
 
 const contactedNoResponseFilter = {
