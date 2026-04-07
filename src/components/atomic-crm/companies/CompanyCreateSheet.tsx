@@ -19,7 +19,7 @@ export const CompanyCreateSheet = ({
       title={translate("resources.companies.action.create", {
         _: "New Company",
       })}
-      defaultValues={{ sales_id: identity?.id }}
+      defaultValues={{ sales_id: identity?.id, lead_status: "new" }}
       transform={(values) => {
         if (values.website && !values.website.startsWith("http")) {
           return { ...values, website: `https://${values.website}` };
