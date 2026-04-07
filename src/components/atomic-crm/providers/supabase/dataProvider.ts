@@ -632,6 +632,24 @@ const lifeCycleCallbacks: ResourceCallbacks[] = [
       }
       return data;
     },
+    afterCreate: async (result: any) => {
+      const contactId = result.data?.contact_id;
+      if (!contactId) return result;
+      // Look up contact's company_id
+      const { data: contact } = await supabase
+        .from("contacts")
+        .select("company_id")
+        .eq("id", contactId)
+        .single();
+      if (!contact?.company_id) return result;
+      // Only upgrade to 'contacted' if currently new or unset
+      await supabase
+        .from("companies")
+        .update({ lead_status: "contacted" })
+        .eq("id", contact.company_id)
+        .or("lead_status.eq.new,lead_status.is.null");
+      return result;
+    },
   },
   {
     resource: "deal_notes",
@@ -642,6 +660,24 @@ const lifeCycleCallbacks: ResourceCallbacks[] = [
         );
       }
       return data;
+    },
+    afterCreate: async (result: any) => {
+      const dealId = result.data?.deal_id;
+      if (!dealId) return result;
+      // Look up deal's company_id
+      const { data: deal } = await supabase
+        .from("deals")
+        .select("company_id")
+        .eq("id", dealId)
+        .single();
+      if (!deal?.company_id) return result;
+      // Only upgrade to 'contacted' if currently new or unset
+      await supabase
+        .from("companies")
+        .update({ lead_status: "contacted" })
+        .eq("id", deal.company_id)
+        .or("lead_status.eq.new,lead_status.is.null");
+      return result;
     },
   },
   {
