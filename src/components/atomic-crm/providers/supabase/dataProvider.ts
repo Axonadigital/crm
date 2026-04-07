@@ -904,10 +904,28 @@ function popLineItems(key: string) {
   return items ?? null;
 }
 
-export const dataProvider = withLifecycleCallbacks(
+const wrappedDataProvider = withLifecycleCallbacks(
   dataProviderWithCustomMethods,
   lifeCycleCallbacks,
-) as CrmDataProvider;
+);
+
+// Expose deleteMany directly — withLifecycleCallbacks may intercept it
+// and convert to individual delete() calls which can fail silently.
+export const dataProvider = {
+  ...wrappedDataProvider,
+  deleteMany: async (resource: string, params: { ids: Identifier[] }) => {
+    const { error } = await supabase
+      .from(resource)
+      .delete()
+      .in("id", params.ids);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { data: params.ids };
+  },
+} as CrmDataProvider;
 
 const applyFullTextSearch = (columns: string[]) => (params: GetListParams) => {
   if (!params.filter?.q) {
