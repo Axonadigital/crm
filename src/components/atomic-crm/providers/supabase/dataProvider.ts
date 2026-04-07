@@ -76,6 +76,55 @@ const dataProviderWithCustomMethods = {
           total: data?.length || 0,
         };
       }
+
+      // Special filter: never_contacted = companies with lead_status = 'new' OR NULL
+      if (params.filter?.never_contacted) {
+        const { never_contacted, ...rest } = params.filter;
+        const { page, perPage } = params.pagination ?? { page: 1, perPage: 25 };
+        const { field, order } = params.sort ?? { field: "name", order: "ASC" };
+        const from = (page - 1) * perPage;
+        const to = from + perPage - 1;
+
+        let query = supabase
+          .from("companies_summary")
+          .select("*", { count: "exact" })
+          .or("lead_status.eq.new,lead_status.is.null")
+          .range(from, to)
+          .order(field, { ascending: order === "ASC", nullsFirst: false });
+
+        // Apply remaining filters
+        for (const [key, value] of Object.entries(rest)) {
+          const atIdx = key.lastIndexOf("@");
+          if (atIdx === -1) {
+            query = query.eq(key, value) as typeof query;
+          } else {
+            const col = key.slice(0, atIdx);
+            const op = key.slice(atIdx + 1);
+            if (op === "eq") query = query.eq(col, value) as typeof query;
+            else if (op === "neq")
+              query = query.neq(col, value) as typeof query;
+            else if (op === "in")
+              query = query.in(
+                col,
+                (value as string).replace(/^\(|\)$/g, "").split(","),
+              ) as typeof query;
+            else if (op === "ilike")
+              query = query.ilike(col, value as string) as typeof query;
+            else if (op === "is") query = query.is(col, value) as typeof query;
+          }
+        }
+
+        const { data, error, count } = await query;
+        if (error) {
+          console.error("never_contacted filter error:", error);
+          return baseDataProvider.getList("companies_summary", {
+            ...params,
+            filter: rest,
+          });
+        }
+        return { data: data ?? [], total: count ?? 0 };
+      }
+
       return baseDataProvider.getList("companies_summary", params);
     }
     if (resource === "contacts") {
