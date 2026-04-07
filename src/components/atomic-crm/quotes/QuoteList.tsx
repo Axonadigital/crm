@@ -7,6 +7,9 @@ import {
 } from "ra-core";
 import { useEffect, useRef } from "react";
 import { matchPath, useLocation } from "react-router";
+import { BulkActionsToolbar } from "@/components/admin/bulk-actions-toolbar";
+import { BulkDeleteWithConfirmButton } from "@/components/admin/bulk-delete-with-confirm-button";
+import { SelectAllButton } from "@/components/admin/select-all-button";
 import { CreateButton } from "@/components/admin/create-button";
 import { ExportButton } from "@/components/admin/export-button";
 import { List } from "@/components/admin/list";
@@ -100,7 +103,15 @@ const QuoteLayout = () => {
 
   return (
     <div className="w-full">
-      <DataTable rowClick="show">
+      <DataTable
+        rowClick="show"
+        bulkActionsToolbar={
+          <BulkActionsToolbar>
+            <SelectAllButton />
+            <BulkDeleteWithConfirmButton />
+          </BulkActionsToolbar>
+        }
+      >
         <DataTable.Col source="title" />
         <DataTable.Col
           source="company_id"

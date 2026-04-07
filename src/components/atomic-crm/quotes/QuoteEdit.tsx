@@ -8,7 +8,7 @@ import {
   useTranslate,
 } from "ra-core";
 import { Link } from "react-router";
-import { DeleteButton } from "@/components/admin/delete-button";
+import { DeleteWithConfirmButton } from "@/components/admin/delete-with-confirm-button";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
@@ -75,7 +75,7 @@ function EditHeader() {
       <div className="flex justify-between items-start mb-8">
         <h2 className="text-2xl font-semibold">{defaultTitle}</h2>
         <div className="flex gap-2 pr-12">
-          {quote.status === "draft" && <DeleteButton />}
+          <DeleteWithConfirmButton />
           <Button asChild variant="outline" className="h-9">
             <Link to={`/quotes/${quote.id}/show`}>
               {translate("resources.quotes.action.back_to_quote", {

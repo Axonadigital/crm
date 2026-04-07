@@ -21,6 +21,7 @@ import {
   Copy,
 } from "lucide-react";
 import { EditButton } from "@/components/admin/edit-button";
+import { DeleteWithConfirmButton } from "@/components/admin/delete-with-confirm-button";
 import { ReferenceField } from "@/components/admin/reference-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,7 @@ const QuoteShowMobileWrapper = () => {
         <div className="flex flex-1 min-w-0">
           <h1 className="truncate text-xl font-semibold">{record.title}</h1>
         </div>
+        <DeleteWithConfirmButton redirect="/quotes" size="icon" label="" />
         {record.status === "draft" && <EditButton />}
       </MobileHeader>
       <MobileContent>
@@ -277,6 +279,7 @@ const QuoteShowContent = () => {
             </div>
           </div>
           <div className="flex gap-2 pr-12">
+            <DeleteWithConfirmButton redirect="/quotes" />
             {record.status === "draft" && <EditButton />}
             <DuplicateQuoteButton />
           </div>

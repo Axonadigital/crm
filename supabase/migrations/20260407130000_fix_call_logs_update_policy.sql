@@ -6,6 +6,8 @@
 
 DROP POLICY IF EXISTS "Users can update their own call_logs" ON "public"."call_logs";
 DROP POLICY IF EXISTS "Users can delete their own call_logs" ON "public"."call_logs";
+DROP POLICY IF EXISTS "Authenticated users can update call_logs" ON "public"."call_logs";
+DROP POLICY IF EXISTS "Authenticated users can delete call_logs" ON "public"."call_logs";
 
 CREATE POLICY "Authenticated users can update call_logs" ON "public"."call_logs"
   FOR UPDATE

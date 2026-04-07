@@ -13,7 +13,7 @@ import {
   useUpdate,
 } from "ra-core";
 import { Link } from "react-router";
-import { DeleteButton } from "@/components/admin/delete-button";
+import { DeleteWithConfirmButton } from "@/components/admin/delete-with-confirm-button";
 import { EditButton } from "@/components/admin/edit-button";
 import { ReferenceArrayField } from "@/components/admin/reference-array-field";
 import { ReferenceField } from "@/components/admin/reference-field";
@@ -91,7 +91,7 @@ const DealShowContent = () => {
               {record.archived_at ? (
                 <>
                   <UnarchiveButton record={record} />
-                  <DeleteButton />
+                  <DeleteWithConfirmButton />
                 </>
               ) : (
                 <>
