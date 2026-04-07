@@ -14,6 +14,7 @@ import { SalesTrackingWidget } from "./SalesTrackingWidget";
 import { TasksList } from "./TasksList";
 import { UpcomingMeetings } from "./UpcomingMeetings";
 import { Welcome } from "./Welcome";
+import { WidgetErrorBoundary } from "./WidgetErrorBoundary";
 
 export const Dashboard = () => {
   const {
@@ -54,30 +55,54 @@ export const Dashboard = () => {
     <div className="flex flex-col gap-6 mt-1">
       {import.meta.env.VITE_IS_DEMO === "true" ? <Welcome /> : null}
 
-      {totalDeal ? <KpiSummaryRow /> : null}
+      {totalDeal ? (
+        <WidgetErrorBoundary>
+          <KpiSummaryRow />
+        </WidgetErrorBoundary>
+      ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-8">
           <div className="flex flex-col gap-6">
             {totalDeal ? (
               <>
-                <RevenueTrendChart />
-                <DealsChart />
-                <DealStageFunnel />
+                <WidgetErrorBoundary>
+                  <RevenueTrendChart />
+                </WidgetErrorBoundary>
+                <WidgetErrorBoundary>
+                  <DealsChart />
+                </WidgetErrorBoundary>
+                <WidgetErrorBoundary>
+                  <DealStageFunnel />
+                </WidgetErrorBoundary>
               </>
             ) : null}
-            <SalesTrackingWidget />
-            <DashboardActivityLog />
+            <WidgetErrorBoundary>
+              <SalesTrackingWidget />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary>
+              <DashboardActivityLog />
+            </WidgetErrorBoundary>
           </div>
         </div>
 
         <div className="md:col-span-4">
           <div className="flex flex-col gap-4">
-            <RevenueGoalsTracker />
-            <FollowUpsDueToday />
-            <LeadsMissingNextStep />
-            <UpcomingMeetings />
-            <TasksList />
+            <WidgetErrorBoundary>
+              <RevenueGoalsTracker />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary>
+              <FollowUpsDueToday />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary>
+              <LeadsMissingNextStep />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary>
+              <UpcomingMeetings />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary>
+              <TasksList />
+            </WidgetErrorBoundary>
           </div>
         </div>
       </div>
