@@ -223,6 +223,27 @@ const dataProviderWithCustomMethods = {
 
     return baseDataProvider.update(resource, params);
   },
+  async deleteMany(resource: string, params: { ids: Identifier[] }) {
+    const tableName =
+      resource === "companies"
+        ? "companies"
+        : resource === "contacts"
+          ? "contacts"
+          : resource;
+
+    const { error } = await supabase
+      .from(tableName)
+      .delete()
+      .in("id", params.ids);
+
+    if (error) {
+      console.error(`deleteMany ${resource} error:`, error);
+      throw new Error(error.message);
+    }
+
+    return { data: params.ids };
+  },
+
   async delete(resource: string, params: any) {
     if (resource === "calendar_events") {
       const { data, error } = await supabase.functions.invoke("calendar_sync", {
