@@ -152,6 +152,18 @@ const CompanyContextInputs = () => {
       }),
     },
     {
+      id: "no_response",
+      name: translate("resources.companies.lead_status.no_response", {
+        _: "Kontaktad, ej svar",
+      }),
+    },
+    {
+      id: "info_sent",
+      name: translate("resources.companies.lead_status.info_sent", {
+        _: "Info utskickat",
+      }),
+    },
+    {
       id: "interested",
       name: translate("resources.companies.lead_status.interested", {
         _: "Intresserad",
@@ -167,12 +179,6 @@ const CompanyContextInputs = () => {
       id: "proposal_sent",
       name: translate("resources.companies.lead_status.proposal_sent", {
         _: "Offert skickad",
-      }),
-    },
-    {
-      id: "negotiation",
-      name: translate("resources.companies.lead_status.negotiation", {
-        _: "Förhandling",
       }),
     },
     {

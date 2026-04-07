@@ -86,10 +86,11 @@ export type Company = {
   lead_status?:
     | "new"
     | "contacted"
+    | "no_response"
+    | "info_sent"
     | "interested"
     | "meeting_booked"
     | "proposal_sent"
-    | "negotiation"
     | "closed_won"
     | "closed_lost"
     | "not_interested"

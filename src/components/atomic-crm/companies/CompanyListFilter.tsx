@@ -13,7 +13,7 @@ const activeCustomersFilter = {
 };
 
 const companiesUnderNegotiationFilter = {
-  "lead_status@in": "(proposal_sent,negotiation)",
+  "lead_status@in": "(proposal_sent)",
 };
 
 const companiesForFollowupFilter = {
