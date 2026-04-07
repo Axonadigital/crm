@@ -623,6 +623,37 @@ const lifeCycleCallbacks: ResourceCallbacks[] = [
     },
   },
   {
+    resource: "call_logs",
+    afterUpdate: async (result) => {
+      const companyId = result.data?.company_id;
+      if (!companyId) return result;
+
+      // Recalculate companies.next_followup_date from remaining call logs
+      const now = new Date().toISOString();
+      const { data: logs } = await supabase
+        .from("call_logs")
+        .select("followup_date, followup_note")
+        .eq("company_id", companyId)
+        .not("followup_date", "is", null)
+        .gte("followup_date", now)
+        .order("followup_date", { ascending: true })
+        .limit(1);
+
+      const next = logs?.[0] ?? null;
+      await supabase
+        .from("companies")
+        .update({
+          next_followup_date: next?.followup_date ?? null,
+          next_action_at: next?.followup_date ?? null,
+          next_action_type: next ? "follow_up" : null,
+          next_action_note: next?.followup_note ?? null,
+        })
+        .eq("id", companyId);
+
+      return result;
+    },
+  },
+  {
     resource: "contact_notes",
     beforeSave: async (data: ContactNote, _, __) => {
       if (data.attachments) {
