@@ -20,6 +20,18 @@ const companiesForFollowupFilter = {
   "lead_status@in": "(contacted,interested,meeting_booked)",
 };
 
+const neverContactedFilter = {
+  "lead_status@eq": "new",
+};
+
+const contactedNoResponseFilter = {
+  "lead_status@eq": "contacted",
+};
+
+const notInterestedFilter = {
+  "lead_status@in": "(not_interested,bad_fit)",
+};
+
 export const CompanyListFilter = () => {
   const { identity } = useGetIdentity();
   const { companySectors } = useConfigurationContext();
@@ -138,6 +150,21 @@ export const CompanyListFilter = () => {
             _: "Att följa upp",
           })}
           value={companiesForFollowupFilter}
+        />
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label="Aldrig kontaktade"
+          value={neverContactedFilter}
+        />
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label="Kontaktade, inget svar"
+          value={contactedNoResponseFilter}
+        />
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label="Inte intresserade"
+          value={notInterestedFilter}
         />
       </FilterCategory>
     </div>

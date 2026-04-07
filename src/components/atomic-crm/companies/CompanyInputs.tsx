@@ -1,5 +1,6 @@
-import { Calendar } from "lucide-react";
+import { AlertTriangle, Calendar } from "lucide-react";
 import { required, useRecordContext, useTranslate } from "ra-core";
+import { useNavigate } from "react-router-dom";
 import { ReferenceInput } from "@/components/admin/reference-input";
 import { TextInput } from "@/components/admin/text-input";
 import { SelectInput } from "@/components/admin/select-input";
@@ -21,6 +22,7 @@ import {
 } from "./followupUtils";
 import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
 import { sizes } from "./sizes";
+import { useCompanyDuplicateCheck } from "./useCompanyDuplicateCheck";
 
 const isUrl = (url: string) => {
   if (!url) return;
@@ -60,25 +62,51 @@ export const CompanyInputs = () => {
 const CompanyDisplayInputs = () => {
   const translate = useTranslate();
   const record = useRecordContext<Company>();
+  const duplicates = useCompanyDuplicateCheck();
+  const navigate = useNavigate();
+
   return (
-    <div className="flex gap-4 flex-1 flex-row">
-      <ImageEditorField
-        source="logo"
-        type="avatar"
-        width={60}
-        height={60}
-        emptyText={record?.name.charAt(0)}
-        linkPosition="bottom"
-      />
-      <TextInput
-        source="name"
-        className="w-full h-fit"
-        validate={required()}
-        helperText={false}
-        placeholder={translate("resources.companies.fields.name", {
-          _: "Company name",
-        })}
-      />
+    <div className="flex flex-col gap-2 flex-1">
+      <div className="flex gap-4 flex-row">
+        <ImageEditorField
+          source="logo"
+          type="avatar"
+          width={60}
+          height={60}
+          emptyText={record?.name.charAt(0)}
+          linkPosition="bottom"
+        />
+        <TextInput
+          source="name"
+          className="w-full h-fit"
+          validate={required()}
+          helperText={false}
+          placeholder={translate("resources.companies.fields.name", {
+            _: "Company name",
+          })}
+        />
+      </div>
+      {duplicates.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800 dark:border-yellow-700 dark:bg-yellow-950 dark:text-yellow-300">
+          <div className="flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Möjlig dubblett – liknande bolag finns redan:
+          </div>
+          <ul className="ml-5 list-disc">
+            {duplicates.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  className="underline hover:no-underline"
+                  onClick={() => navigate(`/companies/${c.id}/show`)}
+                >
+                  {c.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

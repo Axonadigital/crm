@@ -50,7 +50,13 @@ const CompanyListActions = () => {
   return (
     <TopToolbar>
       <SortButton
-        fields={["name", "created_at", "nb_contacts", "lead_status"]}
+        fields={[
+          "name",
+          "created_at",
+          "nb_contacts",
+          "lead_status",
+          "last_touch_at",
+        ]}
       />
       <ExportButton />
       <SearchProfiles />
