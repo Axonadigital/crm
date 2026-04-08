@@ -1,14 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
-import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
+import { UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { buildStylesheet, buildScript } from "../_shared/premiumStyles.ts";
 import {
   buildHeroSection,
   buildSummarySection,
   buildProblemSection,
-  buildDesignDemoSection,
   buildReferenceSection,
   buildPackageSection,
   buildProcessSection,
@@ -26,7 +25,6 @@ import type {
   HeroData,
   SummaryData,
   ProblemCard,
-  DesignDemoData,
   ReferenceProject,
   ProcessStep,
   SupportCard,
@@ -47,32 +45,6 @@ import type {
  * - Premium 12-section template (if generated_sections exists)
  * - Legacy 4-page template (fallback for older quotes)
  */
-
-/** Unsplash image IDs by industry for design demo hero */
-const UNSPLASH_HERO_IMAGES: Record<string, string> = {
-  bygg: "photo-1504307651254-35680f356dfd",
-  vvs: "photo-1585704032915-c3400ca199e7",
-  restaurang: "photo-1517248135467-4c7edcad34c4",
-  mat: "photo-1414235077428-338989a2e8c0",
-  butik: "photo-1441986300917-64674bd600d8",
-  handel: "photo-1472851294608-062f824d29cc",
-  maleri: "photo-1562259949-e8e7689d7828",
-  halsa: "photo-1576091160550-2173dba999ef",
-  juridik: "photo-1589829545856-d10d557cf95f",
-  fastighet: "photo-1560518883-ce09059eeffa",
-  default: "photo-1497366216548-37526070297c",
-};
-
-/** Pick an Unsplash hero image based on company sector/industry */
-function pickHeroImage(sector?: string, industry?: string): string {
-  const text = `${sector || ""} ${industry || ""}`.toLowerCase();
-  for (const [key, id] of Object.entries(UNSPLASH_HERO_IMAGES)) {
-    if (key !== "default" && text.includes(key)) {
-      return `https://images.unsplash.com/${id}?w=800&q=80&auto=format`;
-    }
-  }
-  return `https://images.unsplash.com/${UNSPLASH_HERO_IMAGES.default}?w=800&q=80&auto=format`;
-}
 
 /** Default reference projects (Axona portfolio) */
 const DEFAULT_REFERENCES: ReferenceProject[] = [
@@ -190,7 +162,6 @@ Deno.serve(async (req: Request) =>
             title: string;
             text: string;
           }>;
-          design_demo_description?: string | null;
           package_includes?: string[];
           proposal_body?: string;
         } | null;
@@ -312,7 +283,7 @@ Deno.serve(async (req: Request) =>
 
         await supabase
           .from("quotes")
-          .update({ pdf_url: publicUrl })
+          .update({ pdf_url: publicUrl, html_content: html })
           .eq("id", quote_id);
 
         return new Response(JSON.stringify({ pdf_url: publicUrl }), {
@@ -342,7 +313,6 @@ interface PremiumTemplateData {
     summary_pitch?: string;
     highlight_cards?: Array<{ icon: string; title: string; text: string }>;
     problem_cards?: Array<{ number: string; title: string; text: string }>;
-    design_demo_description?: string | null;
     package_includes?: string[];
     proposal_body?: string;
   };
@@ -480,47 +450,7 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
     ],
   };
 
-  // 3. Design Demo (only for web projects)
-  const isWebProject =
-    d.sections.design_demo_description != null &&
-    d.sections.design_demo_description !== "";
-  let designDemoHtml = "";
-  let pageOffset = 0;
-
-  if (isWebProject) {
-    const companyName = (d.company?.name as string) || "Ert företag";
-    const sector = (d.company?.sector as string) || "";
-    const industry = (d.company?.industry as string) || "";
-
-    const demoData: DesignDemoData = {
-      companyName,
-      tagline:
-        d.sections.design_demo_description ||
-        "Er nya webbplats - professionell och konverterande",
-      heroImageUrl: pickHeroImage(sector, industry),
-      services: [
-        {
-          icon: "layout",
-          title: "Tjänster",
-          text: "Tydlig presentation av vad ni erbjuder",
-        },
-        {
-          icon: "users",
-          title: "Om oss",
-          text: "Bygg förtroende med er berättelse",
-        },
-        {
-          icon: "mail",
-          title: "Kontakt",
-          text: "Enkel kontaktväg för potentiella kunder",
-        },
-      ],
-    };
-    designDemoHtml = buildDesignDemoSection(demoData, pageHeader, 3);
-    pageOffset = 1;
-  }
-
-  // 4. Reference projects
+  // 3. Reference projects
   const referenceImages =
     (d.quote.reference_images as ReferenceProject[]) || [];
   const references =
@@ -608,8 +538,8 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
         "Ansvarar för teknik och implementation. Fokuserar på robusta lösningar och att varje leverans ger mätbar effekt.",
     },
     {
-      initials: "IP",
-      name: "Isak Persson",
+      initials: "RJ",
+      name: "Rasmus Jönsson",
       role: "Medgrundare & Affärsutveckling",
       description:
         "Ansvarar för affärsutveckling och uppföljning. Varje lösning ska ha ett tydligt syfte och ett resultat ni kan följa.",
@@ -678,7 +608,6 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
 ${buildHeroSection(heroData)}
 ${buildSummarySection(summaryData, pageHeader)}
 ${buildProblemSection(problemCards, problemTitle, pageHeader, pn)}
-${designDemoHtml}
 ${buildReferenceSection(references, pageHeader, pn)}
 ${buildPackageSection(packageIncludes, (d.quote.title as string) || "Webbprojekt", `${fmt(d.afterDiscount)} ${esc(d.cur)}`, pageHeader, pn, upgradePackage)}
 ${buildProcessSection(processSteps, pageHeader, pn)}

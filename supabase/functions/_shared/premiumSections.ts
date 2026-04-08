@@ -58,13 +58,6 @@ export interface SummaryData {
   cards: HighlightCard[];
 }
 
-export interface DesignDemoData {
-  companyName: string;
-  tagline: string;
-  heroImageUrl: string;
-  services: Array<{ icon: string; title: string; text: string }>;
-}
-
 export interface ReferenceProject {
   title: string;
   url: string;
@@ -235,78 +228,6 @@ export function buildProblemSection(
     <div class="problem-grid">
       ${cardsHtml}
     </div>
-  </div>
-</section>`;
-}
-
-export function buildDesignDemoSection(
-  data: DesignDemoData,
-  _header: PageHeaderData,
-  _pageNum: number,
-): string {
-  const companyUrl = `${data.companyName.toLowerCase().replace(/\s+/g, "")}.se`;
-
-  const servicesHtml = data.services
-    .map(
-      (svc) => `
-          <div class="mock-service">
-            <div class="mock-service-icon">${getIcon(svc.icon, 20)}</div>
-            <h5>${esc(svc.title)}</h5>
-            <p>${esc(svc.text)}</p>
-          </div>`,
-    )
-    .join("");
-
-  return `
-<section class="section demo">
-  <div class="section-inner">
-    <p class="section-label animate-in">// Er hemsida — visualiserad</p>
-    <h2 class="section-title animate-in">Så kan er sida se ut</h2>
-    <p class="section-text animate-in">${esc(data.tagline)}</p>
-    <div class="demo-preview animate-in">
-      <div class="demo-browser-bar">
-        <span class="demo-dot"></span><span class="demo-dot"></span><span class="demo-dot"></span>
-        <span class="demo-url-bar">${esc(companyUrl)}</span>
-      </div>
-      <div class="demo-body">
-        <div class="mock-hero">
-          <img src="${esc(data.heroImageUrl)}" alt="${esc(data.companyName)}" class="mock-hero-img" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-          <div class="mock-hero-img-placeholder" style="display:none;"></div>
-          <div class="mock-hero-overlay">
-            <div class="mock-hero-badge">Professionell webbplats</div>
-            <h4 style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;margin-bottom:6px;">${esc(data.companyName)}</h4>
-            <p style="font-size:0.82rem;opacity:0.75;margin:0;">${esc(data.tagline)}</p>
-          </div>
-          <div class="mock-hero-content">
-            <p style="font-size:0.85rem;color:var(--color-text-muted);max-width:380px;margin:0 auto 20px;text-align:center;color:rgba(255,255,255,0.55);">${esc(data.tagline)}</p>
-            <div style="text-align:center;"><span class="mock-btn">Kontakta oss</span></div>
-          </div>
-        </div>
-        <div class="mock-content">
-          <div class="mock-services">
-            ${servicesHtml}
-          </div>
-          <div class="mock-about">
-            <div class="mock-about-img">Bild på teamet</div>
-            <div class="mock-about-text">
-              <h5>Om ${esc(data.companyName)}</h5>
-              <p>Vi presenterar oss och vårt erbjudande på ett tydligt och professionellt sätt.</p>
-            </div>
-          </div>
-          <div class="mock-contact">
-            <h5>Kontakta oss</h5>
-            <div class="mock-input-row">
-              <input class="mock-input" value="Namn" disabled>
-              <input class="mock-input" value="Telefon" disabled>
-            </div>
-            <div class="mock-input-row"><input class="mock-input" value="E-post" disabled></div>
-            <textarea class="mock-input" style="width:100%;height:48px;resize:none;margin-bottom:4px;" disabled>Meddelande</textarea>
-            <span class="mock-submit">Skicka förfrågan</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <p class="demo-note animate-in">Illustrativt designexempel — anpassas helt efter ert varumärke och önskemål.</p>
   </div>
 </section>`;
 }
@@ -698,7 +619,7 @@ export function buildTermsAndSignatureSection(
       <div class="signing-block">
         <div class="signing-for">För ${esc(sig.sellerName)}</div>
         <div class="signing-line"></div>
-        <div class="signing-name">Isak Persson</div>
+        <div class="signing-name">Rasmus Jönsson</div>
         <div class="signing-field">Namnförtydligande</div>
         <div class="signing-line short"></div>
         <div class="signing-field">Datum</div>

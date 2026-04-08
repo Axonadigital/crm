@@ -47,6 +47,7 @@ export interface DocuSealSubmissionPayload {
     email: string;
     name: string;
     completed?: boolean;
+    send_email?: boolean;
     fields: Array<{
       name: string;
       default_value: string;
@@ -114,7 +115,7 @@ export function buildSubmissionPayload(
     },
     { name: "Datum", default_value: today, readonly: true },
     { name: "Giltig till", default_value: validUntil, readonly: true },
-    { name: "Foretag", default_value: company.name, readonly: true },
+    { name: "Företag", default_value: company.name, readonly: true },
     {
       name: "Kontaktperson",
       default_value: contact.name,
@@ -151,7 +152,7 @@ export function buildSubmissionPayload(
   // Add proposal link if available
   if (proposalUrl) {
     fields.push({
-      name: "Offertlank",
+      name: "Offertlänk",
       default_value: proposalUrl,
       readonly: true,
     });
@@ -165,14 +166,15 @@ export function buildSubmissionPayload(
     order: "preserved",
     submitters: [
       {
-        role: "Second Party",
+        role: "Axona Digital AB",
         email: "info@axonadigital.se",
-        name: "Isak Persson",
+        name: "Rasmus Jönsson",
         completed: true,
+        send_email: false,
         fields: [
           {
             name: "Axona signatur",
-            default_value: "Isak Persson",
+            default_value: "Rasmus Jönsson",
             readonly: true,
           },
           {

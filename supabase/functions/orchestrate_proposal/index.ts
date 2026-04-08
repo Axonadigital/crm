@@ -28,18 +28,65 @@ interface DealPayload {
   deal_category?: string;
 }
 
-/** Send a Discord notification. Reads webhook URL from env or vault. */
-async function notifyDiscord(embed: {
-  title: string;
-  description: string;
-  color: number;
-  fields?: Array<{ name: string; value: string; inline?: boolean }>;
-}) {
-  // Prefer env var, fall back to vault
+/** Send a Discord notification via Bot API (supports buttons) or webhook fallback. */
+async function notifyDiscord(
+  embed: {
+    title: string;
+    description: string;
+    color: number;
+    fields?: Array<{ name: string; value: string; inline?: boolean }>;
+  },
+  buttons?: Array<{ label: string; url: string }>,
+) {
+  const botToken = Deno.env.get("DISCORD_BOT_TOKEN") || "";
+  const channelId = Deno.env.get("DISCORD_CHANNEL_ID") || "";
+
+  const embedPayload = { ...embed, timestamp: new Date().toISOString() };
+
+  // Use Bot API when we have bot token + channel (supports link buttons)
+  if (botToken && channelId) {
+    const payload: Record<string, unknown> = {
+      embeds: [embedPayload],
+    };
+
+    if (buttons && buttons.length > 0) {
+      payload.components = [
+        {
+          type: 1,
+          components: buttons.map((btn) => ({
+            type: 2,
+            style: 5,
+            label: btn.label,
+            url: btn.url,
+          })),
+        },
+      ];
+    }
+
+    const res = await fetch(
+      `https://discord.com/api/v10/channels/${channelId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bot ${botToken}`,
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    if (!res.ok) {
+      console.error(
+        `Discord Bot API failed: ${res.status} ${await res.text()}`,
+      );
+    }
+    return;
+  }
+
+  // Fallback: webhook (no button support, links go in embed text)
   let webhookUrl = Deno.env.get("DISCORD_WEBHOOK_URL") || "";
 
   if (!webhookUrl) {
-    // Try reading from vault via raw SQL
     const { data } = await supabaseAdmin.rpc("get_discord_webhook_url");
     webhookUrl = data || "";
   }
@@ -49,19 +96,18 @@ async function notifyDiscord(embed: {
     return;
   }
 
-  const payload = {
-    embeds: [
-      {
-        ...embed,
-        timestamp: new Date().toISOString(),
-      },
-    ],
-  };
+  // Append button links as text in description when using webhook
+  if (buttons && buttons.length > 0) {
+    const linkLines = buttons
+      .map((btn) => `**${btn.label}:** ${btn.url}`)
+      .join("\n");
+    embedPayload.description += `\n\n${linkLines}`;
+  }
 
   await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ embeds: [embedPayload] }),
   });
 }
 
@@ -455,7 +501,6 @@ Svara med EXAKT detta JSON-format (inget annat):
     { "icon": "...", "title": "...", "text": "..." },
     { "icon": "...", "title": "...", "text": "..." }
   ],
-  ${isWebProject ? `"design_demo_description": "Kort beskrivning av vad designdemon visar, anpassad till kundens bransch",` : `"design_demo_description": null,`}
   "proposal_body": "Fullständig offertext (se instruktioner nedan)"
 }
 
@@ -572,47 +617,67 @@ ${kbTemplate ? "- IMITERA tonen från referensofferten" : ""}- Max 250 ord i pro
 
       const approvalToken = updatedQuote?.approval_token;
       const quoteNumber = updatedQuote?.quote_number || `#${quote.id}`;
-      // Use public-facing URL for links (not Docker-internal supabaseUrl)
+      // Public Supabase URL for approve link
+      // SUPABASE_URL is auto-set by Supabase to the project's public URL
       const publicSupabaseUrl =
-        Deno.env.get("API_EXTERNAL_URL") ||
-        Deno.env.get("ALLOWED_ORIGIN_SUPABASE") ||
-        "http://127.0.0.1:54321";
+        Deno.env.get("SUPABASE_URL") ||
+        "https://hgyusrlrzdahucljvqsz.supabase.co";
       const approveUrl = `${publicSupabaseUrl}/functions/v1/approve_proposal?token=${approvalToken}`;
-      const crmUrl = Deno.env.get("ALLOWED_ORIGIN") || "http://localhost:5173";
+      const crmUrl =
+        Deno.env.get("CRM_PUBLIC_URL") ||
+        Deno.env.get("ALLOWED_ORIGIN") ||
+        "http://localhost:5173";
       const editUrl = `${crmUrl}/#/quotes/${quote.id}`;
 
       const totalAmount = deal.amount
         ? `${Number(deal.amount).toLocaleString("sv-SE")} ${currency}`
         : "Ej angivet";
 
-      await notifyDiscord({
-        title: "Ny offert redo for granskning",
-        description: [
-          `**Deal:** ${dealName}`,
-          `**Foretag:** ${company?.name || "Okant"}`,
-          `**Kontakt:** ${contactName || "Ingen kontakt"} (${primaryEmail})`,
-          `**Belopp:** ${totalAmount}`,
-          `**Offert:** ${quoteNumber}`,
-          "",
-          pdfUrl
-            ? `**Forhandsgranska offert:** ${crmUrl}/quote.html?id=${quote.id}`
-            : "",
-          "",
-          `**Godkann och skicka:** ${approveUrl}`,
-          `**Redigera i CRM:** ${editUrl}`,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        color: 3447003, // Blue
-        fields: [
-          {
-            name: "AI-genererad text (forsta 200 tecken)",
-            value:
-              generatedText.substring(0, 200) +
-              (generatedText.length > 200 ? "..." : ""),
-          },
-        ],
+      const previewUrl = `${crmUrl}/quote.html?id=${quote.id}`;
+
+      // Build Discord link buttons
+      const discordButtons: Array<{
+        label: string;
+        url: string;
+        emoji?: string;
+      }> = [];
+      if (pdfUrl) {
+        discordButtons.push({
+          label: "Forhandsgranska",
+          url: previewUrl,
+        });
+      }
+      discordButtons.push({
+        label: "Godkann och skicka",
+        url: approveUrl,
       });
+      discordButtons.push({
+        label: "Redigera i CRM",
+        url: editUrl,
+      });
+
+      await notifyDiscord(
+        {
+          title: "Ny offert redo for granskning",
+          description: [
+            `**Deal:** ${dealName}`,
+            `**Foretag:** ${company?.name || "Okant"}`,
+            `**Kontakt:** ${contactName || "Ingen kontakt"} (${primaryEmail})`,
+            `**Belopp:** ${totalAmount}`,
+            `**Offert:** ${quoteNumber}`,
+          ].join("\n"),
+          color: 3447003, // Blue
+          fields: [
+            {
+              name: "AI-genererad text (forsta 200 tecken)",
+              value:
+                generatedText.substring(0, 200) +
+                (generatedText.length > 200 ? "..." : ""),
+            },
+          ],
+        },
+        discordButtons,
+      );
 
       return new Response(
         JSON.stringify({

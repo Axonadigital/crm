@@ -66,14 +66,14 @@ async function sendProposalEmail(params: {
     </div>
     <div style="padding:40px;">
       <p style="font-size:15px;color:#0a0a0a;line-height:1.6;margin:0 0 16px;">Hej ${safeContact},</p>
-      <p style="font-size:15px;color:#525252;line-height:1.6;margin:0 0 24px;">Tack for ditt intresse! Vi har tagit fram en offert till ${safeCompany}. Klicka pa knappen nedan for att granska offerten och signera avtalet.</p>
+      <p style="font-size:15px;color:#525252;line-height:1.6;margin:0 0 24px;">Tack för ditt intresse! Vi har tagit fram en offert till ${safeCompany}. Klicka på knappen nedan för att granska offerten och signera avtalet.</p>
       <div style="text-align:center;margin:32px 0;">
         <a href="${safeUrl}" style="display:inline-block;padding:14px 32px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600;">Visa offert och signera</a>
       </div>
-      <p style="font-size:13px;color:#a3a3a3;line-height:1.6;margin:24px 0 0;">Om du har fragor, svara garna pa detta mejl sa aterkom vi sa snart vi kan.</p>
+      <p style="font-size:13px;color:#a3a3a3;line-height:1.6;margin:24px 0 0;">Om du har frågor, svara gärna på detta mejl så återkommer vi så snart vi kan.</p>
     </div>
     <div style="padding:24px 40px;background:#fafafa;border-top:1px solid #e5e5e5;">
-      <p style="font-size:12px;color:#a3a3a3;margin:0;">Axona Digital AB | Ostersund, Sverige</p>
+      <p style="font-size:12px;color:#a3a3a3;margin:0;">Axona Digital AB | Östersund, Sverige</p>
     </div>
   </div>
 </body>
@@ -219,8 +219,7 @@ Deno.serve(async (req: Request) =>
         Deno.env.get("CRM_PUBLIC_URL") ||
         Deno.env.get("ALLOWED_ORIGIN") ||
         "http://localhost:5173";
-      const proposalUrl =
-        quote.pdf_url || `${crmPublicUrl}/quote.html?id=${quote.id}`;
+      const proposalUrl = `${crmPublicUrl}/quote.html?id=${quote.id}`;
 
       const docusealApiKey = Deno.env.get("DOCUSEAL_API_KEY");
       const docusealTemplateId = Deno.env.get("DOCUSEAL_TEMPLATE_ID");
@@ -278,11 +277,21 @@ Deno.serve(async (req: Request) =>
 
       if (!docusealResponse.ok) {
         const errorText = await docusealResponse.text();
-        console.error("DocuSeal submission error:", errorText);
+        console.error(
+          `DocuSeal API error (${docusealResponse.status}):`,
+          errorText,
+        );
+
+        await notifyDiscord({
+          title: "E-signering misslyckades",
+          description: `**Offert:** ${quote.quote_number || quote.id}\n**DocuSeal ${docusealResponse.status}:** ${errorText.slice(0, 500)}`,
+          color: 15548997,
+        });
+
         return new Response(
           htmlPage(
             "E-signering misslyckades",
-            "Kunde inte skapa signeringsforfragan. Kontakta oss om problemet kvarstar.",
+            `DocuSeal API ${docusealResponse.status}: ${errorText}`,
             "error",
           ),
           {
@@ -293,11 +302,13 @@ Deno.serve(async (req: Request) =>
       }
 
       const submissionResult = await docusealResponse.json();
-      const submitter = Array.isArray(submissionResult)
-        ? submissionResult[0]
-        : submissionResult;
-      const submissionId = submitter?.submission_id || submitter?.id;
-      const signingSlug = submitter?.slug;
+      const submitters = Array.isArray(submissionResult)
+        ? submissionResult
+        : [submissionResult];
+      const submissionId = submitters[0]?.submission_id || submitters[0]?.id;
+      // Customer's signing slug is the last submitter (Axona is first, already completed)
+      const customerSubmitter = submitters[submitters.length - 1];
+      const signingSlug = customerSubmitter?.slug;
       const signingUrl = signingSlug
         ? `${docusealBaseUrl}/s/${signingSlug}`
         : null;
