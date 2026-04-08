@@ -1,17 +1,21 @@
-import { fetchWithTimeout } from "../../misc/fetchWithTimeout";
 import type { Contact, EmailAndType } from "../../types";
 import { getContactAvatar, hash } from "./getContactAvatar";
 
 describe("getContactAvatar", () => {
-  beforeAll(() => {
-    vi.mock("../../misc/fetchWithTimeout", () => ({
-      fetchWithTimeout: vi.fn(),
-    }));
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
   });
-  afterAll(() => {
-    vi.resetAllMocks();
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
+
   it("should return gravatar URL for anthony@marmelab.com", async () => {
+    // All fetch calls return ok (gravatar found on first try)
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
+
     const email: EmailAndType[] = [
       { email: "anthony@marmelab.com", type: "Work" },
     ];
@@ -25,7 +29,14 @@ describe("getContactAvatar", () => {
   });
 
   it("should return favicon URL if gravatar does not exist", async () => {
-    vi.mocked(fetchWithTimeout).mockResolvedValue({ ok: true } as Response);
+    // Call 1: gravatar check → not found
+    // Call 2: favicon fetch (via fetchWithTimeout) → found
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      callCount++;
+      return Promise.resolve({ ok: callCount > 1 } as Response);
+    });
+
     const email: EmailAndType[] = [
       { email: "no-gravatar@gravatar.com", type: "Work" },
     ];
@@ -36,6 +47,9 @@ describe("getContactAvatar", () => {
   });
 
   it("should not return favicon URL if not domain not allowed", async () => {
+    // Gravatar check fails; gmail.com is in unsupported domains list
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false } as Response);
+
     const email: EmailAndType[] = [
       { email: "no-gravatar@gmail.com", type: "Work" },
     ];
@@ -61,7 +75,9 @@ describe("getContactAvatar", () => {
   });
 
   it("should return null if email has no gravatar or validate domain", async () => {
-    vi.mocked(fetchWithTimeout).mockResolvedValue({ ok: false } as Response);
+    // All fetch calls fail
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false } as Response);
+
     const email: EmailAndType[] = [
       { email: "anthony@fake-domain-marmelab.com", type: "Work" },
     ];
@@ -72,6 +88,15 @@ describe("getContactAvatar", () => {
   });
 
   it("should return gravatar URL for 2nd email if 1st email has no gravatar nor valid domain", async () => {
+    // Call 1: gravatar for email 1 → fail
+    // Call 2: favicon for email 1 domain → fail
+    // Call 3: gravatar for email 2 → success
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      callCount++;
+      return Promise.resolve({ ok: callCount === 3 } as Response);
+    });
+
     const email: EmailAndType[] = [
       { email: "anthony@fake-domain-marmelab.com", type: "Work" },
       { email: "anthony@marmelab.com", type: "Work" },
