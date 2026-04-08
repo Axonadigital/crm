@@ -594,7 +594,9 @@ ${kbTemplate ? "- IMITERA tonen från referensofferten" : ""}- Max 250 ord i pro
           `**Belopp:** ${totalAmount}`,
           `**Offert:** ${quoteNumber}`,
           "",
-          pdfUrl ? `**Forhandsgranska PDF:** ${pdfUrl}` : "",
+          pdfUrl
+            ? `**Forhandsgranska offert:** ${crmUrl}/quote.html?id=${quote.id}`
+            : "",
           "",
           `**Godkann och skicka:** ${approveUrl}`,
           `**Redigera i CRM:** ${editUrl}`,
