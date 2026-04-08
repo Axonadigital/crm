@@ -579,15 +579,15 @@ export function buildStylesheet(options: StyleOptions = {}): string {
       box-shadow: 0 16px 48px rgba(0,0,0,0.07);
     }
     .ref-card-visual {
-      height: 200px;
+      height: 260px;
       position: relative;
       overflow: hidden;
       background: var(--color-bg-alt);
     }
     .ref-card-screenshot {
       width: 100%;
-      height: 100%;
-      object-fit: cover;
+      height: auto;
+      object-fit: contain;
       object-position: top center;
       display: block;
       transition: transform 0.5s cubic-bezier(.22,1,.36,1);
