@@ -84,6 +84,10 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
 
       <AsideSection title="Mötesanalyser">
         <ContactTranscriptions />
+        <div className="flex gap-1.5 mt-2">
+          <FetchFirefliesDialog />
+          <AnalyzeMeetingDialog />
+        </div>
       </AsideSection>
 
       <ContactDeals contactId={record.id} />
@@ -93,8 +97,6 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
           <div className="mt-6 pt-6 border-t hidden sm:flex flex-col gap-2 items-start">
             <SendEmailDialog />
             <EnrollSequenceDialog />
-            <FetchFirefliesDialog />
-            <AnalyzeMeetingDialog />
             <ExportVCardButton />
             <ContactMergeButton />
           </div>
