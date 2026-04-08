@@ -92,11 +92,12 @@ export function buildSubmissionPayload(
     ? new Date(quote.valid_until).toLocaleDateString("sv-SE")
     : "";
 
-  // Truncate long text for the contract summary
-  const scopeOfWork = quote.generated_text
-    ? quote.generated_text.length > 2000
-      ? quote.generated_text.substring(0, 2000) + "..."
-      : quote.generated_text
+  // Contract scope: bullet list of line items + link to full proposal
+  const itemBullets = lineItems
+    .map((item) => `• ${item.description}`)
+    .join("\n");
+  const scopeOfWork = itemBullets
+    ? `Uppdraget omfattar:\n${itemBullets}\n\nSe bifogad offert för fullständig beskrivning.`
     : "Se bifogad offert för fullständig beskrivning.";
 
   const fields: Array<{

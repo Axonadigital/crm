@@ -1140,10 +1140,14 @@ const PreviewContractButton = () => {
         ? new Date(record.valid_until).toLocaleDateString("sv-SE")
         : "";
 
-      const scopeOfWork = record.generated_text
-        ? record.generated_text.length > 2000
-          ? record.generated_text.substring(0, 2000) + "..."
-          : record.generated_text
+      const itemBullets =
+        lineItems && lineItems.length > 0
+          ? lineItems
+              .map((item: { description: string }) => `• ${item.description}`)
+              .join("\n")
+          : "";
+      const scopeOfWork = itemBullets
+        ? `Uppdraget omfattar:\n${itemBullets}\n\nSe bifogad offert för fullständig beskrivning.`
         : "Se bifogad offert för fullständig beskrivning.";
 
       const lineItemsText =
