@@ -26,6 +26,7 @@ import { ContactCalendarEvents } from "./ContactCalendarEvents";
 import { SendEmailDialog } from "../templates/SendEmailDialog";
 import { EnrollSequenceDialog } from "../sequences/EnrollSequenceDialog";
 import { AnalyzeMeetingDialog } from "../meetings/AnalyzeMeetingDialog";
+import { FetchFirefliesDialog } from "../meetings/FetchFirefliesDialog";
 import { ContactTranscriptions } from "../meetings/ContactTranscriptions";
 
 export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
@@ -92,6 +93,7 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
           <div className="mt-6 pt-6 border-t hidden sm:flex flex-col gap-2 items-start">
             <SendEmailDialog />
             <EnrollSequenceDialog />
+            <FetchFirefliesDialog />
             <AnalyzeMeetingDialog />
             <ExportVCardButton />
             <ContactMergeButton />

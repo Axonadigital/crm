@@ -566,6 +566,38 @@ const dataProviderWithCustomMethods = {
     }
     return data;
   },
+  async fetchFirefliesTranscripts(contactId: Identifier) {
+    const { data, error } = await supabase.functions.invoke(
+      "fetch_fireflies_transcripts",
+      {
+        method: "POST",
+        body: { contact_id: contactId },
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to fetch Fireflies transcripts");
+    }
+    return data;
+  },
+  async importFirefliesTranscript(
+    contactId: Identifier,
+    firefliesMeetingId: string,
+  ) {
+    const { data, error } = await supabase.functions.invoke(
+      "fetch_fireflies_transcripts",
+      {
+        method: "POST",
+        body: {
+          contact_id: contactId,
+          import_meeting_id: firefliesMeetingId,
+        },
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to import Fireflies transcript");
+    }
+    return data;
+  },
   async sendEmail(
     templateId: Identifier,
     contactId: Identifier,
