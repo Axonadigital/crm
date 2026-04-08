@@ -76,11 +76,18 @@ function mergeContactData(winner: Contact, loser: Contact) {
   };
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function mergeContacts(
   loserId: number,
   winnerId: number,
   userId: string,
 ) {
+  if (!UUID_RE.test(userId)) {
+    throw new Error("Invalid userId format");
+  }
+
   try {
     return await db.transaction().execute(async (trx) => {
       // Enable RLS by switching to authenticated role and setting user context
@@ -172,10 +179,27 @@ Deno.serve(async (req: Request) =>
         // Handle POST request
         if (req.method === "POST") {
           try {
-            const { loserId, winnerId } = await req.json();
+            const body = await req.json();
+            const loserId = Number(body.loserId);
+            const winnerId = Number(body.winnerId);
 
-            if (!loserId || !winnerId) {
-              return createErrorResponse(400, "Missing loserId or winnerId");
+            if (!Number.isInteger(loserId) || loserId <= 0) {
+              return createErrorResponse(
+                400,
+                "loserId must be a positive integer",
+              );
+            }
+            if (!Number.isInteger(winnerId) || winnerId <= 0) {
+              return createErrorResponse(
+                400,
+                "winnerId must be a positive integer",
+              );
+            }
+            if (loserId === winnerId) {
+              return createErrorResponse(
+                400,
+                "loserId and winnerId must be different",
+              );
             }
 
             const result = await mergeContacts(loserId, winnerId, user.id);

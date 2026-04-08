@@ -1,10 +1,20 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import * as jose from "jsr:@panva/jose@6";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 
 type CalendarAction = "create" | "update" | "delete";
+
+const VALID_ACTIONS: CalendarAction[] = ["create", "update", "delete"];
+const VALID_STATUSES = ["scheduled", "completed", "cancelled"] as const;
+const VALID_SOURCES = ["crm", "calcom", "google"] as const;
+const MAX_TITLE_LENGTH = 500;
+const MAX_DESCRIPTION_LENGTH = 5000;
+const MAX_ATTENDEES = 100;
+const MAX_TIMEZONE_LENGTH = 100;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type CalendarEventPayload = {
   title?: string;
@@ -25,28 +35,212 @@ type CalendarEventPayload = {
   metadata?: Record<string, unknown> | null;
 };
 
-const GOOGLE_CALENDAR_ID = Deno.env.get("GOOGLE_CALENDAR_ID");
-const GOOGLE_OAUTH_CLIENT_ID = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID");
-const GOOGLE_OAUTH_CLIENT_SECRET = Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET");
-const GOOGLE_OAUTH_REFRESH_TOKEN = Deno.env.get("GOOGLE_OAUTH_REFRESH_TOKEN");
+type ServiceAccountConfig = {
+  client_email: string;
+  private_key: string;
+  token_uri: string;
+};
 
-function assertGoogleCalendarConfigured() {
-  if (!GOOGLE_CALENDAR_ID) {
-    throw new Error("GOOGLE_CALENDAR_ID not configured");
-  }
+// --- Input Validation ---
 
-  if (!GOOGLE_OAUTH_CLIENT_ID) {
-    throw new Error("GOOGLE_OAUTH_CLIENT_ID not configured");
-  }
-
-  if (!GOOGLE_OAUTH_CLIENT_SECRET) {
-    throw new Error("GOOGLE_OAUTH_CLIENT_SECRET not configured");
-  }
-
-  if (!GOOGLE_OAUTH_REFRESH_TOKEN) {
-    throw new Error("GOOGLE_OAUTH_REFRESH_TOKEN not configured");
-  }
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
+
+function isNullablePositiveInteger(value: unknown): value is number | null {
+  return value === null || value === undefined || isPositiveInteger(value);
+}
+
+function isValidDatetime(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime());
+}
+
+function validatePayload(
+  payload: Record<string, unknown>,
+  requireDates: boolean,
+):
+  | { valid: true; data: CalendarEventPayload }
+  | { valid: false; error: string } {
+  if (payload.title !== undefined && payload.title !== null) {
+    if (typeof payload.title !== "string") {
+      return { valid: false, error: "title must be a string" };
+    }
+    if (payload.title.length > MAX_TITLE_LENGTH) {
+      return {
+        valid: false,
+        error: `title must be at most ${MAX_TITLE_LENGTH} characters`,
+      };
+    }
+  }
+
+  if (payload.description !== undefined && payload.description !== null) {
+    if (typeof payload.description !== "string") {
+      return { valid: false, error: "description must be a string" };
+    }
+    if (payload.description.length > MAX_DESCRIPTION_LENGTH) {
+      return {
+        valid: false,
+        error: `description must be at most ${MAX_DESCRIPTION_LENGTH} characters`,
+      };
+    }
+  }
+
+  if (requireDates) {
+    if (!payload.starts_at || !isValidDatetime(payload.starts_at)) {
+      return {
+        valid: false,
+        error: "starts_at is required and must be a valid ISO datetime",
+      };
+    }
+    if (!payload.ends_at || !isValidDatetime(payload.ends_at)) {
+      return {
+        valid: false,
+        error: "ends_at is required and must be a valid ISO datetime",
+      };
+    }
+    if (
+      new Date(payload.starts_at as string) >=
+      new Date(payload.ends_at as string)
+    ) {
+      return { valid: false, error: "starts_at must be before ends_at" };
+    }
+  } else {
+    if (
+      payload.starts_at !== undefined &&
+      !isValidDatetime(payload.starts_at)
+    ) {
+      return {
+        valid: false,
+        error: "starts_at must be a valid ISO datetime",
+      };
+    }
+    if (payload.ends_at !== undefined && !isValidDatetime(payload.ends_at)) {
+      return {
+        valid: false,
+        error: "ends_at must be a valid ISO datetime",
+      };
+    }
+    if (
+      payload.starts_at &&
+      payload.ends_at &&
+      new Date(payload.starts_at as string) >=
+        new Date(payload.ends_at as string)
+    ) {
+      return { valid: false, error: "starts_at must be before ends_at" };
+    }
+  }
+
+  if (payload.time_zone !== undefined && payload.time_zone !== null) {
+    if (
+      typeof payload.time_zone !== "string" ||
+      payload.time_zone.length > MAX_TIMEZONE_LENGTH
+    ) {
+      return { valid: false, error: "time_zone must be a valid string" };
+    }
+  }
+
+  if (!isNullablePositiveInteger(payload.contact_id)) {
+    return {
+      valid: false,
+      error: "contact_id must be a positive integer or null",
+    };
+  }
+  if (!isNullablePositiveInteger(payload.company_id)) {
+    return {
+      valid: false,
+      error: "company_id must be a positive integer or null",
+    };
+  }
+  if (!isNullablePositiveInteger(payload.sales_id)) {
+    return {
+      valid: false,
+      error: "sales_id must be a positive integer or null",
+    };
+  }
+
+  if (payload.status !== undefined && payload.status !== null) {
+    if (
+      !(VALID_STATUSES as readonly string[]).includes(payload.status as string)
+    ) {
+      return {
+        valid: false,
+        error: `status must be one of: ${VALID_STATUSES.join(", ")}`,
+      };
+    }
+  }
+
+  if (payload.source !== undefined && payload.source !== null) {
+    if (
+      !(VALID_SOURCES as readonly string[]).includes(payload.source as string)
+    ) {
+      return {
+        valid: false,
+        error: `source must be one of: ${VALID_SOURCES.join(", ")}`,
+      };
+    }
+  }
+
+  if (payload.attendees !== undefined && payload.attendees !== null) {
+    if (!Array.isArray(payload.attendees)) {
+      return { valid: false, error: "attendees must be an array" };
+    }
+    if (payload.attendees.length > MAX_ATTENDEES) {
+      return {
+        valid: false,
+        error: `attendees must have at most ${MAX_ATTENDEES} entries`,
+      };
+    }
+    for (let i = 0; i < payload.attendees.length; i++) {
+      const attendee = payload.attendees[i];
+      if (!attendee || typeof attendee !== "object") {
+        return { valid: false, error: `attendees[${i}] must be an object` };
+      }
+      if (
+        typeof attendee.email !== "string" ||
+        !EMAIL_REGEX.test(attendee.email)
+      ) {
+        return {
+          valid: false,
+          error: `attendees[${i}].email must be a valid email address`,
+        };
+      }
+      if (
+        attendee.name !== undefined &&
+        attendee.name !== null &&
+        typeof attendee.name !== "string"
+      ) {
+        return {
+          valid: false,
+          error: `attendees[${i}].name must be a string`,
+        };
+      }
+    }
+  }
+
+  if (payload.meet_link !== undefined && payload.meet_link !== null) {
+    if (typeof payload.meet_link !== "string") {
+      return { valid: false, error: "meet_link must be a string" };
+    }
+  }
+
+  if (payload.metadata !== undefined && payload.metadata !== null) {
+    if (
+      typeof payload.metadata !== "object" ||
+      Array.isArray(payload.metadata)
+    ) {
+      return { valid: false, error: "metadata must be an object or null" };
+    }
+  }
+
+  return { valid: true, data: payload as CalendarEventPayload };
+}
+
+// --- Google Calendar Helpers ---
+
+const GOOGLE_CALENDAR_ID = Deno.env.get("GOOGLE_CALENDAR_ID");
+const GOOGLE_SERVICE_ACCOUNT_JSON = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
 
 function normalizeIso(value: string | undefined) {
   if (!value) return undefined;
@@ -57,6 +251,22 @@ function normalizeIso(value: string | undefined) {
   return date.toISOString();
 }
 
+function normalizeServiceAccount(): ServiceAccountConfig | null {
+  if (!GOOGLE_SERVICE_ACCOUNT_JSON) {
+    return null;
+  }
+  const parsed = JSON.parse(
+    GOOGLE_SERVICE_ACCOUNT_JSON,
+  ) as ServiceAccountConfig;
+  if (!parsed.client_email || !parsed.private_key || !parsed.token_uri) {
+    return null;
+  }
+  return {
+    ...parsed,
+    private_key: parsed.private_key.replace(/\\n/g, "\n"),
+  };
+}
+
 async function sha256Hex(input: string) {
   const encoded = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", encoded);
@@ -65,17 +275,29 @@ async function sha256Hex(input: string) {
     .join("");
 }
 
-async function getGoogleAccessToken() {
-  assertGoogleCalendarConfigured();
+async function getGoogleAccessToken(serviceAccount: ServiceAccountConfig) {
+  const now = Math.floor(Date.now() / 1000);
+  const privateKey = await jose.importPKCS8(
+    serviceAccount.private_key,
+    "RS256",
+  );
+  const assertion = await new jose.SignJWT({
+    scope: "https://www.googleapis.com/auth/calendar",
+  })
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setIssuer(serviceAccount.client_email)
+    .setSubject(serviceAccount.client_email)
+    .setAudience(serviceAccount.token_uri)
+    .setIssuedAt(now)
+    .setExpirationTime(now + 3600)
+    .sign(privateKey);
 
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+  const tokenResponse = await fetch(serviceAccount.token_uri, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: GOOGLE_OAUTH_CLIENT_ID,
-      client_secret: GOOGLE_OAUTH_CLIENT_SECRET,
-      refresh_token: GOOGLE_OAUTH_REFRESH_TOKEN,
-      grant_type: "refresh_token",
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
     }),
   });
 
@@ -121,7 +343,9 @@ function extractMeetLink(googleEvent: any): string | null {
 
   const entryPoints = googleEvent?.conferenceData?.entryPoints;
   if (Array.isArray(entryPoints)) {
-    const video = entryPoints.find((entry: any) => entry.entryPointType === "video");
+    const video = entryPoints.find(
+      (entry: any) => entry.entryPointType === "video",
+    );
     if (video?.uri) {
       return video.uri as string;
     }
@@ -131,8 +355,12 @@ function extractMeetLink(googleEvent: any): string | null {
 }
 
 async function createGoogleEvent(payload: CalendarEventPayload) {
-  assertGoogleCalendarConfigured();
-  const token = await getGoogleAccessToken();
+  const serviceAccount = normalizeServiceAccount();
+  if (!serviceAccount || !GOOGLE_CALENDAR_ID) {
+    return { google_event_id: null, meet_link: null };
+  }
+
+  const token = await getGoogleAccessToken(serviceAccount);
   const response = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
       GOOGLE_CALENDAR_ID,
@@ -164,8 +392,12 @@ async function updateGoogleEvent(
   payload: CalendarEventPayload,
   cancelOnly = false,
 ) {
-  assertGoogleCalendarConfigured();
-  const token = await getGoogleAccessToken();
+  const serviceAccount = normalizeServiceAccount();
+  if (!serviceAccount || !GOOGLE_CALENDAR_ID) {
+    return { meet_link: payload.meet_link ?? null };
+  }
+
+  const token = await getGoogleAccessToken(serviceAccount);
   const body = cancelOnly
     ? { status: "cancelled" }
     : buildGoogleEventBody(payload);
@@ -195,6 +427,8 @@ async function updateGoogleEvent(
   };
 }
 
+// --- CRM Calendar Event CRUD ---
+
 async function getSaleIdByUserId(userId: string) {
   const { data, error } = await supabaseAdmin
     .from("sales")
@@ -209,7 +443,10 @@ async function getSaleIdByUserId(userId: string) {
   return data.id as number;
 }
 
-async function createCalendarEvent(userId: string, payload: CalendarEventPayload) {
+async function createCalendarEvent(
+  userId: string,
+  payload: CalendarEventPayload,
+) {
   const saleId = await getSaleIdByUserId(userId);
   const startsAt = normalizeIso(payload.starts_at);
   const endsAt = normalizeIso(payload.ends_at);
@@ -292,7 +529,7 @@ async function updateCalendarEvent(
       title: payload.title ?? existing.title,
       starts_at: startsAt,
       ends_at: endsAt,
-      status: cancelOnly ? "cancelled" : payload.status ?? existing.status,
+      status: cancelOnly ? "cancelled" : (payload.status ?? existing.status),
       attendees: payload.attendees ?? existing.attendees ?? [],
     }),
   );
@@ -319,10 +556,14 @@ async function updateCalendarEvent(
     ends_at: endsAt,
     time_zone: payload.time_zone ?? existing.time_zone ?? "Europe/Stockholm",
     contact_id:
-      payload.contact_id === undefined ? existing.contact_id : payload.contact_id,
+      payload.contact_id === undefined
+        ? existing.contact_id
+        : payload.contact_id,
     company_id:
-      payload.company_id === undefined ? existing.company_id : payload.company_id,
-    status: cancelOnly ? "cancelled" : payload.status ?? existing.status,
+      payload.company_id === undefined
+        ? existing.company_id
+        : payload.company_id,
+    status: cancelOnly ? "cancelled" : (payload.status ?? existing.status),
     meeting_provider: payload.meeting_provider ?? existing.meeting_provider,
     meet_link: payload.meet_link ?? meetLink,
     attendees: payload.attendees ?? existing.attendees ?? [],
@@ -349,6 +590,8 @@ async function updateCalendarEvent(
   return data;
 }
 
+// --- Main Handler ---
+
 Deno.serve(async (req: Request) =>
   OptionsMiddleware(req, async (req) =>
     AuthMiddleware(req, async (req) =>
@@ -361,31 +604,83 @@ Deno.serve(async (req: Request) =>
         }
 
         try {
-          const body = await req.json();
-          const action = body.action as CalendarAction;
-          const id = body.id as number | undefined;
-          const payload = (body.data ?? {}) as CalendarEventPayload;
+          let body: Record<string, unknown>;
+          try {
+            body = await req.json();
+          } catch {
+            return createErrorResponse(400, "Invalid JSON body");
+          }
+
+          if (
+            typeof body !== "object" ||
+            body === null ||
+            Array.isArray(body)
+          ) {
+            return createErrorResponse(
+              400,
+              "Request body must be a JSON object",
+            );
+          }
+
+          const action = body.action;
+          if (
+            typeof action !== "string" ||
+            !(VALID_ACTIONS as readonly string[]).includes(action)
+          ) {
+            return createErrorResponse(
+              400,
+              `action must be one of: ${VALID_ACTIONS.join(", ")}`,
+            );
+          }
+
+          const id = body.id;
+          const rawPayload =
+            body.data !== undefined && body.data !== null ? body.data : {};
+
+          if (typeof rawPayload !== "object" || Array.isArray(rawPayload)) {
+            return createErrorResponse(400, "data must be a JSON object");
+          }
 
           if (action === "create") {
-            const data = await createCalendarEvent(user.id, payload);
+            const validation = validatePayload(
+              rawPayload as Record<string, unknown>,
+              true,
+            );
+            if (!validation.valid) {
+              return createErrorResponse(400, validation.error);
+            }
+            const data = await createCalendarEvent(user.id, validation.data);
             return new Response(JSON.stringify({ data }), {
               headers: { "Content-Type": "application/json", ...corsHeaders },
             });
           }
 
           if (action === "update") {
-            if (!id) {
-              return createErrorResponse(400, "Missing id for update action");
+            if (!isPositiveInteger(id)) {
+              return createErrorResponse(
+                400,
+                "id must be a positive integer for update action",
+              );
             }
-            const data = await updateCalendarEvent(id, payload, false);
+            const validation = validatePayload(
+              rawPayload as Record<string, unknown>,
+              false,
+            );
+            if (!validation.valid) {
+              return createErrorResponse(400, validation.error);
+            }
+            const data = await updateCalendarEvent(id, validation.data, false);
             return new Response(JSON.stringify({ data }), {
               headers: { "Content-Type": "application/json", ...corsHeaders },
             });
           }
 
           if (action === "delete") {
-            if (!id) {
-              return createErrorResponse(400, "Missing id for delete action");
+            if (!isPositiveInteger(id)) {
+              return createErrorResponse(
+                400,
+                "id must be a positive integer for delete action",
+              );
             }
             const data = await updateCalendarEvent(id, {}, true);
             return new Response(JSON.stringify({ data }), {

@@ -20,25 +20,38 @@ Deno.serve(async (req: Request) => {
     return createErrorResponse(405, "Method Not Allowed");
   }
 
-  // Verify webhook secret
+  // Verify webhook secret — REQUIRED, reject if not configured
   const webhookSecret = Deno.env.get("POSTMARK_WEBHOOK_SECRET");
-  if (webhookSecret) {
-    const providedSecret =
-      req.headers.get("x-postmark-webhook-secret") ||
-      new URL(req.url).searchParams.get("secret");
-    if (providedSecret !== webhookSecret) {
-      return createErrorResponse(401, "Invalid webhook secret");
-    }
+  if (!webhookSecret) {
+    console.error("POSTMARK_WEBHOOK_SECRET not configured");
+    return createErrorResponse(500, "Webhook secret not configured");
+  }
+
+  const providedSecret =
+    req.headers.get("x-postmark-webhook-secret") ||
+    new URL(req.url).searchParams.get("secret");
+  if (providedSecret !== webhookSecret) {
+    return createErrorResponse(401, "Invalid webhook secret");
   }
 
   try {
     const event = await req.json();
 
+    // Validate that the payload is an object
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      return createErrorResponse(400, "Invalid payload: expected JSON object");
+    }
+
     // Postmark sends different event types
     // See: https://postmarkapp.com/developer/webhooks/webhooks-overview
     const messageId = event.MessageID;
-    if (!messageId) {
-      return createErrorResponse(400, "Missing MessageID");
+    if (!messageId || typeof messageId !== "string") {
+      return createErrorResponse(400, "Missing or invalid MessageID");
+    }
+
+    const recordType = event.RecordType;
+    if (!recordType || typeof recordType !== "string") {
+      return createErrorResponse(400, "Missing or invalid RecordType");
     }
 
     // Find the email_send record by postmark_message_id
@@ -56,7 +69,6 @@ Deno.serve(async (req: Request) => {
     }
 
     // Determine new status and timestamp based on event type
-    const recordType = event.RecordType as string;
     const updateData: Record<string, unknown> = {};
 
     switch (recordType) {
@@ -121,9 +133,6 @@ Deno.serve(async (req: Request) => {
     );
   } catch (error) {
     console.error("postmark_events error:", error);
-    return createErrorResponse(
-      500,
-      `Webhook processing failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
+    return createErrorResponse(500, "Webhook processing failed");
   }
 });
