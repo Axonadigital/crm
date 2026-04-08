@@ -41,10 +41,12 @@ export interface ContractInput {
 export interface DocuSealSubmissionPayload {
   template_id: number;
   send_email: boolean;
+  order: string;
   submitters: Array<{
     role: string;
     email: string;
     name: string;
+    completed?: boolean;
     fields: Array<{
       name: string;
       default_value: string;
@@ -155,10 +157,31 @@ export function buildSubmissionPayload(
     });
   }
 
+  const today_str = new Date().toLocaleDateString("sv-SE");
+
   return {
     template_id: templateId,
     send_email: false,
+    order: "preserved",
     submitters: [
+      {
+        role: "Second Party",
+        email: "info@axonadigital.se",
+        name: "Isak Persson",
+        completed: true,
+        fields: [
+          {
+            name: "Axona signatur",
+            default_value: "Isak Persson",
+            readonly: true,
+          },
+          {
+            name: "Axona datum",
+            default_value: today_str,
+            readonly: true,
+          },
+        ],
+      },
       {
         role: "First Party",
         email: contact.email,
