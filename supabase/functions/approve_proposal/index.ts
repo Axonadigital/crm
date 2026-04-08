@@ -50,20 +50,25 @@ async function sendProposalEmail(params: {
     return;
   }
 
+  const safeContact = escapeHtml(params.contactName);
+  const safeCompany = escapeHtml(params.companyName);
+  const safeQuoteNumber = escapeHtml(params.quoteNumber);
+  const safeUrl = encodeURI(params.proposalUrl);
+
   const html = `<!DOCTYPE html>
 <html lang="sv">
 <head><meta charset="utf-8"></head>
 <body style="font-family:Inter,-apple-system,sans-serif;margin:0;padding:0;background:#f5f5f5;">
   <div style="max-width:600px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
     <div style="background:#0a0a0a;padding:32px 40px;">
-      <h1 style="color:#fff;font-size:20px;margin:0;">Offert ${params.quoteNumber}</h1>
+      <h1 style="color:#fff;font-size:20px;margin:0;">Offert ${safeQuoteNumber}</h1>
       <p style="color:#a3a3a3;font-size:14px;margin:8px 0 0;">Axona Digital AB</p>
     </div>
     <div style="padding:40px;">
-      <p style="font-size:15px;color:#0a0a0a;line-height:1.6;margin:0 0 16px;">Hej ${params.contactName},</p>
-      <p style="font-size:15px;color:#525252;line-height:1.6;margin:0 0 24px;">Tack for ditt intresse! Vi har tagit fram en offert till ${params.companyName}. Klicka pa knappen nedan for att granska offerten och signera avtalet.</p>
+      <p style="font-size:15px;color:#0a0a0a;line-height:1.6;margin:0 0 16px;">Hej ${safeContact},</p>
+      <p style="font-size:15px;color:#525252;line-height:1.6;margin:0 0 24px;">Tack for ditt intresse! Vi har tagit fram en offert till ${safeCompany}. Klicka pa knappen nedan for att granska offerten och signera avtalet.</p>
       <div style="text-align:center;margin:32px 0;">
-        <a href="${params.proposalUrl}" style="display:inline-block;padding:14px 32px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600;">Visa offert och signera</a>
+        <a href="${safeUrl}" style="display:inline-block;padding:14px 32px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600;">Visa offert och signera</a>
       </div>
       <p style="font-size:13px;color:#a3a3a3;line-height:1.6;margin:24px 0 0;">Om du har fragor, svara garna pa detta mejl sa aterkom vi sa snart vi kan.</p>
     </div>
@@ -277,7 +282,7 @@ Deno.serve(async (req: Request) =>
         return new Response(
           htmlPage(
             "E-signering misslyckades",
-            `Kunde inte skapa signeringsforfragan.\n\nFel: ${errorText.substring(0, 200)}`,
+            "Kunde inte skapa signeringsforfragan. Kontakta oss om problemet kvarstar.",
             "error",
           ),
           {
@@ -366,7 +371,7 @@ Deno.serve(async (req: Request) =>
       return new Response(
         htmlPage(
           "Nagot gick fel",
-          `${error instanceof Error ? error.message : "Okant fel"}`,
+          "Ett oväntat fel uppstod. Kontakta oss om problemet kvarstar.",
           "error",
         ),
         {
@@ -378,16 +383,28 @@ Deno.serve(async (req: Request) =>
   }),
 );
 
+/** Escape HTML special characters to prevent XSS */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function htmlPage(
   title: string,
   message: string,
   type: "success" | "error" | "info",
 ): string {
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
   const colors = {
     success: { bg: "#f0fdf4", border: "#22c55e", text: "#15803d" },
     error: { bg: "#fef2f2", border: "#ef4444", text: "#b91c1c" },
     info: { bg: "#eff6ff", border: "#3b82f6", text: "#1d4ed8" },
   };
   const c = colors[type];
-  return `<!DOCTYPE html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><style>body{font-family:Inter,-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5}.card{max-width:500px;padding:40px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);text-align:center}.icon{font-size:48px;margin-bottom:16px}h1{font-size:24px;font-weight:700;color:#0a0a0a;margin:0 0 12px}p{font-size:15px;color:#525252;line-height:1.6;margin:0;white-space:pre-line}.badge{display:inline-block;padding:6px 16px;border-radius:6px;font-size:13px;font-weight:600;background:${c.bg};color:${c.text};border:1px solid ${c.border};margin-bottom:20px}</style></head><body><div class="card"><div class="icon">${type === "success" ? "&#10003;" : type === "error" ? "&#10007;" : "&#8505;"}</div><div class="badge">${type === "success" ? "Klart" : type === "error" ? "Fel" : "Info"}</div><h1>${title}</h1><p>${message}</p></div></body></html>`;
+  return `<!DOCTYPE html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${safeTitle}</title><style>body{font-family:Inter,-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5}.card{max-width:500px;padding:40px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);text-align:center}.icon{font-size:48px;margin-bottom:16px}h1{font-size:24px;font-weight:700;color:#0a0a0a;margin:0 0 12px}p{font-size:15px;color:#525252;line-height:1.6;margin:0;white-space:pre-line}.badge{display:inline-block;padding:6px 16px;border-radius:6px;font-size:13px;font-weight:600;background:${c.bg};color:${c.text};border:1px solid ${c.border};margin-bottom:20px}</style></head><body><div class="card"><div class="icon">${type === "success" ? "&#10003;" : type === "error" ? "&#10007;" : "&#8505;"}</div><div class="badge">${type === "success" ? "Klart" : type === "error" ? "Fel" : "Info"}</div><h1>${safeTitle}</h1><p>${safeMessage}</p></div></body></html>`;
 }
