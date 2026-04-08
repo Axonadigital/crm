@@ -19,13 +19,20 @@ import {
   Check,
   X,
   Copy,
+  FileCheck,
 } from "lucide-react";
 import { EditButton } from "@/components/admin/edit-button";
 import { DeleteWithConfirmButton } from "@/components/admin/delete-with-confirm-button";
 import { ReferenceField } from "@/components/admin/reference-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -167,6 +174,8 @@ const QuoteShowMobileWrapper = () => {
           {(record.status === "draft" || record.status === "generated") && (
             <PreviewPdfButton />
           )}
+          {(record.status === "generated" || record.status === "draft") &&
+            displayText && <PreviewContractButton />}
           {(record.status === "generated" || record.status === "draft") &&
             displayText && <SendForSigningButton />}
           {record.pdf_url && (
@@ -424,6 +433,8 @@ const QuoteShowContent = () => {
           {(record.status === "draft" || record.status === "generated") && (
             <PreviewPdfButton />
           )}
+          {(record.status === "generated" || record.status === "draft") &&
+            displayText && <PreviewContractButton />}
           {(record.status === "generated" || record.status === "draft") &&
             displayText && <SendForSigningButton />}
           {record.pdf_url && (
@@ -1064,6 +1075,202 @@ const SendForSigningButton = () => {
             _: "Send for signing",
           })}
     </Button>
+  );
+};
+
+interface ContractField {
+  name: string;
+  value: string;
+}
+
+function formatCurrencySv(amount: number, currency = "SEK"): string {
+  const suffix = currency === "SEK" ? " kr" : ` ${currency}`;
+  const formatted = amount.toLocaleString("sv-SE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${formatted}${suffix}`;
+}
+
+const PreviewContractButton = () => {
+  const translate = useTranslate();
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const record = useRecordContext<Quote>();
+  const [open, setOpen] = useState(false);
+  const [fields, setFields] = useState<ContractField[]>([]);
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: async () => {
+      if (!record) throw new Error("No record");
+
+      let companyName = "";
+      if (record.company_id) {
+        const { data: company } = await dataProvider.getOne("companies", {
+          id: record.company_id,
+        });
+        companyName = company?.name || "";
+      }
+
+      let contactName = "";
+      let contactEmail = "";
+      if (record.contact_id) {
+        const { data: contact } = await dataProvider.getOne(
+          "contacts_summary",
+          { id: record.contact_id },
+        );
+        contactName =
+          [contact?.first_name, contact?.last_name].filter(Boolean).join(" ") ||
+          "";
+        contactEmail = contact?.email || "";
+      }
+
+      const { data: lineItems } = await dataProvider.getList(
+        "quote_line_items",
+        {
+          filter: { quote_id: record.id },
+          sort: { field: "sort_order", order: "ASC" },
+          pagination: { page: 1, perPage: 100 },
+        },
+      );
+
+      const currency = record.currency || "SEK";
+      const today = new Date().toLocaleDateString("sv-SE");
+      const validUntil = record.valid_until
+        ? new Date(record.valid_until).toLocaleDateString("sv-SE")
+        : "";
+
+      const scopeOfWork = record.generated_text
+        ? record.generated_text.length > 2000
+          ? record.generated_text.substring(0, 2000) + "..."
+          : record.generated_text
+        : "Se bifogad offert för fullständig beskrivning.";
+
+      const lineItemsText =
+        lineItems && lineItems.length > 0
+          ? lineItems
+              .map(
+                (item: {
+                  description: string;
+                  quantity: number;
+                  unit_price: number;
+                  total: number;
+                }) => {
+                  const qty = Number(item.quantity);
+                  const price = formatCurrencySv(
+                    Number(item.unit_price),
+                    currency,
+                  );
+                  const total = formatCurrencySv(Number(item.total), currency);
+                  return `${item.description}  |  ${qty} x ${price}  =  ${total}`;
+                },
+              )
+              .join("\n")
+          : "Inga rader";
+
+      const proposalUrl =
+        record.pdf_url ||
+        `${window.location.origin}/quote.html?id=${record.id}`;
+
+      const result: ContractField[] = [
+        { name: "Offertnummer", value: record.quote_number || `#${record.id}` },
+        { name: "Datum", value: today },
+        { name: "Giltig till", value: validUntil || "—" },
+        { name: "Foretag", value: companyName },
+        { name: "Kontaktperson", value: `${contactName} (${contactEmail})` },
+        { name: "Uppdragsbeskrivning", value: scopeOfWork },
+        { name: "Prislista", value: lineItemsText },
+        {
+          name: "Totalt",
+          value: formatCurrencySv(record.total_amount || 0, currency),
+        },
+        {
+          name: "Betalningsvillkor",
+          value: record.payment_terms || "30 dagar netto",
+        },
+        {
+          name: "Villkor",
+          value:
+            record.terms_and_conditions || "Standardvillkor enligt offert.",
+        },
+        { name: "Offertlank", value: proposalUrl },
+      ];
+
+      return result;
+    },
+    onSuccess: (data: ContractField[]) => {
+      setFields(data);
+      setOpen(true);
+    },
+    onError: () => {
+      notify("resources.quotes.notifications.preview_contract_failed", {
+        type: "error",
+        _: "Kunde inte förhandsgranska kontraktet",
+      });
+    },
+  });
+
+  return (
+    <>
+      <Button
+        onClick={() => mutate()}
+        disabled={isPending}
+        variant="outline"
+        size="sm"
+        className="flex items-center gap-2"
+      >
+        <FileCheck className="w-4 h-4" />
+        {isPending
+          ? translate("resources.quotes.action.loading_contract_preview", {
+              _: "Laddar...",
+            })
+          : translate("resources.quotes.action.preview_contract", {
+              _: "Förhandsgranska kontrakt",
+            })}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="lg:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {translate("resources.quotes.action.contract_preview_title", {
+                _: "Förhandsgranskning — DocuSeal-kontrakt",
+              })}
+            </DialogTitle>
+            <DialogDescription>
+              {translate(
+                "resources.quotes.action.contract_preview_description",
+                {
+                  _: "Dessa fält skickas till DocuSeal när du trycker Skicka för signering. Kontrollera att allt stämmer.",
+                },
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            {fields.map((field) => (
+              <div key={field.name} className="border rounded-md p-3">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  {field.name}
+                </span>
+                <div className="mt-1 text-sm whitespace-pre-wrap break-words leading-6">
+                  {field.name === "Offertlank" ? (
+                    <a
+                      href={field.value}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      {field.value}
+                    </a>
+                  ) : (
+                    field.value
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

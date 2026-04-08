@@ -586,6 +586,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/meetings/FetchFirefliesDialog.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/meetings/ContactTranscriptions.tsx",
           "type": "registry:component"
         },

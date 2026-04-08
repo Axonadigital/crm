@@ -93,9 +93,9 @@ const DEFAULT_REFERENCES: ReferenceProject[] = [
       "Professionell webbplats för byggföretag med tjänstepresentation och referensprojekt.",
   },
   {
-    title: "Kundtab",
+    title: "Kuntab",
     url: "https://image.thum.io/get/width/600/crop/400/https://kundtab.se/",
-    link: "https://kundtab.se",
+    link: "https://kuntab.se",
     type: "Ensidig hemsida",
     description:
       "Konverteringsoptimerad landningssida med fokus på tjänsterna och kontaktformulär.",
@@ -139,10 +139,10 @@ Deno.serve(async (req: Request) =>
               .single(),
             quote.contact_id
               ? supabase
-                  .from("contacts")
-                  .select("*")
-                  .eq("id", quote.contact_id)
-                  .single()
+                .from("contacts")
+                .select("*")
+                .eq("id", quote.contact_id)
+                .single()
               : Promise.resolve({ data: null }),
             supabase
               .from("quote_line_items")
@@ -836,9 +836,8 @@ function buildLegacyTemplate(d: LegacyTemplateData): string {
   </div>
 </div>
 
-${
-  d.quoteText
-    ? `
+${d.quoteText
+      ? `
 <div class="page">
   <div class="content">
     <div class="header"><img src="${d.logoDark}" class="header-logo" alt=""><div class="header-ref">Offert ${esc(d.quoteNumber)}<br>${d.quoteDate}</div></div>
@@ -848,17 +847,16 @@ ${
     <div class="page-foot"><span>${esc(sellerName)}</span><span>Offert ${esc(d.quoteNumber)} &mdash; Sida 2</span></div>
   </div>
 </div>`
-    : ""
-}
+      : ""
+    }
 
 <div class="page">
   <div class="content">
     <div class="header"><img src="${d.logoDark}" class="header-logo" alt=""><div class="header-ref">Offert ${esc(d.quoteNumber)}<br>${d.quoteDate}</div></div>
     <div class="section-title">Prisspecifikation</div>
     <div class="section-accent"></div>
-    ${
-      d.lineItems.length > 0
-        ? `
+    ${d.lineItems.length > 0
+      ? `
     <table class="price-table"><thead><tr><th>Beskrivning</th><th>Antal</th><th>Styckpris</th><th>Summa</th></tr></thead><tbody>
     ${d.lineItems.map((item) => `<tr><td class="col-desc">${esc(item.description)}</td><td class="col-center">${item.quantity}</td><td class="col-right">${fmt(item.unit_price)} ${d.cur}</td><td class="col-right">${fmt(item.quantity * item.unit_price)} ${d.cur}</td></tr>`).join("")}
     </tbody></table>
@@ -868,7 +866,7 @@ ${
       <div class="totals-row"><span class="totals-label">Moms (${d.vatRate}%)</span><span class="totals-value">${fmt(d.vatAmount)} ${d.cur}</span></div>
       <div class="totals-row total"><span>Att betala</span><span>${fmt(d.totalInclVat)} ${d.cur}</span></div>
     </div>`
-        : `<div style="margin-top:6mm"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#a3a3a3;margin-bottom:3px">Totalbelopp</div><div style="font-size:28px;font-weight:800;color:#0a0a0a;letter-spacing:-0.5px">${fmt(d.totalInclVat)} ${d.cur}</div></div>`
+      : `<div style="margin-top:6mm"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#a3a3a3;margin-bottom:3px">Totalbelopp</div><div style="font-size:28px;font-weight:800;color:#0a0a0a;letter-spacing:-0.5px">${fmt(d.totalInclVat)} ${d.cur}</div></div>`
     }
     ${d.quote.payment_terms || d.quote.delivery_terms ? `<div class="info-grid">${d.quote.payment_terms ? `<div class="info-box"><div class="info-box-label">Betalningsvillkor</div><div class="info-box-value">${esc(d.quote.payment_terms as string)}</div></div>` : ""}${d.quote.delivery_terms ? `<div class="info-box"><div class="info-box-label">Leveransvillkor</div><div class="info-box-value">${esc(d.quote.delivery_terms as string)}</div></div>` : ""}</div>` : ""}
     ${d.validUntil ? `<div class="validity">Denna offert \u00e4r giltig till och med <strong>${d.validUntil}</strong>.</div>` : ""}
