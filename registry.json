@@ -242,6 +242,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/quotes/quoteCalculations.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/quotes/index.ts",
           "type": "registry:component"
         },
