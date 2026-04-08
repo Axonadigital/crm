@@ -79,6 +79,8 @@ const dataProviderWithCustomMethods = {
 
       // status_preset: translate quick-filter presets to lead_status OR conditions
       const STATUS_PRESET_MAP: Record<string, string> = {
+        hot_leads:
+          "lead_status.in.(info_sent,send_info,interested,proposal_sent)",
         active_customers: "lead_status.eq.closed_won",
         under_negotiation: "lead_status.eq.proposal_sent",
         follow_up: "lead_status.in.(contacted,interested,meeting_booked)",

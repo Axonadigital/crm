@@ -12,6 +12,7 @@ import { sizes } from "./sizes";
 const activeCustomersFilter = { status_preset: "active_customers" };
 const companiesUnderNegotiationFilter = { status_preset: "under_negotiation" };
 const companiesForFollowupFilter = { status_preset: "follow_up" };
+const hotLeadsFilter = { status_preset: "hot_leads" };
 const neverContactedFilter = { status_preset: "never_contacted" };
 const contactedNoResponseFilter = { status_preset: "no_response" };
 const notInterestedFilter = { status_preset: "not_interested" };
@@ -114,6 +115,11 @@ export const CompanyListFilter = () => {
         icon={<Handshake className="h-4 w-4" />}
         label="Relationsstatus"
       >
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label="🔥 Heta leads"
+          value={hotLeadsFilter}
+        />
         <ToggleFilterButton
           className="w-full justify-between"
           label={translate("resources.companies.filters.active_customers", {
