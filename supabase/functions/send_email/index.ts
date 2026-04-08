@@ -26,18 +26,87 @@ Deno.serve(async (req: Request) =>
         }
 
         try {
+          let body: unknown;
+          try {
+            body = await req.json();
+          } catch {
+            return createErrorResponse(400, "Invalid JSON body");
+          }
+
+          if (
+            typeof body !== "object" ||
+            body === null ||
+            Array.isArray(body)
+          ) {
+            return createErrorResponse(
+              400,
+              "Request body must be a JSON object",
+            );
+          }
+
           const {
             template_id,
             contact_id,
             variables: customVariables,
-          } = await req.json();
+          } = body as Record<string, unknown>;
 
-          if (!template_id || !contact_id) {
+          if (template_id == null || contact_id == null) {
             return createErrorResponse(
               400,
               "Missing template_id or contact_id",
             );
           }
+
+          if (
+            !Number.isInteger(Number(template_id)) ||
+            Number(template_id) <= 0
+          ) {
+            return createErrorResponse(
+              400,
+              "template_id must be a positive integer",
+            );
+          }
+
+          if (
+            !Number.isInteger(Number(contact_id)) ||
+            Number(contact_id) <= 0
+          ) {
+            return createErrorResponse(
+              400,
+              "contact_id must be a positive integer",
+            );
+          }
+
+          if (customVariables != null) {
+            if (
+              typeof customVariables !== "object" ||
+              Array.isArray(customVariables)
+            ) {
+              return createErrorResponse(
+                400,
+                "variables must be a plain object",
+              );
+            }
+            for (const [key, value] of Object.entries(
+              customVariables as Record<string, unknown>,
+            )) {
+              if (typeof key !== "string" || key.length > 100) {
+                return createErrorResponse(
+                  400,
+                  "Variable keys must be strings of max 100 characters",
+                );
+              }
+              if (typeof value !== "string" || value.length > 5000) {
+                return createErrorResponse(
+                  400,
+                  `Variable "${key}" must be a string of max 5000 characters`,
+                );
+              }
+            }
+          }
+
+          const validTemplateId = Number(template_id);
+          const validContactId = Number(contact_id);
 
           const resendApiKey = Deno.env.get("RESEND_API_KEY");
           if (!resendApiKey) {
@@ -48,7 +117,7 @@ Deno.serve(async (req: Request) =>
           const { data: template, error: templateError } = await supabaseAdmin
             .from("email_templates")
             .select("*")
-            .eq("id", template_id)
+            .eq("id", validTemplateId)
             .single();
 
           if (templateError || !template) {
@@ -59,7 +128,7 @@ Deno.serve(async (req: Request) =>
           const { data: contact, error: contactError } = await supabaseAdmin
             .from("contacts")
             .select("*")
-            .eq("id", contact_id)
+            .eq("id", validContactId)
             .single();
 
           if (contactError || !contact) {
@@ -114,7 +183,7 @@ Deno.serve(async (req: Request) =>
               : "",
             sender_first_name: sender?.first_name || "",
             sender_email: sender?.email || "",
-            ...customVariables,
+            ...((customVariables as Record<string, string>) ?? {}),
           };
 
           // Render template
@@ -135,8 +204,8 @@ Deno.serve(async (req: Request) =>
           const { data: emailSend, error: insertError } = await supabaseAdmin
             .from("email_sends")
             .insert({
-              template_id,
-              contact_id,
+              template_id: validTemplateId,
+              contact_id: validContactId,
               company_id: contact.company_id || null,
               sales_id: sender?.id || null,
               subject: renderedSubject,

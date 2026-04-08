@@ -23,12 +23,34 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const url = new URL(req.url);
-  const quoteId = url.searchParams.get("id");
+  if (req.method !== "GET") {
+    return Response.json(
+      { error: "Method Not Allowed" },
+      {
+        status: 405,
+        headers: { "Access-Control-Allow-Origin": "*" },
+      },
+    );
+  }
 
-  if (!quoteId) {
+  const url = new URL(req.url);
+  const quoteIdParam = url.searchParams.get("id");
+
+  if (!quoteIdParam) {
     return Response.json(
       { error: "Missing quote id" },
+      {
+        status: 400,
+        headers: { "Access-Control-Allow-Origin": "*" },
+      },
+    );
+  }
+
+  // Validate that id is a positive integer (quotes.id is bigint)
+  const quoteId = Number(quoteIdParam);
+  if (!Number.isInteger(quoteId) || quoteId <= 0) {
+    return Response.json(
+      { error: "Invalid quote id: must be a positive integer" },
       {
         status: 400,
         headers: { "Access-Control-Allow-Origin": "*" },

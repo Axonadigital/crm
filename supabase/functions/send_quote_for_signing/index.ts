@@ -34,8 +34,28 @@ Deno.serve(async (req: Request) =>
     }
 
     try {
-      const { quote_id } = await req.json();
-      if (!quote_id) return createErrorResponse(400, "Missing quote_id");
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return createErrorResponse(400, "Invalid JSON body");
+      }
+
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        return createErrorResponse(400, "Request body must be a JSON object");
+      }
+
+      const { quote_id } = body as Record<string, unknown>;
+
+      if (!quote_id || typeof quote_id !== "string") {
+        return createErrorResponse(400, "Missing or invalid quote_id");
+      }
+
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(quote_id)) {
+        return createErrorResponse(400, "quote_id must be a valid UUID");
+      }
 
       const docusealApiKey = Deno.env.get("DOCUSEAL_API_KEY");
       const docusealTemplateId = Deno.env.get("DOCUSEAL_TEMPLATE_ID");
@@ -171,10 +191,7 @@ Deno.serve(async (req: Request) =>
       );
     } catch (error) {
       console.error("send_quote_for_signing error:", error);
-      return createErrorResponse(
-        500,
-        `Failed to send quote for signing: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      return createErrorResponse(500, "Failed to send quote for signing");
     }
   }),
 );

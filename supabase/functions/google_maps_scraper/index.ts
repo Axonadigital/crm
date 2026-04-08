@@ -131,24 +131,42 @@ async function scrapeGoogleMaps(
   return places;
 }
 
-async function handleScrapeRequest(req: Request, currentUserSale: any) {
-  const { query, limit = 20 }: ScrapeRequest = await req.json();
+async function handleScrapeRequest(req: Request, _currentUserSale: any) {
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return createErrorResponse(400, "Ogiltig JSON i request body");
+  }
 
+  const { query } = body;
   if (!query || typeof query !== "string" || query.trim().length === 0) {
     return createErrorResponse(400, "Sökfråga krävs");
   }
 
-  if (limit < 1 || limit > 50) {
-    return createErrorResponse(400, "Limit måste vara mellan 1 och 50");
+  // Sanitize query: cap length to prevent abuse
+  const sanitizedQuery = query.trim().slice(0, 500);
+
+  // Validate limit: must be a positive integer between 1 and 50
+  const rawLimit = body.limit;
+  let limit = 20;
+  if (rawLimit !== undefined && rawLimit !== null) {
+    if (typeof rawLimit !== "number" || !Number.isInteger(rawLimit)) {
+      return createErrorResponse(400, "Limit måste vara ett heltal");
+    }
+    if (rawLimit < 1 || rawLimit > 50) {
+      return createErrorResponse(400, "Limit måste vara mellan 1 och 50");
+    }
+    limit = rawLimit;
   }
 
   try {
-    const places = await scrapeGoogleMaps(query, limit);
+    const places = await scrapeGoogleMaps(sanitizedQuery, limit);
 
     return new Response(
       JSON.stringify({
         success: true,
-        query,
+        query: sanitizedQuery,
         count: places.length,
         data: places,
       }),
@@ -159,10 +177,12 @@ async function handleScrapeRequest(req: Request, currentUserSale: any) {
     );
   } catch (error) {
     console.error("Fel vid scraping:", error);
-    return createErrorResponse(
-      500,
-      `Scraping misslyckades: ${(error as Error).message}`,
-    );
+    // Avoid leaking internal error details (e.g. API keys in error messages)
+    const safeMessage =
+      error instanceof Error && !error.message.includes("key")
+        ? error.message
+        : "Ett oväntat fel uppstod vid sökningen";
+    return createErrorResponse(500, `Scraping misslyckades: ${safeMessage}`);
   }
 }
 
