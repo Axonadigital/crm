@@ -5,8 +5,6 @@ import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 
 Deno.serve(async (req: Request) =>
   OptionsMiddleware(req, async (req) => {
-    // This endpoint is called by Docuseal, NOT by an authenticated CRM user
-    // Verify using webhook secret instead of JWT auth
     if (req.method !== "POST") {
       return createErrorResponse(405, "Method Not Allowed");
     }
@@ -30,8 +28,21 @@ Deno.serve(async (req: Request) =>
 
       const payload = await req.json();
       const eventType = payload.event_type || payload.type;
+
+      // DocuSeal CE sends submission ID in data.submission.id (form events)
+      // or data.submission_id / payload.id (submission events)
       const submissionId = String(
-        payload.data?.submission_id || payload.submission_id || payload.id,
+        payload.data?.submission?.id ||
+          payload.data?.submission_id ||
+          payload.submission_id ||
+          payload.id,
+      );
+
+      console.log(
+        "docuseal_webhook received:",
+        eventType,
+        "submission:",
+        submissionId,
       );
 
       if (!submissionId) {
@@ -49,58 +60,38 @@ Deno.serve(async (req: Request) =>
 
       if (quoteError || !quote) {
         console.error("Quote not found for submission:", submissionId);
-        // Return 200 to prevent Docuseal from retrying
         return new Response(JSON.stringify({ received: true }), {
           headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       }
 
-      // Map Docuseal events to quote status
-      let newStatus: string | null = null;
-      let signedAt: string | null = null;
-      let documentUrl: string | null = null;
+      // DocuSeal CE only sends form.* events (per submitter), not submission.* events.
+      // Check data.submission.status to know if ALL parties have signed.
+      const submissionStatus = payload.data?.submission?.status;
+      const allPartiesSigned = submissionStatus === "completed";
 
-      if (eventType === "submission.completed") {
-        // Only mark as signed when ALL parties have completed (not form.completed which fires per-submitter)
-        newStatus = "signed";
-        signedAt = new Date().toISOString();
-        documentUrl =
+      if (eventType === "form.completed" && allPartiesSigned) {
+        // All parties have signed — mark as signed and trigger full flow
+        const documentUrl =
           payload.data?.documents?.[0]?.url ||
-          payload.data?.download_url ||
+          payload.data?.submission?.combined_document_url ||
           null;
-      } else if (
-        eventType === "submission.declined" ||
-        eventType === "form.declined"
-      ) {
-        newStatus = "declined";
-      } else if (eventType === "form.completed") {
-        // Individual submitter completed — ignore (Axona is pre-completed)
-      } else if (
-        eventType === "submission.viewed" ||
-        eventType === "form.viewed"
-      ) {
-        // Only update to viewed if currently "sent"
-        if (quote.status === "sent") {
-          newStatus = "viewed";
-        }
-      }
 
-      if (newStatus) {
-        const updateData: Record<string, unknown> = { status: newStatus };
-        if (signedAt) updateData.signed_at = signedAt;
-        if (documentUrl) updateData.docuseal_document_url = documentUrl;
+        await supabase
+          .from("quotes")
+          .update({
+            status: "signed",
+            signed_at: new Date().toISOString(),
+            ...(documentUrl ? { docuseal_document_url: documentUrl } : {}),
+          })
+          .eq("id", quote.id);
 
-        await supabase.from("quotes").update(updateData).eq("id", quote.id);
-      }
-
-      // When fully signed: move deal to won, notify Discord, email customer
-      if (eventType === "submission.completed") {
         // Fetch contact and company info for notifications
         const [contactResult, companyResult] = await Promise.all([
           quote.contact_id
             ? supabase
                 .from("contacts")
-                .select("first_name, last_name, email")
+                .select("first_name, last_name, email_jsonb")
                 .eq("id", quote.contact_id)
                 .single()
             : Promise.resolve({ data: null }),
@@ -118,7 +109,8 @@ Deno.serve(async (req: Request) =>
         const contactName = contact
           ? `${contact.first_name || ""} ${contact.last_name || ""}`.trim()
           : "Kund";
-        const contactEmail = contact?.email;
+        const emails = contact?.email_jsonb || [];
+        const contactEmail = emails.length > 0 ? emails[0].email : null;
         const companyName = company?.name || "Okänt företag";
         const quoteNumber = quote.quote_number || `#${quote.id}`;
 
@@ -130,54 +122,22 @@ Deno.serve(async (req: Request) =>
             .eq("id", quote.deal_id);
         }
 
-        // 2. Discord notification
-        try {
-          const botToken = Deno.env.get("DISCORD_BOT_TOKEN");
-          const channelId = Deno.env.get("DISCORD_CHANNEL_ID");
-
-          if (botToken && channelId) {
-            await fetch(
-              `https://discord.com/api/v10/channels/${channelId}/messages`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bot ${botToken}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  embeds: [
-                    {
-                      title: "Avtal signerat!",
-                      description: [
-                        `**Offert:** ${quoteNumber}`,
-                        `**Företag:** ${companyName}`,
-                        `**Kontakt:** ${contactName}`,
-                        `**Deal stage:** → Won`,
-                      ].join("\n"),
-                      color: 5763719,
-                      timestamp: new Date().toISOString(),
-                    },
-                  ],
-                }),
-              },
-            );
-          }
-        } catch (discordErr) {
-          console.error("Discord notification failed:", discordErr);
-        }
+        // 2. Discord notification handled by database trigger on deals.stage change
 
         // 3. Send confirmation email to customer
         try {
           const resendKey = Deno.env.get("RESEND_API_KEY");
+          const fromEmail =
+            Deno.env.get("RESEND_FROM_EMAIL") || "hej@axonadigital.se";
           if (resendKey && contactEmail) {
-            await fetch("https://api.resend.com/emails", {
+            const emailRes = await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: {
                 Authorization: `Bearer ${resendKey}`,
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                from: "Axona Digital <noreply@axonadigital.se>",
+                from: `Axona Digital <${fromEmail}>`,
                 to: contactEmail,
                 subject: `Avtalsbekräftelse — ${quoteNumber}`,
                 html: [
@@ -189,7 +149,13 @@ Deno.serve(async (req: Request) =>
               }),
             });
 
-            // Log in email_sends
+            if (!emailRes.ok) {
+              const errBody = await emailRes.text();
+              console.error("Resend API error:", emailRes.status, errBody);
+            } else {
+              console.log("Confirmation email sent to:", contactEmail);
+            }
+
             await supabase.from("email_sends").insert({
               contact_id: quote.contact_id,
               company_id: quote.company_id,
@@ -206,14 +172,32 @@ Deno.serve(async (req: Request) =>
         } catch (emailErr) {
           console.error("Confirmation email failed:", emailErr);
         }
+      } else if (
+        eventType === "form.declined" ||
+        eventType === "submission.declined"
+      ) {
+        await supabase
+          .from("quotes")
+          .update({ status: "declined" })
+          .eq("id", quote.id);
+      } else if (
+        eventType === "form.viewed" ||
+        eventType === "submission.viewed"
+      ) {
+        if (quote.status === "sent") {
+          await supabase
+            .from("quotes")
+            .update({ status: "viewed" })
+            .eq("id", quote.id);
+        }
       }
+      // form.completed with submission status != "completed" → Axona pre-sign, ignore
 
       return new Response(JSON.stringify({ received: true }), {
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     } catch (error) {
       console.error("docuseal_webhook error:", error);
-      // Return 200 to prevent retries on processing errors
       return new Response(
         JSON.stringify({ received: true, error: "processing_error" }),
         {
