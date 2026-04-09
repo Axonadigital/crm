@@ -26,6 +26,8 @@ export default defineConfig({
       "doc/**",
       "src/**/*.integration.test.{ts,tsx}",
       "supabase/**",
+      "tests/e2e/**",
+      "tests/mobile-layout-check.{ts,mjs}",
     ],
   },
   resolve: {
