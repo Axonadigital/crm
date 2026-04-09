@@ -1,8 +1,21 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
-import { createErrorResponse } from "../_shared/utils.ts";
+import { OptionsMiddleware } from "../_shared/cors.ts";
+import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import {
+  errorResponseFromUnknown,
+  getPositiveIntegerField,
+  parseRequiredJsonBody,
+} from "../_shared/http.ts";
+import {
+  choosePrimaryPhone,
+  createPhoneEntries,
+  extractPhoneNumbersFromText,
+  mergePhoneNumbers,
+  parseStoredPhoneNumbers,
+  type PhoneNumberEntry,
+} from "../_shared/phoneNumbers.ts";
 
 // --- Types ---
 
@@ -39,7 +52,7 @@ interface SerperDiscoveryResult {
   facebook_url: string | null;
   instagram_url: string | null;
   linkedin_url: string | null;
-  phone: string | null;
+  phone_numbers: PhoneNumberEntry[];
   email: string | null;
   context_links: Array<{ url: string; title: string; source: string }>;
 }
@@ -49,14 +62,10 @@ function extractContactFromSnippet(
   result: SerperDiscoveryResult,
 ): void {
   if (!snippet) return;
-  if (!result.phone) {
-    const phoneMatch = snippet.match(
-      /(?:Tel(?:efon)?[:\s]*)?(\+?46[\s-]?\d[\d\s-]{6,12}\d|\d{2,4}[\s-]\d{2,3}[\s-]?\d{2,3}[\s-]?\d{2,3})/,
-    );
-    if (phoneMatch) {
-      result.phone = phoneMatch[1].trim();
-    }
-  }
+  result.phone_numbers = mergePhoneNumbers(
+    result.phone_numbers,
+    createPhoneEntries(extractPhoneNumbersFromText(snippet), "serper_snippet"),
+  );
   if (!result.email) {
     const emailMatch = snippet.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
     if (emailMatch) {
@@ -75,7 +84,7 @@ async function discoverViaSerper(
     facebook_url: null,
     instagram_url: null,
     linkedin_url: null,
-    phone: null,
+    phone_numbers: [],
     email: null,
     context_links: [],
   };
@@ -121,7 +130,13 @@ async function discoverViaSerper(
       result.website = data.knowledgeGraph.website;
     }
     if (data.knowledgeGraph?.phoneNumber) {
-      result.phone = data.knowledgeGraph.phoneNumber;
+      result.phone_numbers = mergePhoneNumbers(
+        result.phone_numbers,
+        createPhoneEntries(
+          [data.knowledgeGraph.phoneNumber],
+          "serper_knowledge_graph",
+        ),
+      );
     }
 
     // Strip Swedish company suffixes for matching
@@ -768,40 +783,10 @@ Deno.serve(async (req: Request) =>
         }
 
         try {
-          let body: unknown;
-          try {
-            body = await req.json();
-          } catch {
-            return createErrorResponse(400, "Invalid JSON body");
-          }
-
-          if (
-            body === null ||
-            typeof body !== "object" ||
-            Array.isArray(body)
-          ) {
-            return createErrorResponse(
-              400,
-              "Request body must be a JSON object",
-            );
-          }
-
-          const { company_id } = body as Record<string, unknown>;
-
-          if (company_id === undefined || company_id === null) {
-            return createErrorResponse(400, "Missing company_id");
-          }
-
-          if (
-            typeof company_id !== "number" ||
-            !Number.isInteger(company_id) ||
-            company_id <= 0
-          ) {
-            return createErrorResponse(
-              400,
-              "company_id must be a positive integer",
-            );
-          }
+          const body = await parseRequiredJsonBody(req);
+          const company_id = getPositiveIntegerField(body, "company_id", {
+            required: true,
+          });
 
           // Fetch company
           const { data: company, error: companyError } = await supabaseAdmin
@@ -815,7 +800,7 @@ Deno.serve(async (req: Request) =>
           }
 
           const enrichmentData: Record<string, unknown> = {};
-          let socialResults = {
+          const socialResults = {
             facebook_url: company.facebook_url as string | null,
             instagram_url: company.instagram_url as string | null,
             has_facebook: company.has_facebook as boolean,
@@ -826,7 +811,7 @@ Deno.serve(async (req: Request) =>
           const serperApiKey = Deno.env.get("SERPER_API_KEY");
 
           let discoveredWebsite: string | null = null;
-          let discoveredPhone: string | null = null;
+          let discoveredPhoneNumbers: PhoneNumberEntry[] = [];
           let discoveredEmail: string | null = null;
           let currentWebsite = (company.website || "").trim();
 
@@ -847,9 +832,10 @@ Deno.serve(async (req: Request) =>
               }
 
               // Phone
-              if (serperResult.phone && !company.phone_number) {
-                discoveredPhone = serperResult.phone;
-              }
+              discoveredPhoneNumbers = mergePhoneNumbers(
+                discoveredPhoneNumbers,
+                serperResult.phone_numbers,
+              );
 
               // Email
               if (serperResult.email && !company.email) {
@@ -929,11 +915,23 @@ Deno.serve(async (req: Request) =>
 
           // Step 4: Calculate Lead Score
           const finalWebsiteForScore = discoveredWebsite || company.website;
+          const finalPhoneNumbers = mergePhoneNumbers(
+            parseStoredPhoneNumbers(company.phone_numbers),
+            company.phone_number
+              ? createPhoneEntries([company.phone_number], "existing_primary")
+              : [],
+            discoveredPhoneNumbers,
+          );
+          const primaryPhone = choosePrimaryPhone(
+            company.phone_number,
+            finalPhoneNumbers,
+          );
           const scoringInput = {
             ...company,
             ...socialResults,
             website_quality: websiteResult.website_quality,
             website: finalWebsiteForScore,
+            phone_number: primaryPhone,
           };
 
           const { score, segment, breakdown } =
@@ -964,8 +962,11 @@ Deno.serve(async (req: Request) =>
           if (discoveredWebsite) {
             updateData.website = discoveredWebsite;
           }
-          if (discoveredPhone) {
-            updateData.phone_number = discoveredPhone;
+          if (finalPhoneNumbers.length > 0) {
+            updateData.phone_numbers = finalPhoneNumbers;
+          }
+          if (primaryPhone) {
+            updateData.phone_number = primaryPhone;
           }
           if (discoveredEmail) {
             updateData.email = discoveredEmail;
@@ -1005,18 +1006,10 @@ Deno.serve(async (req: Request) =>
             enrichment_data: enrichmentData,
           };
 
-          return new Response(JSON.stringify(result), {
-            headers: {
-              "Content-Type": "application/json",
-              ...corsHeaders,
-            },
-          });
+          return createJsonResponse(result);
         } catch (error) {
           console.error("enrich_company error:", error);
-          return createErrorResponse(
-            500,
-            `Failed to enrich company: ${error instanceof Error ? error.message : "Unknown error"}`,
-          );
+          return errorResponseFromUnknown(error);
         }
       }),
     ),

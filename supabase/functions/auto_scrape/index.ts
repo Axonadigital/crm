@@ -1,8 +1,22 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
-import { createErrorResponse } from "../_shared/utils.ts";
+import { OptionsMiddleware } from "../_shared/cors.ts";
+import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import {
+  errorResponseFromUnknown,
+  getEnumField,
+  getPositiveIntegerField,
+  parseOptionalJsonBody,
+} from "../_shared/http.ts";
+import {
+  choosePrimaryPhone,
+  createPhoneEntries,
+  extractPhoneNumbersFromText,
+  mergePhoneNumbers,
+  parseStoredPhoneNumbers,
+  type PhoneNumberEntry,
+} from "../_shared/phoneNumbers.ts";
 
 // --- Types ---
 
@@ -104,7 +118,7 @@ async function scoreWebsiteQuality(websiteUrl: string): Promise<{
     urlLower.includes(domain),
   );
   if (isProfileSite) {
-    console.log(`Not a real website (profile/booking): ${websiteUrl}`);
+    console.warn(`Not a real website (profile/booking): ${websiteUrl}`);
     return { website_score: 0, website_quality: "none" };
   }
 
@@ -368,7 +382,7 @@ async function scoreWebsiteQuality(websiteUrl: string): Promise<{
     const website_quality: "none" | "poor" | "ok" | "good" =
       finalScore >= 70 ? "good" : finalScore >= 40 ? "ok" : "poor";
 
-    console.log(
+    console.warn(
       `Website scored: ${url} → ${finalScore}/100 (${website_quality}) | deductions=${deductions}, bonus=${modernBonus} | ${JSON.stringify(details)}`,
     );
 
@@ -519,14 +533,14 @@ async function enrichCompany(companyId: number): Promise<boolean> {
     const googleCx = Deno.env.get("GOOGLE_CUSTOM_SEARCH_CX");
     const serperApiKey = Deno.env.get("SERPER_API_KEY");
 
-    let socialResults = {
+    const socialResults = {
       facebook_url: null as string | null,
       instagram_url: null as string | null,
       has_facebook: false,
       has_instagram: false,
     };
 
-    let discoveredPhone: string | null = null;
+    let discoveredPhoneNumbers: PhoneNumberEntry[] = [];
     let discoveredEmail: string | null = null;
 
     // Step 0: Serper discovery for phone, email, and social media (fallback)
@@ -568,8 +582,14 @@ async function enrichCompany(companyId: number): Promise<boolean> {
           const serperData = await serperResponse.json();
 
           // Extract phone from Knowledge Graph
-          if (serperData.knowledgeGraph?.phoneNumber && !company.phone_number) {
-            discoveredPhone = serperData.knowledgeGraph.phoneNumber;
+          if (serperData.knowledgeGraph?.phoneNumber) {
+            discoveredPhoneNumbers = mergePhoneNumbers(
+              discoveredPhoneNumbers,
+              createPhoneEntries(
+                [serperData.knowledgeGraph.phoneNumber],
+                "serper_knowledge_graph",
+              ),
+            );
           }
 
           // Extract phone/email from organic snippets
@@ -578,14 +598,13 @@ async function enrichCompany(companyId: number): Promise<boolean> {
               const snippet = item.snippet || "";
 
               // Phone from snippet
-              if (!discoveredPhone && !company.phone_number) {
-                const phoneMatch = snippet.match(
-                  /(?:Tel(?:efon)?[:\s]*)?(\+?46[\s-]?\(?\d\)?[\d\s-]{6,14}\d|0\d{1,3}[\s-]?\d[\d\s-]{4,10}\d)/,
-                );
-                if (phoneMatch) {
-                  discoveredPhone = phoneMatch[1].trim();
-                }
-              }
+              discoveredPhoneNumbers = mergePhoneNumbers(
+                discoveredPhoneNumbers,
+                createPhoneEntries(
+                  extractPhoneNumbersFromText(snippet),
+                  "serper_snippet",
+                ),
+              );
 
               // Email from snippet
               if (!discoveredEmail && !company.email) {
@@ -618,8 +637,8 @@ async function enrichCompany(companyId: number): Promise<boolean> {
             }
           }
 
-          console.log(
-            `Serper discovery for ${company.name}: phone=${discoveredPhone}, email=${discoveredEmail}, fb=${socialResults.has_facebook}, ig=${socialResults.has_instagram}`,
+          console.warn(
+            `Serper discovery for ${company.name}: phones=${discoveredPhoneNumbers.map((entry) => entry.number).join(", ")}, email=${discoveredEmail}, fb=${socialResults.has_facebook}, ig=${socialResults.has_instagram}`,
           );
         }
       } catch (err) {
@@ -702,8 +721,6 @@ async function enrichCompany(companyId: number): Promise<boolean> {
     // Google Places API fallback for phone number
     const googleMapsApiKey = Deno.env.get("GOOGLE_MAPS_API_KEY");
     if (
-      !discoveredPhone &&
-      !company.phone_number &&
       googleMapsApiKey &&
       company.name
     ) {
@@ -726,8 +743,11 @@ async function enrichCompany(companyId: number): Promise<boolean> {
               detailsData.result.formatted_phone_number ||
               detailsData.result.international_phone_number;
             if (phone) {
-              discoveredPhone = phone;
-              console.log(
+              discoveredPhoneNumbers = mergePhoneNumbers(
+                createPhoneEntries([phone], "google_places"),
+                discoveredPhoneNumbers,
+              );
+              console.warn(
                 `Found phone via Google Places API for ${company.name}: ${phone}`,
               );
             }
@@ -753,13 +773,13 @@ async function enrichCompany(companyId: number): Promise<boolean> {
         const url = websiteUrl.startsWith("http")
           ? websiteUrl
           : `https://${websiteUrl}`;
-        console.log(`Website check: ${url}`);
+        console.warn(`Website check: ${url}`);
 
         const scored = await scoreWebsiteQuality(url);
         websiteScore = scored.website_score;
         websiteQuality = scored.website_quality;
 
-        console.log(
+        console.warn(
           `Website result: ${url} → ${websiteScore} (${websiteQuality})`,
         );
       } catch (err) {
@@ -770,7 +790,7 @@ async function enrichCompany(companyId: number): Promise<boolean> {
       }
     } else {
       websiteQuality = "none";
-      console.log(`No website for ${company.name} — quality: none`);
+      console.warn(`No website for ${company.name} — quality: none`);
     }
 
     // Step 3: Allabolag enrichment (org nr, revenue, employees, SNI)
@@ -838,7 +858,7 @@ async function enrichCompany(companyId: number): Promise<boolean> {
               allabolagData.sni_code = sniMatch[1];
             }
 
-            console.log(
+            console.warn(
               `Allabolag data for ${company.name}:`,
               JSON.stringify(allabolagData),
             );
@@ -886,7 +906,16 @@ async function enrichCompany(companyId: number): Promise<boolean> {
     }
 
     // Contact info (max 10) — include discovered phone/email
-    if (company.phone_number || discoveredPhone) score += 5;
+    const finalPhoneNumbers = mergePhoneNumbers(
+      parseStoredPhoneNumbers(company.phone_numbers),
+      company.phone_number
+        ? createPhoneEntries([company.phone_number], "existing_primary")
+        : [],
+      discoveredPhoneNumbers,
+    );
+    const primaryPhone = choosePrimaryPhone(company.phone_number, finalPhoneNumbers);
+
+    if (primaryPhone) score += 5;
     if (company.email || discoveredEmail) score += 5;
 
     score = Math.max(0, Math.min(100, score));
@@ -915,8 +944,11 @@ async function enrichCompany(companyId: number): Promise<boolean> {
     };
 
     // Add discovered phone/email from Serper
-    if (discoveredPhone && !company.phone_number) {
-      updateData.phone_number = discoveredPhone;
+    if (finalPhoneNumbers.length > 0) {
+      updateData.phone_numbers = finalPhoneNumbers;
+    }
+    if (primaryPhone) {
+      updateData.phone_number = primaryPhone;
     }
     if (discoveredEmail && !company.email) {
       updateData.email = discoveredEmail;
@@ -952,11 +984,12 @@ async function enrichCompany(companyId: number): Promise<boolean> {
       company_id: companyId,
       source: "auto_scrape",
       status: "success",
-      enrichment_data: {
-        social: socialResults,
-        website_score: websiteScore,
-        website_quality: websiteQuality,
-        allabolag: allabolagData,
+        enrichment_data: {
+          social: socialResults,
+          phone_numbers: finalPhoneNumbers,
+          website_score: websiteScore,
+          website_quality: websiteQuality,
+          allabolag: allabolagData,
         lead_score: score,
         segment,
         search_quota_exhausted: searchQuotaExhausted,
@@ -1052,6 +1085,9 @@ async function processProfile(
             city: extractCity(place.address || ""),
             zipcode: extractZipcode(place.address || ""),
             phone_number: place.phone || "",
+            phone_numbers: place.phone
+              ? createPhoneEntries([place.phone], "google_maps_scrape")
+              : [],
             website: place.website || "",
             source: "google_maps",
             lead_status: "new",
@@ -1154,19 +1190,14 @@ async function handleReEnrich(_req: Request) {
     .limit(100);
 
   if (error || !companies || companies.length === 0) {
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: "Inga företag behöver re-enrichas",
-        re_enriched: 0,
-      }),
-      {
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      },
-    );
+    return createJsonResponse({
+      success: true,
+      message: "Inga företag behöver re-enrichas",
+      re_enriched: 0,
+    });
   }
 
-  console.log(`Re-enriching ${companies.length} companies...`);
+  console.warn(`Re-enriching ${companies.length} companies...`);
 
   let enriched = 0;
   let failed = 0;
@@ -1186,90 +1217,77 @@ async function handleReEnrich(_req: Request) {
     }
   }
 
-  return new Response(
-    JSON.stringify({
-      success: true,
-      total_candidates: companies.length,
-      re_enriched: enriched,
-      failed,
-    }),
-    {
-      headers: { "Content-Type": "application/json", ...corsHeaders },
-    },
-  );
+  return createJsonResponse({
+    success: true,
+    total_candidates: companies.length,
+    re_enriched: enriched,
+    failed,
+  });
 }
 
 async function handleAutoScrape(req: Request) {
-  const apiKey = Deno.env.get("GOOGLE_MAPS_API_KEY");
-  if (!apiKey) {
-    return createErrorResponse(500, "GOOGLE_MAPS_API_KEY saknas");
-  }
-
-  // Parse request body
-  let profileFilter: number | null = null;
-  let action: string | null = null;
   try {
-    const body = await req.json();
-    profileFilter = body.profile_id ?? null;
-    action = body.action ?? null;
-  } catch {
-    // No body = run all active profiles
-  }
+    const apiKey = Deno.env.get("GOOGLE_MAPS_API_KEY");
+    if (!apiKey) {
+      return createErrorResponse(500, "GOOGLE_MAPS_API_KEY saknas");
+    }
 
-  // Handle re-enrich action
-  if (action === "re_enrich") {
-    return handleReEnrich(req);
-  }
+    const body = await parseOptionalJsonBody(req);
+    const profileFilter = body
+      ? getPositiveIntegerField(body, "profile_id")
+      : undefined;
+    const action = body
+      ? getEnumField(body, "action", ["re_enrich"] as const)
+      : undefined;
 
-  // Fetch active search profiles
-  let query = supabaseAdmin
-    .from("search_profiles")
-    .select("*")
-    .eq("is_active", true);
+    // Handle re-enrich action
+    if (action === "re_enrich") {
+      return handleReEnrich(req);
+    }
 
-  if (profileFilter) {
-    query = query.eq("id", profileFilter);
-  }
+    // Fetch active search profiles
+    let query = supabaseAdmin
+      .from("search_profiles")
+      .select("*")
+      .eq("is_active", true);
 
-  const { data: profiles, error } = await query;
+    if (profileFilter) {
+      query = query.eq("id", profileFilter);
+    }
 
-  if (error || !profiles || profiles.length === 0) {
-    return new Response(
-      JSON.stringify({
+    const { data: profiles, error } = await query;
+
+    if (error || !profiles || profiles.length === 0) {
+      return createJsonResponse({
         success: true,
         message: "Inga aktiva sökprofiler hittades",
         results: [],
-      }),
-      {
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      },
-    );
-  }
-
-  const results: ScrapeRunResult[] = [];
-  const errors: Array<{ profile: string; error: string }> = [];
-
-  for (const profile of profiles as SearchProfile[]) {
-    try {
-      const result = await processProfile(profile, apiKey);
-      results.push(result);
-    } catch (err) {
-      errors.push({
-        profile: profile.name,
-        error: String(err),
       });
     }
-  }
 
-  const totalNew = results.reduce((sum, r) => sum + r.new_imported, 0);
-  const totalEnriched = results.reduce((sum, r) => sum + r.auto_enriched, 0);
-  const totalDuplicates = results.reduce(
-    (sum, r) => sum + r.duplicates_skipped,
-    0,
-  );
+    const results: ScrapeRunResult[] = [];
+    const errors: Array<{ profile: string; error: string }> = [];
 
-  return new Response(
-    JSON.stringify({
+    for (const profile of profiles as SearchProfile[]) {
+      try {
+        const result = await processProfile(profile, apiKey);
+        results.push(result);
+      } catch (err) {
+        errors.push({
+          profile: profile.name,
+          error: String(err),
+        });
+      }
+    }
+
+    const totalNew = results.reduce((sum, r) => sum + r.new_imported, 0);
+    const totalEnriched = results.reduce((sum, r) => sum + r.auto_enriched, 0);
+    const totalDuplicates = results.reduce(
+      (sum, r) => sum + r.duplicates_skipped,
+      0,
+    );
+
+    return createJsonResponse({
       success: true,
       summary: {
         profiles_processed: results.length,
@@ -1280,11 +1298,11 @@ async function handleAutoScrape(req: Request) {
       },
       results,
       errors: errors.length > 0 ? errors : undefined,
-    }),
-    {
-      headers: { "Content-Type": "application/json", ...corsHeaders },
-    },
-  );
+    });
+  } catch (error) {
+    console.error("auto_scrape error:", error);
+    return errorResponseFromUnknown(error);
+  }
 }
 
 Deno.serve(async (req: Request) =>
