@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 
 import { Avatar as ContactAvatar } from "../contacts/Avatar";
+import { getContactDisplayName } from "../contacts/contactName";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Company } from "../types";
 import { CompanyAvatar } from "./CompanyAvatar";
@@ -155,7 +156,7 @@ const AvatarGroupIterator = () => {
           record={record}
           width={25}
           height={25}
-          title={`${record.first_name} ${record.last_name}`}
+          title={getContactDisplayName(record)}
         />
       ))}
       {total > MAX_AVATARS && (

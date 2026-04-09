@@ -1,6 +1,6 @@
-import { email, required, useTranslate } from "ra-core";
-import type { FocusEvent, ClipboardEventHandler } from "react";
-import { useFormContext } from "react-hook-form";
+import { email, required, useGetOne, useTranslate } from "ra-core";
+import { useEffect, type FocusEvent, type ClipboardEventHandler } from "react";
+import { useFormContext, useWatch } from "react-hook-form";
 import { Separator } from "@/components/ui/separator";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { BooleanInput } from "@/components/admin/boolean-input";
@@ -17,9 +17,11 @@ import {
   translateContactGenderLabel,
   translatePersonalInfoTypeLabel,
 } from "./contactGender";
-import type { Sale } from "../types";
+import type { Company, EmailAndType, PhoneNumberAndType, Sale } from "../types";
 import { Avatar } from "./Avatar";
 import { AutocompleteCompanyInput } from "../companies/AutocompleteCompanyInput.tsx";
+import { applyCompanyContactSuggestions } from "./contactCompanySuggestions";
+import { getSuggestedNameFromEmail } from "./contactName";
 
 export const ContactInputs = () => {
   const isMobile = useIsMobile();
@@ -71,7 +73,7 @@ const ContactIdentityInputs = () => {
         defaultValue={contactGender[0].value}
       />
       <TextInput source="first_name" validate={required()} helperText={false} />
-      <TextInput source="last_name" validate={required()} helperText={false} />
+      <TextInput source="last_name" helperText={false} />
     </div>
   );
 };
@@ -94,6 +96,20 @@ const ContactPositionInputs = () => {
 const ContactPersonalInformationInputs = () => {
   const translate = useTranslate();
   const { getValues, setValue } = useFormContext();
+  const companyId = useWatch({ name: "company_id" });
+  const emailJsonb = useWatch({
+    name: "email_jsonb",
+    defaultValue: [],
+  }) as EmailAndType[];
+  const phoneJsonb = useWatch({
+    name: "phone_jsonb",
+    defaultValue: [],
+  }) as PhoneNumberAndType[];
+  const { data: company } = useGetOne<Company>(
+    "companies",
+    { id: companyId },
+    { enabled: companyId != null && companyId !== "" },
+  );
   const personalInfoTypes = [
     {
       id: "Work",
@@ -113,12 +129,9 @@ const ContactPersonalInformationInputs = () => {
   const handleEmailChange = (email: string) => {
     const { first_name, last_name } = getValues();
     if (first_name || last_name || !email) return;
-    const [first, last] = email.split("@")[0].split(".");
-    setValue("first_name", first.charAt(0).toUpperCase() + first.slice(1));
-    setValue(
-      "last_name",
-      last ? last.charAt(0).toUpperCase() + last.slice(1) : "",
-    );
+    const suggestedName = getSuggestedNameFromEmail(email);
+    setValue("first_name", suggestedName.first_name);
+    setValue("last_name", suggestedName.last_name);
   };
 
   const handleEmailPaste: ClipboardEventHandler<
@@ -134,6 +147,28 @@ const ContactPersonalInformationInputs = () => {
     const email = e.target.value;
     handleEmailChange(email);
   };
+
+  useEffect(() => {
+    if (!company) return;
+
+    const nextValues = applyCompanyContactSuggestions({
+      company,
+      emailJsonb,
+      phoneJsonb,
+    });
+
+    if (nextValues.emailJsonb !== emailJsonb) {
+      setValue("email_jsonb", nextValues.emailJsonb, {
+        shouldDirty: false,
+      });
+    }
+
+    if (nextValues.phoneJsonb !== phoneJsonb) {
+      setValue("phone_jsonb", nextValues.phoneJsonb, {
+        shouldDirty: false,
+      });
+    }
+  }, [company, emailJsonb, phoneJsonb, setValue]);
 
   return (
     <div className="flex flex-col gap-4">

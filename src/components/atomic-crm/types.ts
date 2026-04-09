@@ -156,7 +156,7 @@ export type PhoneNumberAndType = {
 
 export type Contact = {
   first_name: string;
-  last_name: string;
+  last_name?: string;
   title: string;
   company_id?: Identifier | null;
   email_jsonb: EmailAndType[];

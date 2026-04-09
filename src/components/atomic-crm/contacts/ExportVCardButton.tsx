@@ -2,6 +2,7 @@ import { Download } from "lucide-react";
 import { useGetOne, useRecordContext, useTranslate } from "ra-core";
 import { Button } from "@/components/ui/button";
 import type { Contact, Company } from "../types";
+import { getContactFileNameBase } from "./contactName";
 import { exportToVCard } from "./exportToVCard";
 
 export const ExportVCardButton = () => {
@@ -57,7 +58,7 @@ export const ExportVCardButton = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${contact.first_name}_${contact.last_name}.vcf`;
+    link.download = `${getContactFileNameBase(contact)}.vcf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

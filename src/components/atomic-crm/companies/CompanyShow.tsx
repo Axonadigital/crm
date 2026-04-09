@@ -28,6 +28,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { ActivityLog } from "../activity/ActivityLog";
 import { Avatar } from "../contacts/Avatar";
 import { TagsList } from "../contacts/TagsList";
+import { getContactDisplayName } from "../contacts/contactName";
 import { findDealLabel } from "../deals/dealUtils";
 import { MobileContent } from "../layout/MobileContent";
 import MobileHeader from "../layout/MobileHeader";
@@ -359,9 +360,7 @@ const ContactsIterator = () => {
                 <Avatar />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-medium">
-                  {`${contact.first_name} ${contact.last_name}`}
-                </div>
+                <div className="font-medium">{getContactDisplayName(contact)}</div>
                 <div className="text-sm text-muted-foreground">
                   {contact.title}
                   {contact.nb_tasks
