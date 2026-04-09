@@ -1,8 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
-import { createErrorResponse } from "../_shared/utils.ts";
+import { OptionsMiddleware } from "../_shared/cors.ts";
+import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import {
+  errorResponseFromUnknown,
+  getPositiveIntegerField,
+  parseRequiredJsonBody,
+} from "../_shared/http.ts";
 
 // --- Types ---
 
@@ -54,7 +59,7 @@ async function searchAllabolag(
     );
 
     if (!allabolagLink) {
-      console.log(`No Allabolag page found for: ${companyName}`);
+      console.warn(`No Allabolag page found for: ${companyName}`);
       return null;
     }
 
@@ -130,7 +135,7 @@ function parseAllabolagHtml(
   if (revenueMatch) {
     const value = revenueMatch[1].replace(/\s/g, "").replace(",", ".");
     const unit = revenueMatch[2].toLowerCase();
-    let numValue = parseFloat(value);
+    const numValue = parseFloat(value);
     if (unit === "tkr" || unit === "tsek") {
       result.revenue = `${Math.round(numValue)} tkr`;
     } else if (unit === "mkr" || unit === "msek") {
@@ -223,33 +228,33 @@ function parseSnippetFallback(
 // --- Main Handler ---
 
 async function handleEnrichAllabolag(req: Request) {
-  const googleApiKey = Deno.env.get("GOOGLE_CUSTOM_SEARCH_API_KEY");
-  const googleCx = Deno.env.get("GOOGLE_CUSTOM_SEARCH_CX");
-
-  if (!googleApiKey || !googleCx) {
-    return createErrorResponse(
-      500,
-      "GOOGLE_CUSTOM_SEARCH_API_KEY eller GOOGLE_CUSTOM_SEARCH_CX saknas",
-    );
-  }
-
-  const { company_id } = await req.json();
-  if (!company_id) {
-    return createErrorResponse(400, "company_id krävs");
-  }
-
-  // Fetch company
-  const { data: company, error: companyError } = await supabaseAdmin
-    .from("companies")
-    .select("id, name, city, org_number, revenue, employees_estimate")
-    .eq("id", company_id)
-    .single();
-
-  if (companyError || !company) {
-    return createErrorResponse(404, "Företag hittades inte");
-  }
-
   try {
+    const googleApiKey = Deno.env.get("GOOGLE_CUSTOM_SEARCH_API_KEY");
+    const googleCx = Deno.env.get("GOOGLE_CUSTOM_SEARCH_CX");
+
+    if (!googleApiKey || !googleCx) {
+      return createErrorResponse(
+        500,
+        "GOOGLE_CUSTOM_SEARCH_API_KEY eller GOOGLE_CUSTOM_SEARCH_CX saknas",
+      );
+    }
+
+    const body = await parseRequiredJsonBody(req);
+    const company_id = getPositiveIntegerField(body, "company_id", {
+      required: true,
+    });
+
+    // Fetch company
+    const { data: company, error: companyError } = await supabaseAdmin
+      .from("companies")
+      .select("id, name, city, org_number, revenue, employees_estimate")
+      .eq("id", company_id)
+      .single();
+
+    if (companyError || !company) {
+      return createErrorResponse(404, "Företag hittades inte");
+    }
+
     const allabolagData = await searchAllabolag(
       company.name,
       company.city,
@@ -265,15 +270,10 @@ async function handleEnrichAllabolag(req: Request) {
         error_message: "Ingen Allabolag-sida hittades",
       });
 
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: "Kunde inte hitta företaget på Allabolag",
-        }),
-        {
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        },
-      );
+      return createJsonResponse({
+        success: false,
+        message: "Kunde inte hitta företaget på Allabolag",
+      });
     }
 
     // Update company with Allabolag data (only fill in missing data)
@@ -314,30 +314,14 @@ async function handleEnrichAllabolag(req: Request) {
       enrichment_data: allabolagData,
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: allabolagData,
-        fields_updated: Object.keys(updateData),
-      }),
-      {
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      },
-    );
+    return createJsonResponse({
+      success: true,
+      data: allabolagData,
+      fields_updated: Object.keys(updateData),
+    });
   } catch (err) {
     console.error("enrich_allabolag error:", err);
-
-    await supabaseAdmin.from("enrichment_log").insert({
-      company_id,
-      source: "allabolag",
-      status: "failed",
-      error_message: String(err),
-    });
-
-    return createErrorResponse(
-      500,
-      `Allabolag-enrichment misslyckades: ${err instanceof Error ? err.message : "Okänt fel"}`,
-    );
+    return errorResponseFromUnknown(err);
   }
 }
 

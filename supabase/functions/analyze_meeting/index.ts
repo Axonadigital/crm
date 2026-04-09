@@ -1,8 +1,14 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
-import { createErrorResponse } from "../_shared/utils.ts";
+import { OptionsMiddleware } from "../_shared/cors.ts";
+import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import {
+  errorResponseFromUnknown,
+  getPositiveIntegerField,
+  getOptionalStringField,
+  parseRequiredJsonBody,
+} from "../_shared/http.ts";
 
 /**
  * Analyze Meeting Edge Function
@@ -45,13 +51,21 @@ Deno.serve(async (req: Request) =>
         }
 
         try {
-          const {
-            transcription_id,
-            transcription_text,
-            calendar_event_id,
-            contact_id,
-            company_id,
-          } = await req.json();
+          const body = await parseRequiredJsonBody(req);
+          const transcription_id = getPositiveIntegerField(
+            body,
+            "transcription_id",
+          );
+          const transcription_text = getOptionalStringField(
+            body,
+            "transcription_text",
+          );
+          const calendar_event_id = getPositiveIntegerField(
+            body,
+            "calendar_event_id",
+          );
+          const contact_id = getPositiveIntegerField(body, "contact_id");
+          const company_id = getPositiveIntegerField(body, "company_id");
 
           const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
           if (!anthropicApiKey) {
@@ -258,26 +272,15 @@ Regler:
             }
           }
 
-          return new Response(
-            JSON.stringify({
-              transcription_id: transcriptionRecord.id,
-              analysis,
-              tasks_created: createdTasks.length,
-              task_ids: createdTasks,
-            }),
-            {
-              headers: {
-                "Content-Type": "application/json",
-                ...corsHeaders,
-              },
-            },
-          );
+          return createJsonResponse({
+            transcription_id: transcriptionRecord.id,
+            analysis,
+            tasks_created: createdTasks.length,
+            task_ids: createdTasks,
+          });
         } catch (error) {
           console.error("analyze_meeting error:", error);
-          return createErrorResponse(
-            500,
-            `Analysis failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-          );
+          return errorResponseFromUnknown(error);
         }
       }),
     ),
