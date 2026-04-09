@@ -117,8 +117,7 @@ Deno.serve(async (req: Request) =>
         Deno.env.get("CRM_PUBLIC_URL") ||
         Deno.env.get("ALLOWED_ORIGIN") ||
         "http://localhost:5173";
-      const proposalUrl =
-        quote.pdf_url || `${crmPublicUrl}/quote.html?id=${quote.id}`;
+      const proposalUrl = `${crmPublicUrl}/quote.html?id=${quote.id}`;
 
       const submissionPayload = buildSubmissionPayload({
         templateId: Number(docusealTemplateId),
@@ -161,11 +160,13 @@ Deno.serve(async (req: Request) =>
       }
 
       const submissionResult = await docusealResponse.json();
-      const submitter = Array.isArray(submissionResult)
-        ? submissionResult[0]
-        : submissionResult;
-      const submissionId = submitter?.submission_id || submitter?.id;
-      const signingSlug = submitter?.slug;
+      const submitters = Array.isArray(submissionResult)
+        ? submissionResult
+        : [submissionResult];
+      const submissionId = submitters[0]?.submission_id || submitters[0]?.id;
+      // Customer's signing slug is the last submitter (Axona is first, already completed)
+      const customerSubmitter = submitters[submitters.length - 1];
+      const signingSlug = customerSubmitter?.slug;
       const signingUrl = signingSlug
         ? `${docusealBaseUrl}/s/${signingSlug}`
         : null;

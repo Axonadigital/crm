@@ -74,9 +74,11 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Only include signing URL if the quote is in "sent" status (awaiting signature)
+  // Include signing URL if the quote is awaiting signature (sent or viewed)
   const signingUrl =
-    quote.status === "sent" ? quote.docuseal_signing_url : null;
+    quote.status === "sent" || quote.status === "viewed"
+      ? quote.docuseal_signing_url
+      : null;
 
   return Response.json(
     {
@@ -88,7 +90,7 @@ Deno.serve(async (req: Request) => {
       status: 200,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "public, max-age=300",
+        "Cache-Control": "no-cache",
       },
     },
   );
