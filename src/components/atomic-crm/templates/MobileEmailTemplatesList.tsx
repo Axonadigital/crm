@@ -3,6 +3,7 @@ import {
   RecordContextProvider,
   useGetIdentity,
   useListContext,
+  useRefresh,
   useTranslate,
 } from "ra-core";
 
@@ -56,6 +57,7 @@ export const MobileEmailTemplatesList = () => {
 const EmailTemplatesListLayoutMobile = () => {
   const { isPending, data, error } = useListContext<EmailTemplate>();
   const translate = useTranslate();
+  const refresh = useRefresh();
 
   return (
     <>
@@ -67,7 +69,7 @@ const EmailTemplatesListLayoutMobile = () => {
           })}
         </h1>
       </MobileHeader>
-      <MobileContent>
+      <MobileContent onRefresh={refresh}>
         {data?.length ? (
           <div className="flex flex-col gap-2">
             {data.map((template) => (

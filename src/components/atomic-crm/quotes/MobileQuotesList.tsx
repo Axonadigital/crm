@@ -3,6 +3,7 @@ import {
   RecordContextProvider,
   useGetIdentity,
   useListContext,
+  useRefresh,
   useTranslate,
 } from "ra-core";
 import { ReferenceField } from "@/components/admin/reference-field";
@@ -40,6 +41,7 @@ export const MobileQuotesList = () => {
 const QuotesListLayoutMobile = () => {
   const { isPending, data, error, filterValues } = useListContext<Quote>();
   const translate = useTranslate();
+  const refresh = useRefresh();
 
   const hasFilters = filterValues && Object.keys(filterValues).length > 0;
 
@@ -50,7 +52,7 @@ const QuotesListLayoutMobile = () => {
       <MobileHeader>
         <QuoteListFilter />
       </MobileHeader>
-      <MobileContent>
+      <MobileContent onRefresh={refresh}>
         {data?.length ? (
           <div className="flex flex-col gap-2">
             {data.map((quote) => (

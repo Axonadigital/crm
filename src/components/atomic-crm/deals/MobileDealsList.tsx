@@ -3,6 +3,7 @@ import {
   RecordContextProvider,
   useGetIdentity,
   useListContext,
+  useRefresh,
   useTranslate,
   useLocaleState,
 } from "ra-core";
@@ -67,6 +68,7 @@ export const MobileDealsList = () => {
 const DealsListLayoutMobile = () => {
   const { isPending, data, error, filterValues } = useListContext<Deal>();
   const translate = useTranslate();
+  const refresh = useRefresh();
 
   const hasFilters = filterValues && Object.keys(filterValues).length > 0;
 
@@ -78,7 +80,7 @@ const DealsListLayoutMobile = () => {
             {translate("resources.deals.name", { smart_count: 2 })}
           </h1>
         </MobileHeader>
-        <MobileContent>
+        <MobileContent onRefresh={refresh}>
           <DealEmpty />
           <DealArchivedList />
         </MobileContent>
@@ -94,7 +96,7 @@ const DealsListLayoutMobile = () => {
         </h1>
         <FilterSheetButton />
       </MobileHeader>
-      <MobileContent>
+      <MobileContent onRefresh={refresh}>
         <div className="flex flex-col gap-3">
           <SearchBar />
           <StagePicker />

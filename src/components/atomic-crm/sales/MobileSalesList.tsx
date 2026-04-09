@@ -3,6 +3,7 @@ import {
   RecordContextProvider,
   useGetIdentity,
   useListContext,
+  useRefresh,
   useTranslate,
 } from "ra-core";
 
@@ -43,6 +44,7 @@ export const MobileSalesList = () => {
 const SalesListLayoutMobile = () => {
   const { isPending, data, error } = useListContext<Sale>();
   const translate = useTranslate();
+  const refresh = useRefresh();
 
   return (
     <>
@@ -54,7 +56,7 @@ const SalesListLayoutMobile = () => {
           })}
         </h1>
       </MobileHeader>
-      <MobileContent>
+      <MobileContent onRefresh={refresh}>
         {data?.length ? (
           <div className="flex flex-col gap-1">
             {data.map((sale) => (

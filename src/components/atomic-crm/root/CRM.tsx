@@ -340,6 +340,7 @@ const MobileAdmin = (props: CoreAdminProps) => {
             path={MobileCrmConfigPage.path}
             element={<MobileCrmConfigPage />}
           />
+          <Route path={ImportPage.path} element={<ImportPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/call-queue" element={<MobileCallQueue />} />
         </CustomRoutes>

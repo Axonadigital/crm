@@ -1,10 +1,11 @@
 import { MobileContent } from "../layout/MobileContent";
 import MobileHeader from "../layout/MobileHeader";
 import { TasksListContent } from "./TasksListContent";
-import { useTranslate } from "ra-core";
+import { useRefresh, useTranslate } from "ra-core";
 
 export const MobileTasksList = () => {
   const translate = useTranslate();
+  const refresh = useRefresh();
   return (
     <>
       <MobileHeader>
@@ -12,7 +13,7 @@ export const MobileTasksList = () => {
           {translate("resources.tasks.name", { smart_count: 2 })}
         </h1>
       </MobileHeader>
-      <MobileContent>
+      <MobileContent onRefresh={refresh}>
         <TasksListContent />
       </MobileContent>
     </>

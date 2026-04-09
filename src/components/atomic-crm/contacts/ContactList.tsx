@@ -4,6 +4,7 @@ import {
   InfiniteListBase,
   useGetIdentity,
   useListContext,
+  useRefresh,
   type Exporter,
 } from "ra-core";
 import { BulkActionsToolbar } from "@/components/admin/bulk-actions-toolbar";
@@ -100,6 +101,7 @@ export const ContactListMobile = () => {
 
 const ContactListLayoutMobile = () => {
   const { isPending, data, error, filterValues } = useListContext();
+  const refresh = useRefresh();
 
   const hasFilters = filterValues && Object.keys(filterValues).length > 0;
 
@@ -110,7 +112,7 @@ const ContactListLayoutMobile = () => {
       <MobileHeader>
         <ContactListFilter />
       </MobileHeader>
-      <MobileContent>
+      <MobileContent onRefresh={refresh}>
         <ContactListFilterSummary />
         <ContactListContentMobile />
         {!error && (

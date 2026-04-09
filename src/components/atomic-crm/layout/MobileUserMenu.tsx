@@ -9,6 +9,7 @@ import {
   Settings as SettingsIcon,
   Smartphone,
   Sun,
+  Upload,
   Users,
   Workflow,
 } from "lucide-react";
@@ -209,6 +210,19 @@ export const MobileUserMenu = () => {
                 {translate("resources.email_templates.name", {
                   smart_count: 2,
                   _: "E-postmallar",
+                })}
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="w-full justify-start h-12 text-base"
+              onClick={() => setOpen(false)}
+            >
+              <Link to="/import">
+                <Upload className="size-5 mr-3" />
+                {translate("crm.import.title", {
+                  _: "Importera kontakter",
                 })}
               </Link>
             </Button>

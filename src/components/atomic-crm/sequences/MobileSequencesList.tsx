@@ -3,6 +3,7 @@ import {
   RecordContextProvider,
   useGetIdentity,
   useListContext,
+  useRefresh,
   useTranslate,
 } from "ra-core";
 
@@ -69,6 +70,7 @@ export const MobileSequencesList = () => {
 const SequencesListLayoutMobile = () => {
   const { isPending, data, error } = useListContext<Sequence>();
   const translate = useTranslate();
+  const refresh = useRefresh();
 
   return (
     <>
@@ -80,7 +82,7 @@ const SequencesListLayoutMobile = () => {
           })}
         </h1>
       </MobileHeader>
-      <MobileContent>
+      <MobileContent onRefresh={refresh}>
         {data?.length ? (
           <div className="flex flex-col gap-2">
             {data.map((sequence) => (
