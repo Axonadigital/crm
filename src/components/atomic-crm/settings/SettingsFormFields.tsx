@@ -683,7 +683,7 @@ export const SettingsFormFields = ({
 
   if (variant === "mobile") {
     return (
-      <div className="flex flex-col pb-32">
+      <div className="flex flex-col pb-[calc(var(--crm-mobile-nav-height)+6rem)]">
         <Accordion type="multiple" className="w-full">
           {SECTIONS.map((section) => {
             const SectionFields = SECTION_COMPONENTS[section.id];
@@ -704,8 +704,11 @@ export const SettingsFormFields = ({
         </Accordion>
 
         {/* Sticky save bar */}
-        <div className="fixed bottom-16 left-0 right-0 border-t bg-background px-4 py-3 z-40">
-          <div className="flex items-center justify-between gap-2">
+        <div
+          className="fixed left-0 right-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/90"
+          style={{ bottom: "var(--crm-mobile-nav-height)" }}
+        >
+          <div className="mx-auto flex max-w-screen-xl items-center justify-between gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -715,7 +718,7 @@ export const SettingsFormFields = ({
               <RotateCcw className="h-4 w-4 mr-1" />
               {translate("crm.settings.reset_defaults")}
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="shrink-0">
               <Save className="h-4 w-4 mr-1" />
               {isSubmitting
                 ? translate("crm.settings.saving")

@@ -203,13 +203,13 @@ const StagePicker = () => {
   };
 
   return (
-    <div className="overflow-x-auto -mx-4 px-4">
+    <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none]">
       <ToggleGroup
         type="single"
         value={currentStage}
         onValueChange={handleChange}
         variant="outline"
-        className="w-max"
+        className="w-max min-w-full pr-1"
       >
         <ToggleGroupItem
           value="all"

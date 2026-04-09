@@ -35,6 +35,7 @@ import { TaskCreateSheet } from "../tasks/TaskCreateSheet";
 import { DealCreateSheet } from "../deals/DealCreateSheet";
 import { CompanyCreateSheet } from "../companies/CompanyCreateSheet";
 import { QuoteCreateSheet } from "../quotes/QuoteCreateSheet";
+import { MOBILE_NAV_CREATE_BUTTON_LIFT } from "./mobileLayoutConstants";
 
 export const MobileNavigation = () => {
   const location = useLocation();
@@ -71,28 +72,16 @@ export const MobileNavigation = () => {
     currentPath === "/calendar" ||
     currentPath === "/settings";
 
-  // Check if the app is running as a PWA (standalone mode)
-  const isPwa = window.matchMedia("(display-mode: standalone)").matches;
-  // Check if it's iOS on the web
-  const isWebiOS = /iPad|iPod|iPhone/.test(window.navigator.userAgent);
-
   return (
     <nav
       aria-label={translate("crm.navigation.label")}
-      className="fixed bottom-0 left-0 right-0 z-50 bg-secondary h-14"
+      className="fixed bottom-0 left-0 right-0 z-50 border-t bg-secondary/95 backdrop-blur supports-[backdrop-filter]:bg-secondary/90"
       style={{
-        // iOS bug: even though viewport is set correctly, the bottom safe area inset is not accounted for
-        // So we manually add some padding to avoid the navigation being too close to the home bar
-        paddingBottom: isPwa && isWebiOS ? 15 : undefined,
-        // We use box-sizing: border-box, so the height contains the padding.
-        // To actually increase the padding, we need to increase the height as well
-        height:
-          isPwa && isWebiOS
-            ? "calc(var(--spacing) * 6 + 15px)"
-            : "calc(var(--spacing) * 6)",
+        paddingBottom: "var(--crm-mobile-safe-bottom)",
+        minHeight: "var(--crm-mobile-nav-height)",
       }}
     >
-      <div className="flex justify-center">
+      <div className="mx-auto flex max-w-screen-xl items-end justify-center px-2">
         <>
           <NavigationButton
             href="/"
@@ -137,13 +126,15 @@ const NavigationButton = ({
     asChild
     variant="ghost"
     className={cn(
-      "flex-col gap-1 h-auto py-2 px-1 rounded-md min-w-0 flex-1",
+      "h-auto min-w-0 flex-1 rounded-md px-1 py-2",
       isActive ? null : "text-muted-foreground",
     )}
   >
-    <Link to={href}>
-      <Icon className="size-6" />
-      <span className="text-xs font-medium leading-tight">{label}</span>
+    <Link to={href} className="flex min-w-0 flex-col items-center gap-1">
+      <Icon className="size-5 shrink-0" />
+      <span className="max-w-full truncate text-[11px] font-medium leading-tight">
+        {label}
+      </span>
     </Link>
   </Button>
 );
@@ -188,13 +179,16 @@ const CreateButton = () => {
           <Button
             variant="default"
             size="icon"
-            className="h-16 w-16 rounded-full -mt-3"
+            className="size-14 shrink-0 rounded-full shadow-lg"
+            style={{
+              transform: `translateY(calc(-1 * ${MOBILE_NAV_CREATE_BUTTON_LIFT}))`,
+            }}
             aria-label={translate("ra.action.create")}
           >
-            <Plus className="size-10" />
+            <Plus className="size-7" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent>
+        <DropdownMenuContent align="center" sideOffset={12}>
           <DropdownMenuItem
             className="h-12 px-4 text-base"
             onSelect={() => {
@@ -310,15 +304,22 @@ const MoreMenu = ({ isActive }: { isActive: boolean }) => {
         <Button
           variant="ghost"
           className={cn(
-            "flex-col gap-1 h-auto py-2 px-1 rounded-md min-w-0 flex-1",
+            "h-auto min-w-0 flex-1 rounded-md px-1 py-2",
             isActive ? null : "text-muted-foreground",
           )}
         >
-          <MoreHorizontal className="size-6" />
-          <span className="text-xs font-medium leading-tight">Mer</span>
+          <div className="flex min-w-0 flex-col items-center gap-1">
+            <MoreHorizontal className="size-5 shrink-0" />
+            <span className="max-w-full truncate text-[11px] font-medium leading-tight">
+              Mer
+            </span>
+          </div>
         </Button>
       </SheetTrigger>
-      <SheetContent side="bottom" className="pb-8">
+      <SheetContent
+        side="bottom"
+        className="max-h-[min(80dvh,42rem)] overflow-y-auto pb-[calc(var(--crm-mobile-safe-bottom)+1.5rem)]"
+      >
         <SheetHeader>
           <SheetTitle>Meny</SheetTitle>
         </SheetHeader>

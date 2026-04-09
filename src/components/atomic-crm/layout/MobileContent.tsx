@@ -18,8 +18,14 @@ export const MobileContent = ({
   onRefresh?: () => void | Promise<unknown>;
 }) => (
   <main
-    className="max-w-screen-xl mx-auto pt-16 px-4 pb-20 min-h-screen overflow-y-auto"
+    className="mx-auto w-full max-w-screen-xl overflow-x-clip px-4"
     id="main-content"
+    style={{
+      paddingTop: "calc(var(--crm-mobile-content-top) + 0.5rem)",
+      paddingBottom: "var(--crm-mobile-content-bottom)",
+      minHeight:
+        "calc(100dvh - var(--crm-mobile-content-top) + var(--crm-mobile-safe-top))",
+    }}
   >
     {onRefresh ? (
       <PullToRefresh onRefresh={onRefresh}>{children}</PullToRefresh>
