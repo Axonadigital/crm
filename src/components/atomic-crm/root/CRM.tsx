@@ -69,6 +69,9 @@ import { MobileDealsList } from "../deals/MobileDealsList";
 import { DealShow } from "../deals/DealShow";
 import { MobileQuotesList } from "../quotes/MobileQuotesList";
 import { QuoteShow } from "../quotes/QuoteShow";
+import { MobileSalesList } from "../sales/MobileSalesList";
+import { MobileSequencesList } from "../sequences/MobileSequencesList";
+import { MobileEmailTemplatesList } from "../templates/MobileEmailTemplatesList";
 
 const defaultStore = localStorageStore(undefined, "CRM");
 
@@ -354,10 +357,10 @@ const MobileAdmin = (props: CoreAdminProps) => {
         <Resource name="call_logs" />
         <Resource name="quote_line_items" />
         <Resource name="tasks" list={MobileTasksList} />
-        <Resource name="sales" />
-        <Resource name="email_templates" />
+        <Resource name="sales" list={MobileSalesList} />
+        <Resource name="email_templates" list={MobileEmailTemplatesList} />
         <Resource name="email_sends" />
-        <Resource name="sequences" />
+        <Resource name="sequences" list={MobileSequencesList} />
         <Resource name="sequence_steps" />
         <Resource name="sequence_enrollments" />
         <Resource name="meeting_transcriptions" />

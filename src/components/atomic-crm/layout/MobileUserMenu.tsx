@@ -2,12 +2,15 @@ import { useState } from "react";
 import { Link } from "react-router";
 import {
   LogOut,
+  Mail,
   Menu,
   Moon,
   RotateCw,
   Settings as SettingsIcon,
   Smartphone,
   Sun,
+  Users,
+  Workflow,
 } from "lucide-react";
 import {
   useGetIdentity,
@@ -159,6 +162,54 @@ export const MobileUserMenu = () => {
               <Link to="/settings">
                 <SettingsIcon className="size-5 mr-3" />
                 {translate("crm.settings.title", { _: "Inställningar" })}
+              </Link>
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              {translate("crm.navigation.more", { _: "Mer" })}
+            </p>
+            <Button
+              asChild
+              variant="outline"
+              className="w-full justify-start h-12 text-base"
+              onClick={() => setOpen(false)}
+            >
+              <Link to="/sales">
+                <Users className="size-5 mr-3" />
+                {translate("resources.sales.name", {
+                  smart_count: 2,
+                  _: "Säljare",
+                })}
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="w-full justify-start h-12 text-base"
+              onClick={() => setOpen(false)}
+            >
+              <Link to="/sequences">
+                <Workflow className="size-5 mr-3" />
+                {translate("resources.sequences.name", {
+                  smart_count: 2,
+                  _: "Sekvenser",
+                })}
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="w-full justify-start h-12 text-base"
+              onClick={() => setOpen(false)}
+            >
+              <Link to="/email_templates">
+                <Mail className="size-5 mr-3" />
+                {translate("resources.email_templates.name", {
+                  smart_count: 2,
+                  _: "E-postmallar",
+                })}
               </Link>
             </Button>
           </div>
