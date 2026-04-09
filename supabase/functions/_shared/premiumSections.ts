@@ -593,36 +593,48 @@ export function buildPriceSummarySection(
 
 export function buildTermsAndSignatureSection(
   terms: TermsData,
-  sig: SignatureData,
-  _seller: SellerInfo,
+  _sig: SignatureData,
+  seller: SellerInfo,
   _header: PageHeaderData,
   _pageNum: number,
 ): string {
+  const sellerFacts = [
+    seller.companyName ? `Avsändare: ${esc(seller.companyName)}` : "",
+    seller.email ? `E-post: ${esc(seller.email)}` : "",
+    seller.phone ? `Telefon: ${esc(seller.phone)}` : "",
+    seller.website ? `Webb: ${esc(seller.website)}` : "",
+  ].filter(Boolean);
+
   return `
 <section class="section" style="background:var(--color-bg-alt);">
   <div class="section-inner">
-    <p class="section-label animate-in">// Villkor &amp; signering</p>
-    <h2 class="section-title animate-in">Avtal</h2>
-    <div class="signing-intro animate-in">
-      <p>Genom att signera godkänner ni denna offert och dess villkor. Offerten är giltig enligt angivet datum ovan.</p>
+    <p class="section-label animate-in">// Villkor &amp; information</p>
+    <h2 class="section-title animate-in">Det här gäller för offerten</h2>
+    <div class="terms-summary animate-in">
+      <p>Offerten sammanfattar leveransen, omfattningen och villkoren för projektet. Den fullständiga digitala offerten är det underlag ni granskar inför ett eventuellt godkännande.</p>
       <p style="margin-top:8px;"><a href="https://www.axonadigital.se/villkor" target="_blank" class="terms-link">Läs fullständiga villkor →</a></p>
     </div>
-    ${terms.termsAndConditions ? `<p style="font-size:0.88rem;color:var(--color-text-muted);line-height:1.65;margin-bottom:24px;">${esc(terms.termsAndConditions)}</p>` : ""}
-    <div class="signing-grid animate-in">
-      <div class="signing-block">
-        <div class="signing-for">För ${esc(sig.buyerName)}</div>
-        <div class="signing-line"></div>
-        <div class="signing-field">Namnförtydligande</div>
-        <div class="signing-line short"></div>
-        <div class="signing-field">Datum</div>
+    ${
+      terms.customerReference
+        ? `<div class="terms-reference animate-in">
+      <div class="terms-reference-label">Er referens</div>
+      <div class="terms-reference-value">${esc(terms.customerReference)}</div>
+    </div>`
+        : ""
+    }
+    ${
+      terms.termsAndConditions
+        ? `<p class="terms-copy animate-in">${esc(terms.termsAndConditions)}</p>`
+        : ""
+    }
+    <div class="terms-meta-grid animate-in">
+      <div class="terms-meta-card">
+        <div class="terms-meta-title">Leveransunderlag</div>
+        <p>Denna offert visar innehåll, investering och villkor i samma dokument, så att det är tydligt vad som ingår.</p>
       </div>
-      <div class="signing-block">
-        <div class="signing-for">För ${esc(sig.sellerName)}</div>
-        <div class="signing-line"></div>
-        <div class="signing-name">Rasmus Jönsson</div>
-        <div class="signing-field">Namnförtydligande</div>
-        <div class="signing-line short"></div>
-        <div class="signing-field">Datum</div>
+      <div class="terms-meta-card">
+        <div class="terms-meta-title">Kontakt från Axona</div>
+        ${sellerFacts.map((fact) => `<p>${fact}</p>`).join("")}
       </div>
     </div>
   </div>

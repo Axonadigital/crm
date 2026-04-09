@@ -1042,9 +1042,9 @@ export function buildStylesheet(options: StyleOptions = {}): string {
     /* ═══════════════════════════════════════
        SIGNING SECTION
     ═══════════════════════════════════════ */
-    .signing-intro {
+    .terms-summary {
       margin-top: 28px;
-      margin-bottom: 48px;
+      margin-bottom: 24px;
       font-size: 0.95rem;
       color: var(--color-text-muted);
       line-height: 1.7;
@@ -1056,34 +1056,60 @@ export function buildStylesheet(options: StyleOptions = {}): string {
       font-size: 0.88rem;
     }
     .terms-link:hover { text-decoration: underline; }
-    .signing-grid {
+    .terms-reference {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 4px;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 20px;
+    }
+    .terms-reference-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-muted);
+    }
+    .terms-reference-value {
+      font-family: var(--font-display);
+      font-size: 0.98rem;
+      font-weight: 700;
+    }
+    .terms-copy {
+      font-size: 0.88rem;
+      color: var(--color-text-muted);
+      line-height: 1.65;
+      margin-bottom: 24px;
+      white-space: pre-wrap;
+    }
+    .terms-meta-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 60px;
+      gap: 18px;
     }
-    @media (max-width: 600px) { .signing-grid { grid-template-columns: 1fr; gap: 40px; } }
-    .signing-for {
-      font-size: 0.7rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--color-text-muted);
-      margin-bottom: 40px;
+    @media (max-width: 600px) { .terms-meta-grid { grid-template-columns: 1fr; } }
+    .terms-meta-card {
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 22px 20px;
     }
-    .signing-line {
-      border-bottom: 1px solid var(--color-text);
-      margin-bottom: 8px;
-    }
-    .signing-line.short { width: 50%; margin-top: 32px; }
-    .signing-name {
+    .terms-meta-title {
       font-family: var(--font-display);
       font-weight: 700;
-      font-size: 1rem;
-      margin-bottom: 2px;
-    }
-    .signing-field {
-      font-size: 0.75rem;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
       color: var(--color-text-muted);
+      margin-bottom: 10px;
+    }
+    .terms-meta-card p {
+      font-size: 0.86rem;
+      color: var(--color-text-muted);
+      line-height: 1.65;
     }
 
     /* ═══════════════════════════════════════
