@@ -1,9 +1,10 @@
 import { Building, Handshake, Sparkles, Truck, Users } from "lucide-react";
-import { FilterLiveForm, useGetIdentity, useTranslate } from "ra-core";
+import { useGetIdentity, useTranslate } from "ra-core";
 import { ToggleFilterButton } from "@/components/admin/toggle-filter-button";
-import { SearchInput } from "@/components/admin/search-input";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import { FilterCategory } from "../filters/FilterCategory";
+import { ResponsiveFilters } from "../misc/ResponsiveFilters";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
 import { sizes } from "./sizes";
@@ -21,26 +22,26 @@ export const CompanyListFilter = () => {
   const { identity } = useGetIdentity();
   const { companySectors } = useConfigurationContext();
   const translate = useTranslate();
+  const isMobile = useIsMobile();
   const translatedSizes = sizes.map((size) => ({
     ...size,
     name: getTranslatedCompanySizeLabel(size, translate),
   }));
+  const toggleClassName = "w-auto md:w-full justify-between h-10 md:h-8";
+  const toggleSize = isMobile ? ("lg" as const) : undefined;
   return (
-    <div className="w-52 min-w-52 flex flex-col gap-8">
-      <FilterLiveForm>
-        <SearchInput source="q" />
-      </FilterLiveForm>
-
+    <ResponsiveFilters>
       <FilterCategory
         icon={<Building className="h-4 w-4" />}
         label="resources.companies.fields.size"
       >
         {translatedSizes.map((size) => (
           <ToggleFilterButton
-            className="w-full justify-between"
+            className={toggleClassName}
             label={size.name}
             key={size.name}
             value={{ size: size.id }}
+            size={toggleSize}
           />
         ))}
       </FilterCategory>
@@ -51,10 +52,11 @@ export const CompanyListFilter = () => {
       >
         {companySectors.map((sector) => (
           <ToggleFilterButton
-            className="w-full justify-between"
+            className={toggleClassName}
             label={sector.label}
             key={sector.value}
             value={{ sector: sector.value }}
+            size={toggleSize}
           />
         ))}
       </FilterCategory>
@@ -64,9 +66,10 @@ export const CompanyListFilter = () => {
         label="resources.companies.fields.sales_id"
       >
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label={translate("crm.common.me")}
           value={{ sales_id: identity?.id }}
+          size={toggleSize}
         />
       </FilterCategory>
 
@@ -75,39 +78,46 @@ export const CompanyListFilter = () => {
         label="Lead Segment"
       >
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Heta leads"
           value={{ "segment@eq": "hot_lead" }}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Varma leads"
           value={{ "segment@eq": "warm_lead" }}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Kalla leads"
           value={{ "segment@eq": "cold_lead" }}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Har Facebook"
           value={{ "has_facebook@eq": true }}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Har Instagram"
           value={{ "has_instagram@eq": true }}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Saknar hemsida"
           value={{ "website_quality@eq": "none" }}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Dålig hemsida"
           value={{ "website_quality@eq": "poor" }}
+          size={toggleSize}
         />
       </FilterCategory>
 
@@ -116,47 +126,54 @@ export const CompanyListFilter = () => {
         label="Relationsstatus"
       >
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="🔥 Heta leads"
           value={hotLeadsFilter}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label={translate("resources.companies.filters.active_customers", {
             _: "Aktiva kunder",
           })}
           value={activeCustomersFilter}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label={translate("resources.companies.filters.under_negotiation", {
             _: "Under förhandling",
           })}
           value={companiesUnderNegotiationFilter}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label={translate("resources.companies.filters.follow_up", {
             _: "Att följa upp",
           })}
           value={companiesForFollowupFilter}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Aldrig kontaktade"
           value={neverContactedFilter}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Kontaktade, inget svar"
           value={contactedNoResponseFilter}
+          size={toggleSize}
         />
         <ToggleFilterButton
-          className="w-full justify-between"
+          className={toggleClassName}
           label="Inte intresserade"
           value={notInterestedFilter}
+          size={toggleSize}
         />
       </FilterCategory>
-    </div>
+    </ResponsiveFilters>
   );
 };

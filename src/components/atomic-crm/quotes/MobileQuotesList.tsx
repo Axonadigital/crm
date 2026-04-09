@@ -14,6 +14,7 @@ import { MobileContent } from "../layout/MobileContent";
 import { InfinitePagination } from "../misc/InfinitePagination";
 import { CompanyAvatar } from "../companies/CompanyAvatar";
 import { QuoteEmpty } from "./QuoteEmpty";
+import { QuoteListFilter } from "./QuoteListFilter";
 import { quoteStatusColors } from "./quoteStatuses";
 import type { Quote } from "../types";
 
@@ -47,21 +48,24 @@ const QuotesListLayoutMobile = () => {
   return (
     <div>
       <MobileHeader>
-        <h1 className="text-xl font-semibold">
-          {translate("resources.quotes.name", {
-            smart_count: 2,
-            _: "Offerter",
-          })}
-        </h1>
+        <QuoteListFilter />
       </MobileHeader>
       <MobileContent>
-        <div className="flex flex-col gap-2">
-          {data?.map((quote) => (
-            <RecordContextProvider key={quote.id} value={quote}>
-              <QuoteListItem quote={quote} />
-            </RecordContextProvider>
-          ))}
-        </div>
+        {data?.length ? (
+          <div className="flex flex-col gap-2">
+            {data.map((quote) => (
+              <RecordContextProvider key={quote.id} value={quote}>
+                <QuoteListItem quote={quote} />
+              </RecordContextProvider>
+            ))}
+          </div>
+        ) : !isPending ? (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            {translate("ra.navigation.no_results", {
+              _: "Inga offerter matchar dina filter",
+            })}
+          </p>
+        ) : null}
         {!error && (
           <div className="flex justify-center">
             <InfinitePagination />

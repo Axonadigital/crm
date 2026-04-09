@@ -13,6 +13,7 @@ import { MobileContent } from "../layout/MobileContent";
 import { InfinitePagination } from "../misc/InfinitePagination";
 import { CompanyAvatar } from "./CompanyAvatar";
 import { CompanyEmpty } from "./CompanyEmpty";
+import { CompanyListFilter } from "./CompanyListFilter";
 import type { Company } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { getLeadStatusBadgeVariant } from "./leadStatusUtils";
@@ -46,18 +47,24 @@ const CompanyListLayoutMobile = () => {
   return (
     <div>
       <MobileHeader>
-        <h1 className="text-xl font-semibold">
-          {translate("resources.companies.name", { smart_count: 2 })}
-        </h1>
+        <CompanyListFilter />
       </MobileHeader>
       <MobileContent>
-        <div className="flex flex-col gap-2">
-          {data?.map((company) => (
-            <RecordContextProvider key={company.id} value={company}>
-              <CompanyListItem company={company} />
-            </RecordContextProvider>
-          ))}
-        </div>
+        {data?.length ? (
+          <div className="flex flex-col gap-2">
+            {data.map((company) => (
+              <RecordContextProvider key={company.id} value={company}>
+                <CompanyListItem company={company} />
+              </RecordContextProvider>
+            ))}
+          </div>
+        ) : !isPending ? (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            {translate("ra.navigation.no_results", {
+              _: "Inga företag matchar dina filter",
+            })}
+          </p>
+        ) : null}
         {!error && (
           <div className="flex justify-center">
             <InfinitePagination />

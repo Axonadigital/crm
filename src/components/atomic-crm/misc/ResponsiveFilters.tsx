@@ -1,5 +1,6 @@
 import { FilterLiveForm, useListContext, useTranslate } from "ra-core";
 import { SearchInput, type SearchInputProps } from "@/components/admin";
+import { ExportButton } from "@/components/admin/export-button";
 import {
   Sheet,
   SheetClose,
@@ -88,24 +89,27 @@ export const ResponsiveFilters = ({
             </div>
             <SheetFooter className="-p-4 relative">
               <div className="absolute -top-12 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none" />
-              <div className="flex w-full gap-4">
-                <SheetClose asChild>
-                  <Button
-                    onClick={handleClearFilters}
-                    type="button"
-                    variant="secondary"
-                    className="flex-1"
-                  >
-                    {translate("ra.navigation.clear_filters", {
-                      _: "Clear filters",
-                    })}
-                  </Button>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Button className="flex-1">
-                    {translate("ra.action.confirm")}
-                  </Button>
-                </SheetClose>
+              <div className="flex w-full flex-col gap-2">
+                <div className="flex w-full gap-4">
+                  <SheetClose asChild>
+                    <Button
+                      onClick={handleClearFilters}
+                      type="button"
+                      variant="secondary"
+                      className="flex-1"
+                    >
+                      {translate("ra.navigation.clear_filters", {
+                        _: "Clear filters",
+                      })}
+                    </Button>
+                  </SheetClose>
+                  <SheetClose asChild>
+                    <Button className="flex-1">
+                      {translate("ra.action.confirm")}
+                    </Button>
+                  </SheetClose>
+                </div>
+                <ExportButton className="w-full cursor-pointer" />
               </div>
             </SheetFooter>
           </SheetContent>
