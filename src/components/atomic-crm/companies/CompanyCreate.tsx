@@ -4,21 +4,13 @@ import { CancelButton } from "@/components/admin/cancel-button";
 import { SaveButton } from "@/components/admin/form";
 
 import { CompanyInputs } from "./CompanyInputs";
+import { normalizeCompanyWebsite } from "./normalizeCompanyWebsite";
 
 export const CompanyCreate = () => {
   const { identity } = useGetIdentity();
   const translate = useTranslate();
   return (
-    <CreateBase
-      redirect="show"
-      transform={(values) => {
-        // add https:// before website if not present
-        if (values.website && !values.website.startsWith("http")) {
-          values.website = `https://${values.website}`;
-        }
-        return values;
-      }}
-    >
+    <CreateBase redirect="show" transform={normalizeCompanyWebsite}>
       <div className="mt-2 flex lg:mr-72">
         <div className="flex-1">
           <Form defaultValues={{ sales_id: identity?.id }}>

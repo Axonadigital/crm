@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CompanyInputs } from "./CompanyInputs";
 import { CompanyAside } from "./CompanyAside";
 import { FormToolbar } from "../layout/FormToolbar";
+import { normalizeCompanyWebsite } from "./normalizeCompanyWebsite";
 
 /**
  * Normalize context_links from enrichment objects {url, title, source}
@@ -48,17 +49,7 @@ const CompanyEditForm = () => {
 };
 
 export const CompanyEdit = () => (
-  <EditBase
-    actions={false}
-    redirect="show"
-    transform={(values) => {
-      // add https:// before website if not present
-      if (values.website && !values.website.startsWith("http")) {
-        values.website = `https://${values.website}`;
-      }
-      return values;
-    }}
-  >
+  <EditBase actions={false} redirect="show" transform={normalizeCompanyWebsite}>
     <CompanyEditForm />
   </EditBase>
 );

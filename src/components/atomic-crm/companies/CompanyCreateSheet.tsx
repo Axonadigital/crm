@@ -1,6 +1,7 @@
 import { useGetIdentity, useTranslate } from "ra-core";
 import { CreateSheet } from "../misc/CreateSheet";
 import { CompanyInputs } from "./CompanyInputs";
+import { normalizeCompanyWebsite } from "./normalizeCompanyWebsite";
 
 export interface CompanyCreateSheetProps {
   open: boolean;
@@ -20,12 +21,7 @@ export const CompanyCreateSheet = ({
         _: "New Company",
       })}
       defaultValues={{ sales_id: identity?.id }}
-      transform={(values) => {
-        if (values.website && !values.website.startsWith("http")) {
-          return { ...values, website: `https://${values.website}` };
-        }
-        return values;
-      }}
+      transform={normalizeCompanyWebsite}
       open={open}
       onOpenChange={onOpenChange}
     >
