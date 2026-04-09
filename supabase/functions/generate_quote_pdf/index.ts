@@ -4,6 +4,7 @@ import { createErrorResponse } from "../_shared/utils.ts";
 import { UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { buildStylesheet, buildScript } from "../_shared/premiumStyles.ts";
+import { resolveReferenceProjects } from "../_shared/premiumQuoteReferences.ts";
 import {
   buildHeroSection,
   buildSummarySection,
@@ -451,10 +452,11 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
   };
 
   // 3. Reference projects
-  const referenceImages =
-    (d.quote.reference_images as ReferenceProject[]) || [];
-  const references =
-    referenceImages.length > 0 ? referenceImages : DEFAULT_REFERENCES;
+  const referenceImages = (d.quote.reference_images as ReferenceProject[]) || [];
+  const references = resolveReferenceProjects(
+    referenceImages,
+    DEFAULT_REFERENCES,
+  );
 
   // 5. Process steps (4 steps matching VPM template)
   const processSteps: ProcessStep[] = [
