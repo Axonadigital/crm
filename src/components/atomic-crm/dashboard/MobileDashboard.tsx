@@ -7,7 +7,10 @@ import { DashboardStepper } from "./DashboardStepper";
 import { FollowUpsDueToday } from "./FollowUpsDueToday";
 import { KpiSummaryRow } from "./KpiSummaryRow";
 import { LeadsMissingNextStep } from "./LeadsMissingNextStep";
+import { TasksList } from "./TasksList";
+import { UpcomingMeetings } from "./UpcomingMeetings";
 import { Welcome } from "./Welcome";
+import { WidgetErrorBoundary } from "./WidgetErrorBoundary";
 import MobileHeader from "../layout/MobileHeader";
 import { MobileContent } from "../layout/MobileContent";
 import { useConfigurationContext } from "../root/ConfigurationContext";
@@ -86,10 +89,24 @@ export const MobileDashboard = () => {
     <Wrapper>
       <div className="flex flex-col gap-4 mt-1">
         {import.meta.env.VITE_IS_DEMO === "true" ? <Welcome /> : null}
-        <KpiSummaryRow />
-        <FollowUpsDueToday />
-        <LeadsMissingNextStep />
-        <DashboardActivityLog />
+        <WidgetErrorBoundary>
+          <KpiSummaryRow />
+        </WidgetErrorBoundary>
+        <WidgetErrorBoundary>
+          <FollowUpsDueToday />
+        </WidgetErrorBoundary>
+        <WidgetErrorBoundary>
+          <UpcomingMeetings />
+        </WidgetErrorBoundary>
+        <WidgetErrorBoundary>
+          <TasksList />
+        </WidgetErrorBoundary>
+        <WidgetErrorBoundary>
+          <LeadsMissingNextStep />
+        </WidgetErrorBoundary>
+        <WidgetErrorBoundary>
+          <DashboardActivityLog />
+        </WidgetErrorBoundary>
       </div>
     </Wrapper>
   );

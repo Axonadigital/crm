@@ -143,7 +143,7 @@ const NavigationButton = ({
   >
     <Link to={href}>
       <Icon className="size-6" />
-      <span className="text-[0.6rem] font-medium">{label}</span>
+      <span className="text-xs font-medium leading-tight">{label}</span>
     </Link>
   </Button>
 );
@@ -315,7 +315,7 @@ const MoreMenu = ({ isActive }: { isActive: boolean }) => {
           )}
         >
           <MoreHorizontal className="size-6" />
-          <span className="text-[0.6rem] font-medium">Mer</span>
+          <span className="text-xs font-medium leading-tight">Mer</span>
         </Button>
       </SheetTrigger>
       <SheetContent side="bottom" className="pb-8">
