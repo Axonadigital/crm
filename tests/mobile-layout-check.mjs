@@ -14,7 +14,7 @@ import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
 
-const BASE = "http://localhost:5174";
+const BASE = "http://localhost:5173";
 const VIEWPORT = { width: 390, height: 844 };
 const SCREENSHOT_DIR = "tests/screenshots";
 const IPHONE_UA =

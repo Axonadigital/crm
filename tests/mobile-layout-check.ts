@@ -9,7 +9,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 
-const BASE = "http://localhost:5174";
+const BASE = "http://localhost:5173";
 
 // iPhone 14 dimensions
 const VIEWPORT = { width: 390, height: 844 };
