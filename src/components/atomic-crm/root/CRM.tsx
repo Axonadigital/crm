@@ -35,6 +35,7 @@ import {
 } from "../providers/supabase";
 import sales from "../sales";
 import { SettingsPageMobile } from "../settings/SettingsPageMobile";
+import { MobileCrmConfigPage } from "../settings/MobileCrmConfigPage";
 import { ProfilePage } from "../settings/ProfilePage";
 import { SettingsPage } from "../settings/SettingsPage";
 import {
@@ -334,6 +335,10 @@ const MobileAdmin = (props: CoreAdminProps) => {
           <Route
             path={SettingsPageMobile.path}
             element={<SettingsPageMobile />}
+          />
+          <Route
+            path={MobileCrmConfigPage.path}
+            element={<MobileCrmConfigPage />}
           />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/call-queue" element={<MobileCallQueue />} />

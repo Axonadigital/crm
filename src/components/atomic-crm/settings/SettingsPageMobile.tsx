@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/components/admin/use-theme";
-import { KeyRound } from "lucide-react";
+import { ChevronRight, KeyRound, Settings2 } from "lucide-react";
+import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
   Item,
@@ -107,6 +108,7 @@ export const SettingsPageMobile = () => {
           <div className="space-y-6">
             <ProfileSection />
             <PreferencesSection />
+            <CrmConfigSection />
             <InboundEmailSection />
           </div>
 
@@ -446,6 +448,37 @@ const ThemeRow = () => {
         </ToggleGroupItem>
       </ToggleGroup>
     </Item>
+  );
+};
+
+const CrmConfigSection = () => {
+  const translate = useTranslate();
+
+  return (
+    <div>
+      <SectionLabel>
+        {translate("crm.settings.sections.crm_config", {
+          _: "CRM-konfiguration",
+        })}
+      </SectionLabel>
+      <ItemGroup className="rounded-lg border overflow-hidden">
+        <Item size="sm" asChild className="cursor-pointer">
+          <Link to="/crm-config">
+            <ItemContent>
+              <ItemTitle className="font-normal text-base flex items-center gap-2">
+                <Settings2 className="size-4 text-muted-foreground" />
+                {translate("crm.settings.sections.open_crm_config", {
+                  _: "Öppna CRM-inställningar",
+                })}
+              </ItemTitle>
+            </ItemContent>
+            <ItemActions>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </ItemActions>
+          </Link>
+        </Item>
+      </ItemGroup>
+    </div>
   );
 };
 
