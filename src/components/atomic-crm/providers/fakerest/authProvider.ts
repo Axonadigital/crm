@@ -18,7 +18,16 @@ export const DEFAULT_USER = {
 
 export const USER_STORAGE_KEY = "user";
 
-localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ ...DEFAULT_USER }));
+const shouldAutoLoginDefaultUser =
+  import.meta.env.VITE_E2E_DISABLE_AUTO_LOGIN !== "true";
+
+if (
+  typeof window !== "undefined" &&
+  shouldAutoLoginDefaultUser &&
+  !localStorage.getItem(USER_STORAGE_KEY)
+) {
+  localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ ...DEFAULT_USER }));
+}
 
 async function getUser(email: string) {
   const sales = await dataProvider.getList("sales", {
