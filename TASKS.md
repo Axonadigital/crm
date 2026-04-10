@@ -17,7 +17,7 @@
 
 - [x] **Fixa trasiga tester** – 2 failande tester i `getContactAvatar.spec.ts`
 - [x] **Öka testtäckning: deals-modulen** – Deals är kärnfunktionalitet. Bara 1 testfil.
-- [ ] **Öka testtäckning: quotes-modulen** – Nybyggd modul utan tester. Affärskritiskt.
+- [x] **Öka testtäckning: quotes-modulen** – 91 tester: quoteGeneration (18), premiumSections (39), premiumQuoteReferences (2), contractFields (14), generate_quote_text (8), orchestrate_proposal (10).
 - [x] **Ta bort krav på efternamn för kontakt** – Ta bort `required()` på `last_name` i `ContactInputs.tsx`. Snabb fix.
 - [x] **Fixa mobilvy: navbar och layout** – Navbaren längst ner syns bara till hälften. Rutor och text utanför skärmen. Granska `MobileLayout`, `MobileNavigation` och alla mobil-komponenter. Säkerställ full paritet med desktop-funktioner.
 
@@ -28,7 +28,7 @@
 - [x] **E2E-tester för kritiska flöden** – Playwright-suite: auth, companies, contacts, deals, navigation.
 - [x] **Edge function input-validering** – Shared _shared/http.ts med HttpError, parseRequiredJsonBody, field getters. Adopterat i users, analyze_meeting, enrich_allabolag.
 - [x] **Föreslå telefon/mejl från företagsprofil vid kontaktskapande** – contactCompanySuggestions.ts auto-fyller från valt företag.
-- [ ] **Lägg till löpande kostnad på deals** – Ny kolumn `recurring_amount` (+ ev. `recurring_interval`) på `deals`-tabellen. Uppdatera `DealInputs.tsx`, dealkort och revenue-beräkningar i dashboard. Kräver migration.
+- [x] **Lägg till löpande kostnad på deals** – recurring_amount + recurring_interval med migration, DealInputs, DealCard, DealShow, Kanban-totaler, dashboard revenue. 26 tester.
 - [x] **Ta bort signeringsruta från 12-sidors offert + fixa avtalslayout** – Ny terms meta-grid + referens-layout utan manuell signatur.
 - [x] **Mata in call_logs i offertens AI-analys** – Redan implementerat i generate_quote_text. Förbättringar av promptkvalitet hanteras under Prio 3 "Förbättra personalisering".
 - [x] **Scraper: stöd för flera telefonnummer** – phone_numbers jsonb-kolumn + multi-phone i auto_scrape/enrich_company med shared phoneNumbers.ts.
