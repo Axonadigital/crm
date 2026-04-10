@@ -18,25 +18,25 @@
 - [x] **Fixa trasiga tester** – 2 failande tester i `getContactAvatar.spec.ts`
 - [x] **Öka testtäckning: deals-modulen** – Deals är kärnfunktionalitet. Bara 1 testfil.
 - [ ] **Öka testtäckning: quotes-modulen** – Nybyggd modul utan tester. Affärskritiskt.
-- [ ] **Ta bort krav på efternamn för kontakt** – Ta bort `required()` på `last_name` i `ContactInputs.tsx`. Snabb fix.
-- [ ] **Fixa mobilvy: navbar och layout** – Navbaren längst ner syns bara till hälften. Rutor och text utanför skärmen. Granska `MobileLayout`, `MobileNavigation` och alla mobil-komponenter. Säkerställ full paritet med desktop-funktioner.
+- [x] **Ta bort krav på efternamn för kontakt** – Ta bort `required()` på `last_name` i `ContactInputs.tsx`. Snabb fix.
+- [x] **Fixa mobilvy: navbar och layout** – Navbaren längst ner syns bara till hälften. Rutor och text utanför skärmen. Granska `MobileLayout`, `MobileNavigation` och alla mobil-komponenter. Säkerställ full paritet med desktop-funktioner.
 
 ### Prio 2 – Högt värde
 
-- [ ] **Öka testtäckning: contacts-modulen** – Bara 1 integrationstest. Behöver unit tests.
-- [ ] **Öka testtäckning: companies-modulen** – Saknar tester helt.
-- [ ] **E2E-tester för kritiska flöden** – Playwright konfigurerat men inga tester.
-- [ ] **Edge function input-validering** – Flera edge functions saknar robust validering.
-- [ ] **Föreslå telefon/mejl från företagsprofil vid kontaktskapande** – När man skapar en kontakt under ett företag, visa företagets befintliga telefonnummer/mejl som förslag. Koppla `AutocompleteCompanyInput` till att populera suggestions i `ContactInputs.tsx`.
+- [x] **Öka testtäckning: contacts-modulen** – ContactInputs.test.tsx med 4 tester.
+- [x] **Öka testtäckning: companies-modulen** – CompanyInputs.test.tsx + normalizeCompanyWebsite.test.ts.
+- [x] **E2E-tester för kritiska flöden** – Playwright-suite: auth, companies, contacts, deals, navigation.
+- [x] **Edge function input-validering** – Shared _shared/http.ts med HttpError, parseRequiredJsonBody, field getters. Adopterat i users, analyze_meeting, enrich_allabolag.
+- [x] **Föreslå telefon/mejl från företagsprofil vid kontaktskapande** – contactCompanySuggestions.ts auto-fyller från valt företag.
 - [ ] **Lägg till löpande kostnad på deals** – Ny kolumn `recurring_amount` (+ ev. `recurring_interval`) på `deals`-tabellen. Uppdatera `DealInputs.tsx`, dealkort och revenue-beräkningar i dashboard. Kräver migration.
-- [ ] **Ta bort signeringsruta från 12-sidors offert + fixa avtalslayout** – Ta bort `buildTermsAndSignatureSection` från premium-PDF:en (`generate_quote_pdf/index.ts`). Förbättra layouten på DocuSeal-signeringsavtalet så det matchar offertens design.
+- [x] **Ta bort signeringsruta från 12-sidors offert + fixa avtalslayout** – Ny terms meta-grid + referens-layout utan manuell signatur.
 - [ ] **Mata in call_logs i offertens AI-analys** – Utöka `generate_quote_text` så den hämtar `call_logs` (samtalsanteckningar, outcome, notes) för företaget/dealen och inkluderar dem i Claude-prompten utöver Fireflies-mötesanalysen.
-- [ ] **Scraper: stöd för flera telefonnummer** – `auto_scrape` och `enrich_company` hämtar bara ett telefonnummer. Spara alla hittade nummer (t.ex. `phone_numbers` JSONB-array). Kräver migration + uppdatering av scraper-logik.
+- [x] **Scraper: stöd för flera telefonnummer** – phone_numbers jsonb-kolumn + multi-phone i auto_scrape/enrich_company med shared phoneNumbers.ts.
 
 ### Prio 3 – Förbättringar
 
 - [ ] **Prestandaoptimering: databasvyer** – Granska N+1-problem och saknade index.
-- [ ] **Konsistent felhantering i edge functions** – Standardisera error responses.
+- [x] **Konsistent felhantering i edge functions** – _shared/http.ts med HttpError + errorResponseFromUnknown. Adopterat i 5+ funktioner.
 - [ ] **Refaktorering av stora filer** – Bryt ut logik från filer >400 rader.
 - [ ] **Förbättra personalisering av 12-sidors offert** – AI-texterna blir för lika mellan kunder. Inkludera mer kundspecifik kontext (call_logs, branschdata, specifika behov) i prompten. Refaktorera prompt-strukturen. Beror på att call_logs matas in först.
 - [ ] **Kundanpassade referensbilder i offerten** – Byt ut hårdkodade `DEFAULT_REFERENCES` mot dynamiskt urval baserat på bransch/behov. Ev. admin-UI för att välja referensprojekt per offert.
