@@ -243,11 +243,11 @@ const CallQueueItem = ({ company }: { company: Company }) => {
     <>
       <Card className="hover:shadow-lg transition-shadow">
         <CardHeader className="pb-3">
-          <div className="flex justify-between items-start gap-4">
-            <div className="flex-1 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+            <div className="min-w-0">
               <div className="flex items-center gap-2 mb-2">
                 <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
-                <CardTitle className="text-xl truncate">
+                <CardTitle className="text-xl break-words">
                   <Link
                     to={`/companies/${company.id}/show`}
                     className="hover:underline"
@@ -264,7 +264,7 @@ const CallQueueItem = ({ company }: { company: Company }) => {
             </div>
             <Button
               onClick={() => setCallModalOpen(true)}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 shrink-0 w-full sm:w-auto"
             >
               <Phone className="h-4 w-4" />
               Ring nu
