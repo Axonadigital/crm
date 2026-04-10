@@ -6,7 +6,7 @@
 ## Supabase
 
 ### Production project ref
-- **Production project ref:** `<FYLL_I_PROJECT_REF>` (TODO: Rasmus, pinna här)
+- **Production project ref:** `hgyusrlrzdahucljvqsz`
 - Alltid använd denna ref vid `supabase link` eller `--project-ref` flaggor
 - Kör ALDRIG deploy mot en annan ref utan att fråga först
 
