@@ -30,7 +30,7 @@
 - [x] **Föreslå telefon/mejl från företagsprofil vid kontaktskapande** – contactCompanySuggestions.ts auto-fyller från valt företag.
 - [ ] **Lägg till löpande kostnad på deals** – Ny kolumn `recurring_amount` (+ ev. `recurring_interval`) på `deals`-tabellen. Uppdatera `DealInputs.tsx`, dealkort och revenue-beräkningar i dashboard. Kräver migration.
 - [x] **Ta bort signeringsruta från 12-sidors offert + fixa avtalslayout** – Ny terms meta-grid + referens-layout utan manuell signatur.
-- [ ] **Mata in call_logs i offertens AI-analys** – Utöka `generate_quote_text` så den hämtar `call_logs` (samtalsanteckningar, outcome, notes) för företaget/dealen och inkluderar dem i Claude-prompten utöver Fireflies-mötesanalysen.
+- [x] **Mata in call_logs i offertens AI-analys** – Redan implementerat i generate_quote_text. Förbättringar av promptkvalitet hanteras under Prio 3 "Förbättra personalisering".
 - [x] **Scraper: stöd för flera telefonnummer** – phone_numbers jsonb-kolumn + multi-phone i auto_scrape/enrich_company med shared phoneNumbers.ts.
 
 ### Prio 3 – Förbättringar
