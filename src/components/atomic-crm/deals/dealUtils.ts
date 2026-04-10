@@ -1,6 +1,53 @@
 import { format } from "date-fns";
 
-import type { DealStage } from "../types";
+import type { Deal, DealStage } from "../types";
+
+export const RECURRING_INTERVAL_CHOICES = [
+  { id: "monthly", name: "Månadsvis" },
+  { id: "quarterly", name: "Kvartalsvis" },
+  { id: "yearly", name: "Årsvis" },
+];
+
+export function annualizeRecurring(
+  amount: number | null | undefined,
+  interval: string | null | undefined,
+): number {
+  if (!amount || !interval) return 0;
+  switch (interval) {
+    case "monthly":
+      return amount * 12;
+    case "quarterly":
+      return amount * 4;
+    case "yearly":
+      return amount;
+    default:
+      return 0;
+  }
+}
+
+export function totalDealValue(
+  deal: Pick<Deal, "amount" | "recurring_amount" | "recurring_interval">,
+): number {
+  return (
+    (deal.amount || 0) +
+    annualizeRecurring(deal.recurring_amount, deal.recurring_interval)
+  );
+}
+
+export function formatRecurringLabel(
+  interval: string | null | undefined,
+): string {
+  switch (interval) {
+    case "monthly":
+      return "/mån";
+    case "quarterly":
+      return "/kv";
+    case "yearly":
+      return "/år";
+    default:
+      return "";
+  }
+}
 
 export const findDealLabel = (dealStages: DealStage[], dealValue: string) => {
   const dealStage = dealStages.find((stage) => stage.value === dealValue);

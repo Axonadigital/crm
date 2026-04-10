@@ -5,6 +5,7 @@ import {
   buildEnrichmentContext,
   buildMeetingContext,
   buildQuoteGenerationPrompts,
+  fetchRecentCallLogs,
 } from "./quoteGeneration.ts";
 
 describe("quoteGeneration helpers", () => {
@@ -265,5 +266,197 @@ describe("quoteGeneration helpers", () => {
     expect(systemPrompt).toContain("samtalsloggar");
     expect(systemPrompt).toContain("skriven för just den kunden");
     expect(systemPrompt).toContain("engagemangsnivå");
+  });
+});
+
+describe("buildEnrichmentContext", () => {
+  it("returns empty string for null/undefined input", () => {
+    expect(buildEnrichmentContext(null)).toBe("");
+    expect(buildEnrichmentContext(undefined)).toBe("");
+  });
+
+  it("returns empty string when company object has all null fields", () => {
+    expect(
+      buildEnrichmentContext({
+        lead_score: null,
+        segment: null,
+        has_facebook: null,
+        facebook_url: null,
+        has_instagram: null,
+        instagram_url: null,
+        website_score: null,
+      }),
+    ).toBe("");
+  });
+
+  it("includes lead score and segment", () => {
+    const context = buildEnrichmentContext({
+      lead_score: 75,
+      segment: "SME",
+    });
+    expect(context).toContain("Lead score: 75/100");
+    expect(context).toContain("Segment: SME");
+    expect(context).toContain("Digital närvaro:");
+  });
+
+  it("includes Facebook when has_facebook and facebook_url are set", () => {
+    const context = buildEnrichmentContext({
+      has_facebook: true,
+      facebook_url: "https://facebook.com/acme",
+    });
+    expect(context).toContain("Facebook: aktiv (https://facebook.com/acme)");
+  });
+
+  it("excludes Facebook when has_facebook is true but url is missing", () => {
+    const context = buildEnrichmentContext({
+      has_facebook: true,
+      facebook_url: null,
+    });
+    expect(context).not.toContain("Facebook");
+  });
+
+  it("includes Instagram when has_instagram and instagram_url are set", () => {
+    const context = buildEnrichmentContext({
+      has_instagram: true,
+      instagram_url: "https://instagram.com/acme",
+    });
+    expect(context).toContain("Instagram: aktiv (https://instagram.com/acme)");
+  });
+
+  it("maps website_score 0 to 'ingen hemsida'", () => {
+    const context = buildEnrichmentContext({ website_score: 0 });
+    expect(context).toContain("ingen hemsida");
+    expect(context).toContain("score 0/100");
+  });
+
+  it("maps website_score 39 to 'dålig hemsida'", () => {
+    expect(buildEnrichmentContext({ website_score: 39 })).toContain(
+      "dålig hemsida",
+    );
+  });
+
+  it("maps website_score 55 to 'ok hemsida'", () => {
+    expect(buildEnrichmentContext({ website_score: 55 })).toContain(
+      "ok hemsida",
+    );
+  });
+
+  it("maps website_score 85 to 'bra hemsida'", () => {
+    expect(buildEnrichmentContext({ website_score: 85 })).toContain(
+      "bra hemsida",
+    );
+  });
+});
+
+describe("buildEmailContext", () => {
+  it("formats a single email with subject, status and date", () => {
+    const context = buildEmailContext([
+      {
+        subject: "Offertförslag",
+        status: "sent",
+        sent_at: "2026-04-07T12:00:00.000Z",
+      },
+    ]);
+    expect(context).toContain("SENASTE E-POSTKOMMUNIKATION");
+    expect(context).toContain('"Offertförslag"');
+    expect(context).toContain("sent");
+    expect(context).toContain("2026-04-07");
+  });
+
+  it("formats multiple emails", () => {
+    const context = buildEmailContext([
+      { subject: "Email 1", status: "sent", sent_at: "2026-04-01T10:00:00Z" },
+      {
+        subject: "Email 2",
+        status: "delivered",
+        sent_at: "2026-04-02T10:00:00Z",
+      },
+    ]);
+    expect(context).toContain('"Email 1"');
+    expect(context).toContain('"Email 2"');
+  });
+
+  it("shows 'ej skickat' when sent_at is null", () => {
+    const context = buildEmailContext([
+      { subject: "Draft", status: "draft", sent_at: null },
+    ]);
+    expect(context).toContain("ej skickat");
+  });
+
+  it("returns empty string for null and undefined input", () => {
+    expect(buildEmailContext(null)).toBe("");
+    expect(buildEmailContext(undefined)).toBe("");
+  });
+});
+
+describe("fetchRecentCallLogs", () => {
+  function buildMockSupabase(data: unknown[] | null = []) {
+    const chain = {
+      eq: (_col: string, _val: unknown) => chain,
+      order: (_col: string, _opts: unknown) => chain,
+      limit: (_n: number) => Promise.resolve({ data }),
+    };
+    return {
+      from: (_table: string) => ({
+        select: (_columns: string) => chain,
+      }),
+    };
+  }
+
+  it("returns empty array when both contactId and companyId are null", async () => {
+    const mock = buildMockSupabase([{ created_at: "2026-01-01" }]);
+    const result = await fetchRecentCallLogs(mock, {
+      contactId: null,
+      companyId: null,
+    });
+    expect(result).toEqual([]);
+  });
+
+  it("returns logs when contactId is provided", async () => {
+    const logs = [
+      { created_at: "2026-04-08T10:00:00Z", call_outcome: "interested" },
+    ];
+    const mock = buildMockSupabase(logs);
+    const result = await fetchRecentCallLogs(mock, { contactId: 1 });
+    expect(result).toHaveLength(1);
+    expect(result[0].call_outcome).toBe("interested");
+  });
+
+  it("returns logs when only companyId is provided", async () => {
+    const logs = [
+      { created_at: "2026-04-08T10:00:00Z", call_outcome: "meeting_booked" },
+    ];
+    const mock = buildMockSupabase(logs);
+    const result = await fetchRecentCallLogs(mock, { companyId: 5 });
+    expect(result).toHaveLength(1);
+  });
+
+  it("returns empty array when data is null", async () => {
+    const mock = buildMockSupabase(null);
+    const result = await fetchRecentCallLogs(mock, { contactId: 1 });
+    expect(result).toEqual([]);
+  });
+
+  it("respects custom limit parameter", async () => {
+    const logs = Array.from({ length: 20 }, (_, i) => ({
+      created_at: `2026-04-${String(i + 1).padStart(2, "0")}T10:00:00Z`,
+      call_outcome: "interested",
+      notes: `Call ${i}`,
+    }));
+    const chain = {
+      eq: (_col: string, _val: unknown) => chain,
+      order: (_col: string, _opts: unknown) => chain,
+      limit: (n: number) => Promise.resolve({ data: logs.slice(0, n) }),
+    };
+    const mock = {
+      from: (_table: string) => ({
+        select: (_columns: string) => chain,
+      }),
+    };
+    const result = await fetchRecentCallLogs(mock, {
+      contactId: 1,
+      limit: 3,
+    });
+    expect(result).toHaveLength(3);
   });
 });

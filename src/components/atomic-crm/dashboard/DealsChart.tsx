@@ -4,7 +4,7 @@ import { TrendingUp } from "lucide-react";
 import { useGetList, useTranslate } from "ra-core";
 import { memo, useMemo } from "react";
 
-import { findDealLabel } from "../deals/dealUtils";
+import { findDealLabel, totalDealValue } from "../deals/dealUtils";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 
@@ -76,10 +76,10 @@ export const DealsChart = memo(() => {
           date: format(new Date(month), "MMM"),
           won: monthDeals
             .filter((deal) => deal.stage === "won")
-            .reduce((acc, deal) => acc + deal.amount, 0),
+            .reduce((acc, deal) => acc + totalDealValue(deal), 0),
           pending: monthDeals
             .filter((deal) => !["won", "lost"].includes(deal.stage))
-            .reduce((acc, deal) => acc + deal.amount, 0),
+            .reduce((acc, deal) => acc + totalDealValue(deal), 0),
           lost: monthDeals
             .filter((deal) => deal.stage === "lost")
             .reduce((acc, deal) => acc - deal.amount, 0),

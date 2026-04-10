@@ -12,6 +12,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { contactOptionText } from "../misc/ContactOption";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import { AutocompleteCompanyInput } from "../companies/AutocompleteCompanyInput.tsx";
+import { RECURRING_INTERVAL_CHOICES } from "./dealUtils";
 
 export const DealInputs = () => {
   const isMobile = useIsMobile();
@@ -84,6 +85,12 @@ const DealMiscInputs = () => {
         helperText={false}
         validate={required()}
       />
+      <SelectInput
+        source="recurring_interval"
+        choices={RECURRING_INTERVAL_CHOICES}
+        helperText={false}
+      />
+      <NumberInput source="recurring_amount" helperText={false} />
       <DateInput
         validate={required()}
         source="expected_closing_date"

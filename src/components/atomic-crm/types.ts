@@ -192,6 +192,8 @@ export type Deal = {
   stage: string;
   description: string;
   amount: number;
+  recurring_amount?: number | null;
+  recurring_interval?: "monthly" | "quarterly" | "yearly" | null;
   created_at: string;
   updated_at: string;
   archived_at?: string;
