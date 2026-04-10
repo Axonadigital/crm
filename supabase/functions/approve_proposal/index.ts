@@ -54,6 +54,13 @@ async function sendProposalEmail(params: {
   const safeCompany = escapeHtml(params.companyName);
   const safeQuoteNumber = escapeHtml(params.quoteNumber);
   const safeUrl = encodeURI(params.proposalUrl);
+  if (!/^https?:\/\//i.test(safeUrl)) {
+    console.error(
+      "Invalid proposal URL protocol, skipping email:",
+      params.proposalUrl,
+    );
+    return;
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="sv">

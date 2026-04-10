@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { Confirm } from "@/components/admin/confirm";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Contact, Task as TData } from "../types";
 import { TaskEdit } from "./TaskEdit";
@@ -40,6 +41,7 @@ export const Task = ({
   const getContactRepresentation = useGetRecordRepresentation("contacts");
 
   const [openEdit, setOpenEdit] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const handleCloseEdit = () => {
     setOpenEdit(false);
@@ -201,12 +203,24 @@ export const Task = ({
             </DropdownMenuItem>
             <DropdownMenuItem
               className="cursor-pointer h-12 md:h-8 px-4 md:px-2 text-base md:text-sm"
-              onClick={handleDelete}
+              onClick={() => setConfirmDeleteOpen(true)}
             >
               {translate("ra.action.delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Confirm
+          isOpen={confirmDeleteOpen}
+          title="ra.message.delete_title"
+          content="ra.message.delete_content"
+          onConfirm={(e) => {
+            setConfirmDeleteOpen(false);
+            handleDelete(e);
+          }}
+          onClose={() => setConfirmDeleteOpen(false)}
+          confirmColor="warning"
+        />
       </div>
 
       {isMobile ? (

@@ -3,6 +3,7 @@ import isEqual from "lodash/isEqual";
 import { useDataProvider, useListContext, type DataProvider } from "ra-core";
 import { useEffect, useState } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 import { DealColumn } from "./DealColumn";
@@ -28,7 +29,25 @@ export const DealListContent = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unorderedDeals]);
 
-  if (isPending) return null;
+  if (isPending) {
+    return (
+      <div className="flex gap-4">
+        {dealStages.map((stage) => (
+          <div key={stage.value} className="flex-1 pb-8">
+            <div className="flex flex-col items-center mb-2">
+              <Skeleton className="h-5 w-24 mb-1" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+            <div className="flex flex-col gap-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-[72px] w-full rounded-xl" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   const onDragEnd: OnDragEndResponder = (result) => {
     const { destination, source } = result;
