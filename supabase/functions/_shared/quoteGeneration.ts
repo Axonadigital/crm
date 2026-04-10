@@ -45,6 +45,8 @@ export interface QuoteCallLog {
   notes?: string | null;
   followup_note?: string | null;
   followup_date?: string | null;
+  call_duration_seconds?: number | null;
+  contact_id?: number | null;
 }
 
 const CALL_OUTCOME_LABELS: Record<string, string> = {
@@ -60,53 +62,91 @@ const CALL_OUTCOME_LABELS: Record<string, string> = {
   callback_requested: "Återkom senare",
 };
 
+const LOW_VALUE_OUTCOMES = new Set(["no_answer", "busy", "wrong_number"]);
+
+const HIGH_VALUE_OUTCOMES = new Set([
+  "spoke_gatekeeper",
+  "spoke_decision_maker",
+  "interested",
+  "not_interested",
+  "meeting_booked",
+  "send_info",
+  "callback_requested",
+]);
+
+type SupabaseQueryChain = {
+  eq: (column: string, value: unknown) => SupabaseQueryChain;
+  order: (
+    column: string,
+    options: { ascending: boolean },
+  ) => SupabaseQueryChain;
+  limit: (value: number) => Promise<{ data: QuoteCallLog[] | null }>;
+};
+
+type SupabaseClient = {
+  from: (table: string) => {
+    select: (columns: string) => SupabaseQueryChain;
+  };
+};
+
 export async function fetchRecentCallLogs(
-  supabase: {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (column: string, value: unknown) => unknown;
-      };
-    };
-  },
+  supabase: SupabaseClient,
   input: {
     contactId?: number | string | null;
     companyId?: number | string | null;
     limit?: number;
   },
 ): Promise<QuoteCallLog[]> {
-  const { contactId, companyId, limit = 4 } = input;
+  const { contactId, companyId, limit = 10 } = input;
   if (!contactId && !companyId) {
     return [];
   }
 
-  let query = supabase
-    .from("call_logs")
-    .select("created_at, call_outcome, notes, followup_note, followup_date");
+  const COLUMNS =
+    "created_at, call_outcome, notes, followup_note, followup_date, call_duration_seconds, contact_id";
+
+  const queries: Promise<{ data: QuoteCallLog[] | null }>[] = [];
 
   if (contactId) {
-    query = (query as { eq: (column: string, value: unknown) => unknown }).eq(
-      "contact_id",
-      contactId,
-    );
-  } else if (companyId) {
-    query = (query as { eq: (column: string, value: unknown) => unknown }).eq(
-      "company_id",
-      companyId,
+    queries.push(
+      supabase
+        .from("call_logs")
+        .select(COLUMNS)
+        .eq("contact_id", contactId)
+        .order("created_at", { ascending: false })
+        .limit(limit),
     );
   }
 
-  const result = await (
-    query as {
-      order: (
-        column: string,
-        options: { ascending: boolean },
-      ) => { limit: (value: number) => Promise<{ data: QuoteCallLog[] | null }> };
-    }
-  )
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  if (companyId) {
+    queries.push(
+      supabase
+        .from("call_logs")
+        .select(COLUMNS)
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    );
+  }
 
-  return result.data || [];
+  const results = await Promise.all(queries);
+  const allLogs = results.flatMap((r) => r.data || []);
+
+  // Deduplicate: same call can appear via both contact_id and company_id queries
+  const seen = new Set<string>();
+  const unique = allLogs.filter((log) => {
+    const key = `${log.created_at}|${log.call_outcome}|${log.notes ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return unique
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
+    .slice(0, limit);
 }
 
 export function buildEnrichmentContext(
@@ -159,7 +199,10 @@ export function buildMeetingContext(
   if (analysis.summary) {
     parts.push(`Mötessammanfattning: ${analysis.summary}`);
   }
-  if (Array.isArray(analysis.customer_needs) && analysis.customer_needs.length) {
+  if (
+    Array.isArray(analysis.customer_needs) &&
+    analysis.customer_needs.length
+  ) {
     parts.push(`Identifierade behov: ${analysis.customer_needs.join(", ")}`);
   }
   if (Array.isArray(analysis.objections) && analysis.objections.length) {
@@ -172,9 +215,7 @@ export function buildMeetingContext(
     parts.push(`Önskad tidsram: ${analysis.quote_context.timeline}`);
   }
 
-  return parts.length > 0
-    ? `\n\nFRÅN SENASTE MÖTET:\n${parts.join("\n")}`
-    : "";
+  return parts.length > 0 ? `\n\nFRÅN SENASTE MÖTET:\n${parts.join("\n")}` : "";
 }
 
 export function buildEmailContext(emails: QuoteEmailLog[] | null | undefined) {
@@ -193,6 +234,49 @@ export function buildEmailContext(emails: QuoteEmailLog[] | null | undefined) {
   return `\n\nSENASTE E-POSTKOMMUNIKATION:\n${emailLines.join("\n")}`;
 }
 
+function buildCallLogsSummary(logs: QuoteCallLog[]): string {
+  const total = logs.length;
+  const lowValueCount = logs.filter((l) =>
+    LOW_VALUE_OUTCOMES.has(l.call_outcome),
+  ).length;
+  const conversationCount = logs.filter((l) =>
+    HIGH_VALUE_OUTCOMES.has(l.call_outcome),
+  ).length;
+  const interestedCount = logs.filter(
+    (l) =>
+      l.call_outcome === "interested" || l.call_outcome === "meeting_booked",
+  ).length;
+  const notInterestedCount = logs.filter(
+    (l) => l.call_outcome === "not_interested",
+  ).length;
+  const totalDurationSec = logs.reduce(
+    (sum, l) => sum + (l.call_duration_seconds || 0),
+    0,
+  );
+  const longestCallSec = Math.max(
+    ...logs.map((l) => l.call_duration_seconds || 0),
+  );
+
+  const parts: string[] = [];
+  parts.push(`${total} samtal totalt`);
+  if (lowValueCount > 0) parts.push(`${lowValueCount} utan svar`);
+  if (conversationCount > 0)
+    parts.push(`${conversationCount} med konversation`);
+  if (interestedCount > 0)
+    parts.push(`${interestedCount} visade intresse/möte bokat`);
+  if (notInterestedCount > 0)
+    parts.push(`${notInterestedCount} inte intresserade`);
+  if (totalDurationSec > 0) {
+    const mins = Math.round(totalDurationSec / 60);
+    parts.push(`total samtalstid: ${mins} min`);
+  }
+  if (longestCallSec > 60) {
+    parts.push(`längsta samtal: ${Math.round(longestCallSec / 60)} min`);
+  }
+
+  return `Sammanfattning: ${parts.join(", ")}`;
+}
+
 export function buildCallLogsContext(
   callLogs: QuoteCallLog[] | null | undefined,
 ): string {
@@ -200,32 +284,46 @@ export function buildCallLogsContext(
     return "";
   }
 
-  const lines = callLogs
-    .map((log) => {
-      const parts: string[] = [];
-      const label = CALL_OUTCOME_LABELS[log.call_outcome] || log.call_outcome;
-      const date = new Date(log.created_at).toLocaleDateString("sv-SE");
-      parts.push(`${date}: ${label}`);
+  const summary = buildCallLogsSummary(callLogs);
 
-      if (log.notes?.trim()) {
-        parts.push(`Anteckning: ${log.notes.trim()}`);
-      }
-      if (log.followup_note?.trim()) {
-        parts.push(`Uppföljning: ${log.followup_note.trim()}`);
-      }
-      if (log.followup_date) {
-        parts.push(
-          `Planerad uppföljning: ${new Date(log.followup_date).toLocaleDateString("sv-SE")}`,
-        );
-      }
+  const highValueLogs = callLogs
+    .filter((log) => HIGH_VALUE_OUTCOMES.has(log.call_outcome))
+    .slice(0, 5);
 
-      return `- ${parts.join(" | ")}`;
-    })
-    .filter(Boolean);
+  const lines = highValueLogs.map((log) => {
+    const parts: string[] = [];
+    const label = CALL_OUTCOME_LABELS[log.call_outcome] || log.call_outcome;
+    const date = new Date(log.created_at).toLocaleDateString("sv-SE");
+    parts.push(`${date}: ${label}`);
 
-  return lines.length > 0
-    ? `\n\nFRÅN SAMTALSLOGGAR:\n${lines.join("\n")}`
-    : "";
+    if (log.call_duration_seconds && log.call_duration_seconds > 0) {
+      const mins = Math.round(log.call_duration_seconds / 60);
+      parts.push(
+        `Samtalslängd: ${mins > 0 ? `${mins} min` : `${log.call_duration_seconds} sek`}`,
+      );
+    }
+    if (log.notes?.trim()) {
+      parts.push(`Anteckning: ${log.notes.trim()}`);
+    }
+    if (log.followup_note?.trim()) {
+      parts.push(`Uppföljning: ${log.followup_note.trim()}`);
+    }
+    if (log.followup_date) {
+      parts.push(
+        `Planerad uppföljning: ${new Date(log.followup_date).toLocaleDateString("sv-SE")}`,
+      );
+    }
+
+    return `- ${parts.join(" | ")}`;
+  });
+
+  const sections: string[] = [summary];
+  if (lines.length > 0) {
+    sections.push("Viktiga samtal:");
+    sections.push(...lines);
+  }
+
+  return `\n\nFRÅN SAMTALSLOGGAR:\n${sections.join("\n")}`;
 }
 
 export function buildQuoteGenerationPrompts(
@@ -309,9 +407,20 @@ INSTRUKTIONER FÖR proposal_body:
 1. Kort, personlig hälsning till ${input.contactName} (en mening)
 2. Visa att ni förstår kundens situation, nuläge och behov (2-3 meningar)
 3. Beskriv varje tjänst med fokus på värdet för kunden
-4. Väva in signaler från mötestranskript och samtalsloggar om de finns
+4. Väva in specifika detaljer, citat och mönster från samtalsloggar — nämn konkreta saker kunden sagt eller visat intresse för
 5. Bemöt invändningar, osäkerheter eller önskemål som nämnts
 6. Avsluta med ett tydligt nästa steg
+${
+  input.callLogsContext
+    ? `7. TOLKA SAMTALSLOGGAR:
+   - Många samtal utan svar: kunden är svårnådd, visa att ni respekterar deras tid
+   - Långa samtal (>10 min): engagemang finns, referera konkret till vad som diskuterades
+   - "Inte intresserad" följt av "intresserad": attityd har skiftat, lyft vad som ändrade sig
+   - callback_requested eller send_info: kunden vill ha underlag, var konkret och faktabaserad
+   - Möte bokat: referera till mötet som naturligt nästa steg
+   - Anpassa tonalitet: engagerad kund = mer direkt, tveksam kund = mer trygghetsskapande`
+    : ""
+}
 
 REGLER:
 - Skriv på svenska
@@ -340,6 +449,7 @@ TONALITET:
 - Skriv som en senior konsult som pratar med en jämlike
 - Varje text ska kännas skriven för just den kunden, aldrig som en mall
 - Om mötestranskript eller samtalsloggar visar prioriteringar, invändningar eller språkbruk ska du använda det för att göra texten mer träffsäker
+- Om samtalsloggar visar samtalslängd: använd det som signal för engagemangsnivå. Korta samtal (<2 min) = tidigt stadium. Långa samtal (>10 min) = genuint intresse, skriv mer specifikt och personligt
 ${input.kbTemplate ? "- Du har fått en referensoffert att imitera — matcha dess ton, flöde och detaljnivå exakt, men skriv unikt innehåll" : ""}
 
 SVARA ALLTID med ENBART giltig JSON — inget annat.`;
