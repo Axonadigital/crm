@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 
-import { findDealLabel, getRelativeTimeString } from "./dealUtils";
+import {
+  annualizeRecurring,
+  findDealLabel,
+  formatRecurringLabel,
+  getRelativeTimeString,
+  totalDealValue,
+} from "./dealUtils";
 import type { DealStage } from "../types";
 
 const dealStages: DealStage[] = [
@@ -71,5 +77,99 @@ describe("getRelativeTimeString", () => {
   it("capitalizes the first character of the result", () => {
     const result = getRelativeTimeString(dateOffsetFromToday(0));
     expect(result[0]).toBe(result[0].toUpperCase());
+  });
+});
+
+describe("annualizeRecurring", () => {
+  it("returns amount * 12 for monthly", () => {
+    expect(annualizeRecurring(1000, "monthly")).toBe(12000);
+  });
+
+  it("returns amount * 4 for quarterly", () => {
+    expect(annualizeRecurring(1000, "quarterly")).toBe(4000);
+  });
+
+  it("returns amount as-is for yearly", () => {
+    expect(annualizeRecurring(1000, "yearly")).toBe(1000);
+  });
+
+  it("returns 0 when amount is null", () => {
+    expect(annualizeRecurring(null, "monthly")).toBe(0);
+  });
+
+  it("returns 0 when interval is null", () => {
+    expect(annualizeRecurring(1000, null)).toBe(0);
+  });
+
+  it("returns 0 when both are undefined", () => {
+    expect(annualizeRecurring(undefined, undefined)).toBe(0);
+  });
+
+  it("returns 0 for an invalid interval", () => {
+    expect(annualizeRecurring(1000, "weekly")).toBe(0);
+  });
+});
+
+describe("totalDealValue", () => {
+  it("returns only amount when no recurring fields", () => {
+    expect(
+      totalDealValue({
+        amount: 5000,
+        recurring_amount: null,
+        recurring_interval: null,
+      }),
+    ).toBe(5000);
+  });
+
+  it("adds annualized recurring to amount", () => {
+    expect(
+      totalDealValue({
+        amount: 5000,
+        recurring_amount: 1000,
+        recurring_interval: "monthly",
+      }),
+    ).toBe(17000);
+  });
+
+  it("handles zero amount with recurring", () => {
+    expect(
+      totalDealValue({
+        amount: 0,
+        recurring_amount: 2000,
+        recurring_interval: "quarterly",
+      }),
+    ).toBe(8000);
+  });
+
+  it("handles undefined recurring fields", () => {
+    expect(
+      totalDealValue({
+        amount: 3000,
+        recurring_amount: undefined,
+        recurring_interval: undefined,
+      }),
+    ).toBe(3000);
+  });
+});
+
+describe("formatRecurringLabel", () => {
+  it("returns /mån for monthly", () => {
+    expect(formatRecurringLabel("monthly")).toBe("/mån");
+  });
+
+  it("returns /kv for quarterly", () => {
+    expect(formatRecurringLabel("quarterly")).toBe("/kv");
+  });
+
+  it("returns /år for yearly", () => {
+    expect(formatRecurringLabel("yearly")).toBe("/år");
+  });
+
+  it("returns empty string for null", () => {
+    expect(formatRecurringLabel(null)).toBe("");
+  });
+
+  it("returns empty string for undefined", () => {
+    expect(formatRecurringLabel(undefined)).toBe("");
   });
 });

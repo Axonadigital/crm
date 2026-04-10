@@ -35,7 +35,11 @@ import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 import { ContactList } from "./ContactList";
 import { DealEditSheet } from "./DealEditSheet";
-import { findDealLabel, formatISODateString } from "./dealUtils";
+import {
+  findDealLabel,
+  formatISODateString,
+  formatRecurringLabel,
+} from "./dealUtils";
 
 export const DealShow = ({ open, id }: { open: boolean; id?: string }) => {
   const isMobile = useIsMobile();
@@ -134,6 +138,19 @@ const DealShowContent = () => {
                   minimumSignificantDigits: 3,
                 })}
               </span>
+              {record.recurring_amount && record.recurring_interval ? (
+                <span className="text-xs text-muted-foreground">
+                  {"+ "}
+                  {record.recurring_amount.toLocaleString("en-US", {
+                    notation: "compact",
+                    style: "currency",
+                    currency,
+                    currencyDisplay: "narrowSymbol",
+                    minimumSignificantDigits: 3,
+                  })}
+                  {formatRecurringLabel(record.recurring_interval)}
+                </span>
+              ) : null}
             </div>
 
             {record.category && (
@@ -279,6 +296,19 @@ const DealShowContentMobile = () => {
                 minimumSignificantDigits: 3,
               })}
             </span>
+            {record.recurring_amount && record.recurring_interval ? (
+              <span className="text-xs text-muted-foreground">
+                {"+ "}
+                {record.recurring_amount.toLocaleString("en-US", {
+                  notation: "compact",
+                  style: "currency",
+                  currency,
+                  currencyDisplay: "narrowSymbol",
+                  minimumSignificantDigits: 3,
+                })}
+                {formatRecurringLabel(record.recurring_interval)}
+              </span>
+            ) : null}
           </div>
 
           {record.category && (

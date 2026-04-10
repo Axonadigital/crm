@@ -9,6 +9,7 @@ import {
 import { useGetList } from "ra-core";
 import { useMemo } from "react";
 
+import { totalDealValue } from "../deals/dealUtils";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 
@@ -83,7 +84,7 @@ export const useDashboardDeals = (): DashboardMetrics => {
         const date = new Date(d.expected_closing_date);
         return !isBefore(date, thisMonthStart);
       })
-      .reduce((sum, d) => sum + d.amount, 0);
+      .reduce((sum, d) => sum + totalDealValue(d), 0);
 
     const closedRevenuePrev = wonDeals
       .filter((d) => {
@@ -92,14 +93,14 @@ export const useDashboardDeals = (): DashboardMetrics => {
           !isBefore(date, prevMonthStart) && isBefore(date, thisMonthStart)
         );
       })
-      .reduce((sum, d) => sum + d.amount, 0);
+      .reduce((sum, d) => sum + totalDealValue(d), 0);
 
     // Pipeline value - active stages only
     const activePipelineDeals = data.filter(
       (d) => !INACTIVE_STAGES.includes(d.stage),
     );
     const pipelineValue = activePipelineDeals.reduce(
-      (sum, d) => sum + d.amount,
+      (sum, d) => sum + totalDealValue(d),
       0,
     );
 
@@ -109,7 +110,7 @@ export const useDashboardDeals = (): DashboardMetrics => {
         const date = new Date(d.created_at);
         return isBefore(date, thisMonthStart);
       })
-      .reduce((sum, d) => sum + d.amount, 0);
+      .reduce((sum, d) => sum + totalDealValue(d), 0);
 
     // Win rate - last 90 days vs previous 90 days
     const closedLast90 = data.filter((d) => {
@@ -137,7 +138,8 @@ export const useDashboardDeals = (): DashboardMetrics => {
     );
     const avgDealSize =
       wonRecent.length > 0
-        ? wonRecent.reduce((sum, d) => sum + d.amount, 0) / wonRecent.length
+        ? wonRecent.reduce((sum, d) => sum + totalDealValue(d), 0) /
+          wonRecent.length
         : 0;
 
     const wonOlder = wonDeals.filter((d) => {
@@ -146,7 +148,8 @@ export const useDashboardDeals = (): DashboardMetrics => {
     });
     const avgDealSizePrev =
       wonOlder.length > 0
-        ? wonOlder.reduce((sum, d) => sum + d.amount, 0) / wonOlder.length
+        ? wonOlder.reduce((sum, d) => sum + totalDealValue(d), 0) /
+          wonOlder.length
         : 0;
 
     // Monthly revenue for line chart (12 months)
@@ -162,7 +165,7 @@ export const useDashboardDeals = (): DashboardMetrics => {
           const date = new Date(d.expected_closing_date);
           return !isBefore(date, monthStart) && isBefore(date, monthEnd);
         })
-        .reduce((sum, d) => sum + d.amount, 0);
+        .reduce((sum, d) => sum + totalDealValue(d), 0);
 
       const monthPipeline = data
         .filter((d) => {
@@ -170,7 +173,7 @@ export const useDashboardDeals = (): DashboardMetrics => {
           const date = new Date(d.expected_closing_date);
           return !isBefore(date, monthStart) && isBefore(date, monthEnd);
         })
-        .reduce((sum, d) => sum + d.amount, 0);
+        .reduce((sum, d) => sum + totalDealValue(d), 0);
 
       monthlyRevenue.push({
         month: monthKey,
@@ -188,7 +191,7 @@ export const useDashboardDeals = (): DashboardMetrics => {
           stage: stage.value,
           label: stage.label,
           count: stageDeals.length,
-          value: stageDeals.reduce((sum, d) => sum + d.amount, 0),
+          value: stageDeals.reduce((sum, d) => sum + totalDealValue(d), 0),
         };
       })
       .filter((s) => s.count > 0);

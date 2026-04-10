@@ -27,6 +27,14 @@ export const generateDeals = (db: Db): Deal[] => {
       .toISOString()
       .split("T")[0];
 
+    const hasRecurring = datatype.boolean();
+    const recurring_interval = hasRecurring
+      ? random.arrayElement(["monthly", "quarterly", "yearly"] as const)
+      : null;
+    const recurring_amount = hasRecurring
+      ? datatype.number({ min: 500, max: 5000 })
+      : null;
+
     return {
       id,
       name: lowercaseName[0].toUpperCase() + lowercaseName.slice(1),
@@ -36,6 +44,8 @@ export const generateDeals = (db: Db): Deal[] => {
       stage: random.arrayElement(defaultDealStages).value,
       description: lorem.paragraphs(datatype.number({ min: 1, max: 4 })),
       amount: datatype.number(1000) * 100,
+      recurring_interval,
+      recurring_amount,
       created_at,
       updated_at: randomDate(new Date(created_at)).toISOString(),
       expected_closing_date,

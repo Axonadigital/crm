@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CompanyAvatar } from "../companies/CompanyAvatar";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
+import { formatRecurringLabel } from "./dealUtils";
 
 export const DealCard = ({ deal, index }: { deal: Deal; index: number }) => {
   if (!deal) return null;
@@ -84,6 +85,19 @@ export const DealCardContent = ({
                   minimumSignificantDigits: 3,
                 }}
               />
+              {deal.recurring_amount && deal.recurring_interval ? (
+                <span>
+                  {" + "}
+                  {deal.recurring_amount.toLocaleString("en-US", {
+                    notation: "compact",
+                    style: "currency",
+                    currency,
+                    currencyDisplay: "narrowSymbol",
+                    minimumSignificantDigits: 3,
+                  })}
+                  {formatRecurringLabel(deal.recurring_interval)}
+                </span>
+              ) : null}
               {deal.category && ", "}
               <SelectField
                 source="category"
