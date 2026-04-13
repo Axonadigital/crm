@@ -75,6 +75,8 @@ const TriggerImportButton = () => {
   const notify = useNotify();
   const refresh = useRefresh();
   const [batchSize, setBatchSize] = useState("");
+  const [startRow, setStartRow] = useState("");
+  const [endRow, setEndRow] = useState("");
   const [isRunning, setIsRunning] = useState(false);
 
   if (!record) return null;
@@ -84,6 +86,47 @@ const TriggerImportButton = () => {
       const parsedBatchSize = batchSize.trim()
         ? Number.parseInt(batchSize.trim(), 10)
         : undefined;
+      const parsedStartRow = startRow.trim()
+        ? Number.parseInt(startRow.trim(), 10)
+        : undefined;
+      const parsedEndRow = endRow.trim()
+        ? Number.parseInt(endRow.trim(), 10)
+        : undefined;
+
+      if ((parsedStartRow == null) !== (parsedEndRow == null)) {
+        notify("Ange både från-rad och till-rad för intervallimport", {
+          type: "warning",
+        });
+        return;
+      }
+
+      const isRangeImport = parsedStartRow != null && parsedEndRow != null;
+      if (isRangeImport) {
+        if (
+          Number.isNaN(parsedStartRow) ||
+          Number.isNaN(parsedEndRow) ||
+          parsedStartRow < 2 ||
+          parsedEndRow < 2
+        ) {
+          notify("Radintervall måste vara giltiga radnummer från 2 och uppåt", {
+            type: "warning",
+          });
+          return;
+        }
+        if (parsedEndRow < parsedStartRow) {
+          notify("Till-rad måste vara samma eller större än från-rad", {
+            type: "warning",
+          });
+          return;
+        }
+        if (parsedEndRow - parsedStartRow + 1 > MAX_BATCH_SIZE) {
+          notify(`Radintervallet får innehålla högst ${MAX_BATCH_SIZE} rader`, {
+            type: "warning",
+          });
+          return;
+        }
+      }
+
       if (parsedBatchSize != null) {
         if (Number.isNaN(parsedBatchSize) || parsedBatchSize < 1) {
           notify("Batchstorlek måste vara minst 1", { type: "warning" });
@@ -100,13 +143,22 @@ const TriggerImportButton = () => {
       setIsRunning(true);
       const result = await dataProvider.importGoogleSheetLeads({
         source_id: record.id,
-        ...(parsedBatchSize ? { batch_size: parsedBatchSize } : {}),
+        ...(isRangeImport
+          ? {
+              start_row: parsedStartRow,
+              end_row: parsedEndRow,
+            }
+          : parsedBatchSize
+            ? { batch_size: parsedBatchSize }
+            : {}),
       });
       if (typeof result.message === "string" && result.rows_inserted == null) {
         notify(result.message, { type: "info" });
         return;
       }
-      const requestedBatchSize = parsedBatchSize ?? record.batch_size_default;
+      const requestedBatchSize = isRangeImport
+        ? parsedEndRow! - parsedStartRow! + 1
+        : (parsedBatchSize ?? record.batch_size_default);
       const actualBatchSize =
         result.actual_batch_size ?? result.rows_scanned ?? 0;
       const writebackStatus =
@@ -115,7 +167,7 @@ const TriggerImportButton = () => {
           ? ` Sheets: ${result.sheet_writeback_status}`
           : "";
       notify(
-        `Import klar: begärde ${requestedBatchSize}, körde ${actualBatchSize}, ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter.${writebackStatus}`,
+        `Import klar${isRangeImport ? ` för rad ${parsedStartRow}-${parsedEndRow}` : ""}: begärde ${requestedBatchSize}, körde ${actualBatchSize}, ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter.${writebackStatus}`,
         { type: "success" },
       );
       refresh();
@@ -164,6 +216,24 @@ const TriggerImportButton = () => {
         >
           {isRunning ? "Importerar..." : "Importera nästa batch"}
         </Button>
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min={2}
+          placeholder="Från rad"
+          value={startRow}
+          onChange={(event) => setStartRow(event.target.value)}
+          className="h-8 w-24"
+        />
+        <Input
+          type="number"
+          min={2}
+          placeholder="Till rad"
+          value={endRow}
+          onChange={(event) => setEndRow(event.target.value)}
+          className="h-8 w-24"
+        />
       </div>
     </div>
   );

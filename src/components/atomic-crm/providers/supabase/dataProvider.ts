@@ -493,6 +493,8 @@ const dataProviderWithCustomMethods = {
   async importGoogleSheetLeads(params?: {
     source_id?: Identifier;
     batch_size?: number;
+    start_row?: number;
+    end_row?: number;
   }) {
     const { data, error } = await supabase.functions.invoke(
       "import_google_sheet_leads",

@@ -897,6 +897,10 @@ async function handleImportNext(
   batchSize: number,
   triggeredBy: TriggeredBy,
   req: Request,
+  range?: {
+    startRow: number;
+    endRow: number;
+  },
 ) {
   const claimedSource = await claimSource(source.id);
   if (!claimedSource) {
@@ -910,9 +914,17 @@ async function handleImportNext(
 
   try {
     const parsedRows = await fetchParsedRows(claimedSource);
-    const pendingRows = parsedRows
-      .filter((row) => row.sourceRowNumber > claimedSource.last_imported_row)
-      .slice(0, batchSize);
+    const pendingRows = range
+      ? parsedRows.filter(
+          (row) =>
+            row.sourceRowNumber >= range.startRow &&
+            row.sourceRowNumber <= range.endRow,
+        )
+      : parsedRows
+          .filter(
+            (row) => row.sourceRowNumber > claimedSource.last_imported_row,
+          )
+          .slice(0, batchSize);
 
     if (pendingRows.length === 0) {
       await finalizeRun(claimedSource, run.id, {
@@ -939,7 +951,9 @@ async function handleImportNext(
         actual_batch_size: 0,
         imported_company_ids: [],
         enrichment_results: [],
-        last_imported_row: claimedSource.last_imported_row,
+        ...(range
+          ? {}
+          : { last_imported_row: claimedSource.last_imported_row }),
         sheet_writeback_status: "not_attempted",
         sheet_rows_marked: 0,
         sheet_rows_failed: 0,
@@ -1091,7 +1105,7 @@ async function handleImportNext(
       sheet_rows_failed: writebackResult.rows_failed,
       sheet_writeback_error: writebackResult.error ?? null,
       error_summary: errorSummary,
-      last_imported_row: lastProcessedRow,
+      ...(range ? {} : { last_imported_row: lastProcessedRow }),
     });
 
     return createJsonResponse({
@@ -1104,7 +1118,7 @@ async function handleImportNext(
       actual_batch_size: pendingRows.length,
       imported_company_ids: importedCompanyIds,
       enrichment_results: enrichmentResults,
-      last_imported_row: lastProcessedRow,
+      ...(range ? {} : { last_imported_row: lastProcessedRow }),
       sheet_writeback_status: writebackResult.status,
       sheet_rows_marked: writebackResult.rows_marked,
       sheet_rows_failed: writebackResult.rows_failed,
@@ -1153,6 +1167,44 @@ async function handleRequest(req: Request, triggeredBy: TriggeredBy) {
   const source = await fetchSourceById(sourceId);
   if (!source) {
     return createErrorResponse(404, "Active Google Sheet source not found");
+  }
+
+  const startRow = getPositiveIntegerField(body, "start_row");
+  const endRow = getPositiveIntegerField(body, "end_row");
+
+  if ((startRow == null) !== (endRow == null)) {
+    return createErrorResponse(
+      400,
+      "start_row and end_row must be provided together",
+    );
+  }
+
+  if (startRow != null && endRow != null) {
+    if (startRow < 2 || endRow < 2) {
+      return createErrorResponse(
+        400,
+        "start_row and end_row must be greater than or equal to 2",
+      );
+    }
+    if (endRow < startRow) {
+      return createErrorResponse(
+        400,
+        "end_row must be greater than or equal to start_row",
+      );
+    }
+
+    const rangeBatchSize = endRow - startRow + 1;
+    if (rangeBatchSize > MAX_BATCH_SIZE) {
+      return createErrorResponse(
+        400,
+        `row range must contain less than or equal to ${MAX_BATCH_SIZE} rows`,
+      );
+    }
+
+    return handleImportNext(source, rangeBatchSize, triggeredBy, req, {
+      startRow,
+      endRow,
+    });
   }
 
   const batchSize =
