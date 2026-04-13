@@ -324,11 +324,19 @@ const dataProviderWithCustomMethods = {
     };
   },
   async salesCreate(body: SalesFormData) {
+    // If no password provided, generate a strong random one.
+    // The user will receive a password reset email to set their own.
+    const bodyWithPassword = body.password
+      ? body
+      : {
+          ...body,
+          password: crypto.randomUUID() + crypto.randomUUID(),
+        };
     const { data, error } = await supabase.functions.invoke<{ data: Sale }>(
       "users",
       {
         method: "POST",
-        body,
+        body: bodyWithPassword,
       },
     );
 
