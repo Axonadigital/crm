@@ -646,6 +646,18 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/lead-imports/index.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/lead-imports/LeadImportSourceList.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/lead-imports/LeadImportRunList.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/layout/mobileLayoutConstants.ts",
           "type": "registry:component"
         },
