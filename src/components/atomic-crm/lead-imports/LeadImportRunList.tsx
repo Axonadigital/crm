@@ -30,6 +30,22 @@ const RunStatusBadge = () => {
   return <Badge variant={variant}>{record.status}</Badge>;
 };
 
+const WritebackStatusBadge = () => {
+  const record = useRecordContext<LeadImportRun>();
+  if (!record) return null;
+
+  const variant =
+    record.sheet_writeback_status === "success"
+      ? "default"
+      : record.sheet_writeback_status === "failed"
+        ? "destructive"
+        : record.sheet_writeback_status === "partial"
+          ? "secondary"
+          : "outline";
+
+  return <Badge variant={variant}>{record.sheet_writeback_status}</Badge>;
+};
+
 const FinishedAtField = () => {
   const record = useRecordContext<LeadImportRun>();
   if (!record) return null;
@@ -56,10 +72,9 @@ const RetryEnrichmentButton = () => {
       );
       refresh();
     } catch (error) {
-      notify(
-        error instanceof Error ? error.message : "Retry misslyckades",
-        { type: "error" },
-      );
+      notify(error instanceof Error ? error.message : "Retry misslyckades", {
+        type: "error",
+      });
     }
   };
 
@@ -89,20 +104,24 @@ export const LeadImportRunList = () => {
       <DataTable>
         <DataTable.Col source="id" label="Körning" />
         <DataTable.Col source="triggered_by" label="Typ" />
-        <DataTable.Col source="requested_batch_size" label="Batch" />
+        <DataTable.Col source="requested_batch_size" label="Begärd batch" />
+        <DataTable.Col source="actual_batch_size" label="Körd batch" />
         <DataTable.Col source="status" label="Status">
           <RunStatusBadge />
         </DataTable.Col>
         <DataTable.Col source="rows_scanned" label="Scannade" />
         <DataTable.Col source="rows_inserted" label="Nya" />
-        <DataTable.Col
-          source="rows_skipped_duplicates"
-          label="Dubbletter"
-        />
+        <DataTable.Col source="rows_skipped_duplicates" label="Dubbletter" />
         <DataTable.Col source="rows_failed" label="Fel" />
+        <DataTable.Col source="sheet_writeback_status" label="Sheet-status">
+          <WritebackStatusBadge />
+        </DataTable.Col>
+        <DataTable.Col source="sheet_rows_marked" label="Sheet markerade" />
+        <DataTable.Col source="sheet_rows_failed" label="Sheet fel" />
         <DataTable.Col source="finished_at" label="Klar">
           <FinishedAtField />
         </DataTable.Col>
+        <DataTable.Col source="sheet_writeback_error" label="Sheet-fel" />
         <DataTable.Col source="error_summary" label="Felmeddelande" />
         <DataTable.Col label="Åtgärd">
           <RetryEnrichmentButton />

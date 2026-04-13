@@ -2,13 +2,14 @@
 
 ## Översikt
 
-Lead-importen använder ett publicerat Google Sheet som CSV-källa och edge functionen `import_google_sheet_leads`.
+Lead-importen använder ett Google Sheet som masterkälla och edge functionen `import_google_sheet_leads`.
 Flödet är:
 
 1. Hämta nästa batch från `lead_import_sources`
 2. Importera nya bolag till `companies`
-3. Starta `enrich_company` för varje ny rad
-4. Sätt `prospecting_status` till `call_ready` eller `needs_review`
+3. Skriva tillbaka importstatus till samma Google Sheet
+4. Starta `enrich_company` för varje ny rad
+5. Sätt `prospecting_status` till `call_ready` eller `needs_review`
 
 ## Secrets
 
@@ -19,9 +20,28 @@ CRON_SECRET=valfri-lang-hemlig-strang
 SERPER_API_KEY=...
 GOOGLE_API_KEY=... # om enrich-funktionerna använder den i er miljö
 GOOGLE_CX=...      # om enrich-funktionerna använder den i er miljö
+GOOGLE_SERVICE_ACCOUNT_JSON=... # krävs för att skriva tillbaka status till Google Sheet
 ```
 
 `CRON_SECRET` används både av `process_sequences` och `import_google_sheet_leads`.
+`GOOGLE_SERVICE_ACCOUNT_JSON` ska innehålla hela service account-JSON:en som en sträng.
+
+## Google Sheet-behörighet
+
+För att write-back ska fungera behöver Google Sheet delas med service account-användaren som `Editor`.
+
+När det är korrekt uppsatt kommer importen automatiskt skapa eller uppdatera dessa kolumner i sheetet:
+
+- `crm_import_status`
+- `crm_imported_at`
+- `crm_import_run_id`
+- `crm_company_id`
+
+Status som skrivs tillbaka:
+
+- `imported`
+- `duplicate`
+- `failed`
 
 ## Deploy
 

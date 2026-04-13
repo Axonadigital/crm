@@ -12,10 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { TopToolbar } from "../layout/TopToolbar";
-import type {
-  LeadImportSource,
-} from "../types";
+import type { LeadImportSource } from "../types";
 import type { CrmDataProvider } from "../providers/supabase/dataProvider";
+
+const QUICK_BATCH_SIZES = [50, 100, 200, 300] as const;
+const MAX_BATCH_SIZE = 1000;
 
 const statusVariant = (status: LeadImportSource["last_run_status"]) => {
   switch (status) {
@@ -79,11 +80,24 @@ const TriggerImportButton = () => {
   if (!record) return null;
 
   const handleClick = async () => {
-    setIsRunning(true);
     try {
       const parsedBatchSize = batchSize.trim()
         ? Number.parseInt(batchSize.trim(), 10)
         : undefined;
+      if (parsedBatchSize != null) {
+        if (Number.isNaN(parsedBatchSize) || parsedBatchSize < 1) {
+          notify("Batchstorlek måste vara minst 1", { type: "warning" });
+          return;
+        }
+        if (parsedBatchSize > MAX_BATCH_SIZE) {
+          notify(`Batchstorlek får vara högst ${MAX_BATCH_SIZE}`, {
+            type: "warning",
+          });
+          return;
+        }
+      }
+
+      setIsRunning(true);
       const result = await dataProvider.importGoogleSheetLeads({
         source_id: record.id,
         ...(parsedBatchSize ? { batch_size: parsedBatchSize } : {}),
@@ -92,16 +106,23 @@ const TriggerImportButton = () => {
         notify(result.message, { type: "info" });
         return;
       }
+      const requestedBatchSize = parsedBatchSize ?? record.batch_size_default;
+      const actualBatchSize =
+        result.actual_batch_size ?? result.rows_scanned ?? 0;
+      const writebackStatus =
+        result.sheet_writeback_status &&
+        result.sheet_writeback_status !== "not_attempted"
+          ? ` Sheets: ${result.sheet_writeback_status}`
+          : "";
       notify(
-        `Import klar: ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter`,
+        `Import klar: begärde ${requestedBatchSize}, körde ${actualBatchSize}, ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter.${writebackStatus}`,
         { type: "success" },
       );
       refresh();
     } catch (error) {
-      notify(
-        error instanceof Error ? error.message : "Import misslyckades",
-        { type: "error" },
-      );
+      notify(error instanceof Error ? error.message : "Import misslyckades", {
+        type: "error",
+      });
     } finally {
       setIsRunning(false);
     }
@@ -109,24 +130,41 @@ const TriggerImportButton = () => {
 
   return (
     <div
-      className="flex items-center gap-2"
+      className="flex flex-col gap-2"
       onClick={(event) => event.stopPropagation()}
     >
-      <Input
-        type="number"
-        min={1}
-        placeholder={String(record.batch_size_default)}
-        value={batchSize}
-        onChange={(event) => setBatchSize(event.target.value)}
-        className="h-8 w-24"
-      />
-      <Button
-        size="sm"
-        onClick={handleClick}
-        disabled={isRunning || record.last_run_status === "running"}
-      >
-        {isRunning ? "Importerar..." : "Importera nästa batch"}
-      </Button>
+      <div className="flex flex-wrap gap-1">
+        {QUICK_BATCH_SIZES.map((size) => (
+          <Button
+            key={size}
+            type="button"
+            size="sm"
+            variant={batchSize === String(size) ? "default" : "outline"}
+            onClick={() => setBatchSize(String(size))}
+            disabled={isRunning || record.last_run_status === "running"}
+          >
+            {size}
+          </Button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min={1}
+          max={MAX_BATCH_SIZE}
+          placeholder={String(record.batch_size_default)}
+          value={batchSize}
+          onChange={(event) => setBatchSize(event.target.value)}
+          className="h-8 w-24"
+        />
+        <Button
+          size="sm"
+          onClick={handleClick}
+          disabled={isRunning || record.last_run_status === "running"}
+        >
+          {isRunning ? "Importerar..." : "Importera nästa batch"}
+        </Button>
+      </div>
     </div>
   );
 };

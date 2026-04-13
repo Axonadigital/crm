@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import * as jose from "jsr:@panva/jose@6";
 import { OptionsMiddleware } from "../_shared/cors.ts";
 import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import {
@@ -12,8 +13,24 @@ import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 
 const RUNNING_STALE_MINUTES = 30;
 const ENRICH_DELAY_MS = 300;
+const MAX_BATCH_SIZE = 1000;
+const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const GOOGLE_SERVICE_ACCOUNT_JSON = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
+const SHEET_STATUS_COLUMNS = [
+  "crm_import_status",
+  "crm_imported_at",
+  "crm_import_run_id",
+  "crm_company_id",
+] as const;
 
 type TriggeredBy = "manual" | "scheduled";
+type WritebackStatus = "not_attempted" | "success" | "partial" | "failed";
+
+type ServiceAccountConfig = {
+  client_email: string;
+  private_key: string;
+  token_uri: string;
+};
 
 type LeadImportSource = {
   id: number;
@@ -34,12 +51,17 @@ type LeadImportRun = {
   source_id: number;
   triggered_by: TriggeredBy;
   requested_batch_size: number;
+  actual_batch_size: number;
   started_at: string;
   finished_at: string | null;
   rows_scanned: number;
   rows_inserted: number;
   rows_skipped_duplicates: number;
   rows_failed: number;
+  sheet_writeback_status: WritebackStatus;
+  sheet_rows_marked: number;
+  sheet_rows_failed: number;
+  sheet_writeback_error: string | null;
   status: "running" | "success" | "partial" | "failed";
   error_summary: string | null;
   imported_company_ids: number[];
@@ -47,6 +69,7 @@ type LeadImportRun = {
 
 type ParsedSheetRow = {
   sourceRowNumber: number;
+  rowRecord: Record<string, string>;
   company: {
     name: string;
     org_number: string;
@@ -68,6 +91,20 @@ type ParsedSheetRow = {
     import_run_id: number;
     enrichment_data: Record<string, unknown>;
   };
+};
+
+type ProcessedRowResult = {
+  sourceRowNumber: number;
+  status: "imported" | "duplicate" | "failed";
+  companyId: number | null;
+  importedAt: string | null;
+};
+
+type SheetWritebackResult = {
+  status: WritebackStatus;
+  rows_marked: number;
+  rows_failed: number;
+  error?: string | null;
 };
 
 const SWEDISH_COUNTY_CODES: Record<string, string> = {
@@ -165,6 +202,77 @@ function deriveStateAbbr(row: Record<string, string>) {
   return SWEDISH_COUNTY_CODES[cleaned] || "Z";
 }
 
+function normalizeServiceAccount(): ServiceAccountConfig | null {
+  if (!GOOGLE_SERVICE_ACCOUNT_JSON) {
+    return null;
+  }
+
+  let parsed: ServiceAccountConfig;
+  try {
+    parsed = JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON) as ServiceAccountConfig;
+  } catch {
+    return null;
+  }
+  if (!parsed.client_email || !parsed.private_key || !parsed.token_uri) {
+    return null;
+  }
+
+  return {
+    ...parsed,
+    private_key: parsed.private_key.replace(/\\n/g, "\n"),
+  };
+}
+
+async function getGoogleAccessToken(serviceAccount: ServiceAccountConfig) {
+  const now = Math.floor(Date.now() / 1000);
+  const privateKey = await jose.importPKCS8(
+    serviceAccount.private_key,
+    "RS256",
+  );
+  const assertion = await new jose.SignJWT({
+    scope: GOOGLE_SHEETS_SCOPE,
+  })
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setIssuer(serviceAccount.client_email)
+    .setSubject(serviceAccount.client_email)
+    .setAudience(serviceAccount.token_uri)
+    .setIssuedAt(now)
+    .setExpirationTime(now + 3600)
+    .sign(privateKey);
+
+  const tokenResponse = await fetch(serviceAccount.token_uri, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+
+  if (!tokenResponse.ok) {
+    const details = await tokenResponse.text();
+    throw new Error(`Google token exchange failed: ${details}`);
+  }
+
+  const tokenJson = await tokenResponse.json();
+  return tokenJson.access_token as string;
+}
+
+function escapeSheetName(sheetName: string) {
+  return `'${sheetName.replace(/'/g, "''")}'`;
+}
+
+function toColumnLetter(index: number) {
+  let current = index + 1;
+  let letter = "";
+  while (current > 0) {
+    const remainder = (current - 1) % 26;
+    letter = String.fromCharCode(65 + remainder) + letter;
+    current = Math.floor((current - 1) / 26);
+  }
+  return letter;
+}
+
 function parseCsv(csv: string): string[][] {
   const rows: string[][] = [];
   let currentRow: string[] = [];
@@ -213,17 +321,31 @@ function parseCsv(csv: string): string[][] {
   return rows.filter((row) => row.some((cell) => cell.trim().length > 0));
 }
 
-function buildGoogleSheetCsvUrl(source: LeadImportSource) {
+function extractGoogleSheetId(sheetUrl: string) {
   try {
-    const url = new URL(source.sheet_url);
+    const url = new URL(sheetUrl);
     const match = url.pathname.match(/\/spreadsheets\/d\/([^/]+)/);
-    const sheetId = match?.[1];
-    const gid = source.sheet_gid || url.searchParams.get("gid") || "0";
-    if (!sheetId) return source.sheet_url;
-    return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    return match?.[1] ?? null;
   } catch {
+    return null;
+  }
+}
+
+function buildGoogleSheetCsvUrl(source: LeadImportSource) {
+  const sheetId = extractGoogleSheetId(source.sheet_url);
+  if (!sheetId) {
     return source.sheet_url;
   }
+  const gid =
+    source.sheet_gid ||
+    (() => {
+      try {
+        return new URL(source.sheet_url).searchParams.get("gid") || "0";
+      } catch {
+        return "0";
+      }
+    })();
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
 }
 
 function mapRowToCompany(
@@ -247,22 +369,14 @@ function mapRowToCompany(
     return null;
   }
 
-  const address = (
-    row.gatuadress ||
-    row.address ||
-    row.adress ||
-    ""
-  ).trim();
-  const zipcode = (
-    row.postnummer ||
-    row.zipcode ||
-    row.postnr ||
-    ""
-  )
+  const address = (row.gatuadress || row.address || row.adress || "").trim();
+  const zipcode = (row.postnummer || row.zipcode || row.postnr || "")
     .replace(/\s+/g, "")
     .trim();
   const city = capitalizeCity(row.ort || row.city || row.postort || row.kommun);
-  const email = (row.email || row.epost || row.e_post || "").trim().toLowerCase();
+  const email = (row.email || row.epost || row.e_post || "")
+    .trim()
+    .toLowerCase();
   const description = (
     row.verksamhetsbeskrivning ||
     row.description ||
@@ -272,6 +386,7 @@ function mapRowToCompany(
 
   return {
     sourceRowNumber,
+    rowRecord: row,
     company: {
       name,
       org_number: orgNumber,
@@ -309,10 +424,7 @@ function mapRowToCompany(
 }
 
 async function fetchSourceById(sourceId?: number) {
-  let query = supabaseAdmin
-    .from("lead_import_sources")
-    .select("*")
-    .limit(1);
+  let query = supabaseAdmin.from("lead_import_sources").select("*").limit(1);
 
   query = sourceId ? query.eq("id", sourceId) : query.eq("is_active", true);
 
@@ -360,6 +472,10 @@ async function createRun(
       source_id: source.id,
       triggered_by: triggeredBy,
       requested_batch_size: batchSize,
+      actual_batch_size: 0,
+      sheet_writeback_status: "not_attempted",
+      sheet_rows_marked: 0,
+      sheet_rows_failed: 0,
       status: "running",
     })
     .select("*")
@@ -383,7 +499,12 @@ async function finalizeRun(
     rows_inserted: number;
     rows_skipped_duplicates: number;
     rows_failed: number;
+    actual_batch_size: number;
     imported_company_ids: number[];
+    sheet_writeback_status: WritebackStatus;
+    sheet_rows_marked: number;
+    sheet_rows_failed: number;
+    sheet_writeback_error?: string | null;
     error_summary?: string | null;
     last_imported_row?: number;
   },
@@ -412,7 +533,12 @@ async function finalizeRun(
       rows_inserted: payload.rows_inserted,
       rows_skipped_duplicates: payload.rows_skipped_duplicates,
       rows_failed: payload.rows_failed,
+      actual_batch_size: payload.actual_batch_size,
       imported_company_ids: payload.imported_company_ids,
+      sheet_writeback_status: payload.sheet_writeback_status,
+      sheet_rows_marked: payload.sheet_rows_marked,
+      sheet_rows_failed: payload.sheet_rows_failed,
+      sheet_writeback_error: payload.sheet_writeback_error ?? null,
       error_summary: payload.error_summary ?? null,
     })
     .eq("id", runId);
@@ -446,13 +572,229 @@ async function fetchParsedRows(source: LeadImportSource) {
   });
 }
 
-async function enrichImportedCompanies(
-  companyIds: number[],
-  req: Request,
+async function fetchGoogleSheetMetadata(
+  source: LeadImportSource,
+  accessToken: string,
 ) {
+  const sheetId = extractGoogleSheetId(source.sheet_url);
+  if (!sheetId) {
+    throw new Error("Could not determine Google Sheet ID from sheet_url");
+  }
+
+  const metadataResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets(properties(sheetId,title))`,
+    {
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (!metadataResponse.ok) {
+    const details = await metadataResponse.text();
+    throw new Error(`Failed to fetch Google Sheet metadata: ${details}`);
+  }
+
+  const metadata = await metadataResponse.json();
+  const numericGid = Number(source.sheet_gid ?? 0);
+  const matchingSheet = Array.isArray(metadata?.sheets)
+    ? metadata.sheets.find((sheet: { properties?: { sheetId?: number } }) =>
+        source.sheet_gid ? sheet?.properties?.sheetId === numericGid : true,
+      )
+    : null;
+
+  const sheetTitle = matchingSheet?.properties?.title as string | undefined;
+  if (!sheetTitle) {
+    throw new Error("Could not resolve Google Sheet tab title for write-back");
+  }
+
+  return {
+    spreadsheetId: sheetId,
+    sheetTitle,
+  };
+}
+
+async function ensureSheetStatusColumns(
+  spreadsheetId: string,
+  sheetTitle: string,
+  accessToken: string,
+) {
+  const encodedRange = encodeURIComponent(`${escapeSheetName(sheetTitle)}!1:1`);
+  const headerResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodedRange}`,
+    {
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (!headerResponse.ok) {
+    const details = await headerResponse.text();
+    throw new Error(`Failed to read Google Sheet headers: ${details}`);
+  }
+
+  const headerPayload = await headerResponse.json();
+  const headers = Array.isArray(headerPayload?.values?.[0])
+    ? (headerPayload.values[0] as string[])
+    : [];
+  const nextHeaders = [...headers];
+
+  for (const columnName of SHEET_STATUS_COLUMNS) {
+    if (!nextHeaders.includes(columnName)) {
+      nextHeaders.push(columnName);
+    }
+  }
+
+  if (nextHeaders.length !== headers.length) {
+    const headerRange = encodeURIComponent(
+      `${escapeSheetName(sheetTitle)}!A1:${toColumnLetter(nextHeaders.length - 1)}1`,
+    );
+    const updateResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${headerRange}?valueInputOption=RAW`,
+      {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          range: `${escapeSheetName(sheetTitle)}!A1:${toColumnLetter(nextHeaders.length - 1)}1`,
+          majorDimension: "ROWS",
+          values: [nextHeaders],
+        }),
+      },
+    );
+
+    if (!updateResponse.ok) {
+      const details = await updateResponse.text();
+      throw new Error(
+        `Failed to ensure CRM status columns in Google Sheet: ${details}`,
+      );
+    }
+  }
+
+  return {
+    headers: nextHeaders,
+    statusColumnStartIndex: nextHeaders.indexOf(SHEET_STATUS_COLUMNS[0]),
+  };
+}
+
+async function writeRowsBackToGoogleSheet(
+  source: LeadImportSource,
+  runId: number,
+  rows: ProcessedRowResult[],
+): Promise<SheetWritebackResult> {
+  if (rows.length === 0) {
+    return {
+      status: "not_attempted",
+      rows_marked: 0,
+      rows_failed: 0,
+      error: null,
+    };
+  }
+
+  const serviceAccount = normalizeServiceAccount();
+  if (!serviceAccount) {
+    return {
+      status: "not_attempted",
+      rows_marked: 0,
+      rows_failed: 0,
+      error: null,
+    };
+  }
+
+  try {
+    const accessToken = await getGoogleAccessToken(serviceAccount);
+    const { spreadsheetId, sheetTitle } = await fetchGoogleSheetMetadata(
+      source,
+      accessToken,
+    );
+    const { statusColumnStartIndex } = await ensureSheetStatusColumns(
+      spreadsheetId,
+      sheetTitle,
+      accessToken,
+    );
+
+    const valueRanges = rows.map((row) => {
+      const startColumn = toColumnLetter(statusColumnStartIndex);
+      const endColumn = toColumnLetter(
+        statusColumnStartIndex + SHEET_STATUS_COLUMNS.length - 1,
+      );
+      return {
+        range: `${escapeSheetName(sheetTitle)}!${startColumn}${row.sourceRowNumber}:${endColumn}${row.sourceRowNumber}`,
+        majorDimension: "ROWS",
+        values: [
+          [
+            row.status,
+            row.importedAt ?? "",
+            String(runId),
+            row.companyId != null ? String(row.companyId) : "",
+          ],
+        ],
+      };
+    });
+
+    const writebackResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          valueInputOption: "RAW",
+          data: valueRanges,
+        }),
+      },
+    );
+
+    if (!writebackResponse.ok) {
+      const details = await writebackResponse.text();
+      throw new Error(
+        `Failed to write CRM import status to Google Sheet: ${details}`,
+      );
+    }
+
+    const payload = await writebackResponse.json();
+    const updatedRows = Number(payload?.totalUpdatedRows ?? 0);
+
+    if (updatedRows >= rows.length) {
+      return {
+        status: "success",
+        rows_marked: rows.length,
+        rows_failed: 0,
+        error: null,
+      };
+    }
+
+    return {
+      status: "partial",
+      rows_marked: updatedRows,
+      rows_failed: Math.max(rows.length - updatedRows, 0),
+      error: `Only ${updatedRows} of ${rows.length} rows were updated in Google Sheet`,
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      rows_marked: 0,
+      rows_failed: rows.length,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unknown Google Sheet write-back error",
+    };
+  }
+}
+
+async function enrichImportedCompanies(companyIds: number[], req: Request) {
   const functionUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/enrich_company`;
-  const results: Array<{ company_id: number; success: boolean; error?: string }> =
-    [];
+  const results: Array<{
+    company_id: number;
+    success: boolean;
+    error?: string;
+  }> = [];
 
   for (const companyId of companyIds) {
     const { error: markError } = await supabaseAdmin
@@ -501,7 +843,9 @@ async function enrichImportedCompanies(
           .select("phone_number")
           .eq("id", companyId)
           .single();
-        const nextStatus = company?.phone_number ? "call_ready" : "needs_review";
+        const nextStatus = company?.phone_number
+          ? "call_ready"
+          : "needs_review";
         await supabaseAdmin
           .from("companies")
           .update({ prospecting_status: nextStatus })
@@ -577,7 +921,11 @@ async function handleImportNext(
         rows_inserted: 0,
         rows_skipped_duplicates: 0,
         rows_failed: 0,
+        actual_batch_size: 0,
         imported_company_ids: [],
+        sheet_writeback_status: "not_attempted",
+        sheet_rows_marked: 0,
+        sheet_rows_failed: 0,
         error_summary: "No rows left to import",
       });
 
@@ -588,14 +936,19 @@ async function handleImportNext(
         rows_inserted: 0,
         rows_skipped_duplicates: 0,
         rows_failed: 0,
+        actual_batch_size: 0,
         imported_company_ids: [],
         enrichment_results: [],
         last_imported_row: claimedSource.last_imported_row,
+        sheet_writeback_status: "not_attempted",
+        sheet_rows_marked: 0,
+        sheet_rows_failed: 0,
         message: "No rows left to import",
       });
     }
 
     const importedCompanyIds: number[] = [];
+    const processedRows: ProcessedRowResult[] = [];
     const errors: string[] = [];
     let rowsInserted = 0;
     let rowsSkippedDuplicates = 0;
@@ -613,7 +966,15 @@ async function handleImportNext(
 
       if (!mapped) {
         rowsFailed++;
-        errors.push(`Row ${pendingRow.sourceRowNumber}: missing company name or org number`);
+        errors.push(
+          `Row ${pendingRow.sourceRowNumber}: missing company name or org number`,
+        );
+        processedRows.push({
+          sourceRowNumber: pendingRow.sourceRowNumber,
+          status: "failed",
+          companyId: null,
+          importedAt: null,
+        });
         continue;
       }
 
@@ -625,12 +986,26 @@ async function handleImportNext(
 
       if (existingError) {
         rowsFailed++;
-        errors.push(`Row ${pendingRow.sourceRowNumber}: ${existingError.message}`);
+        errors.push(
+          `Row ${pendingRow.sourceRowNumber}: ${existingError.message}`,
+        );
+        processedRows.push({
+          sourceRowNumber: pendingRow.sourceRowNumber,
+          status: "failed",
+          companyId: null,
+          importedAt: null,
+        });
         continue;
       }
 
       if (existing) {
         rowsSkippedDuplicates++;
+        processedRows.push({
+          sourceRowNumber: pendingRow.sourceRowNumber,
+          status: "duplicate",
+          companyId: Number(existing.id),
+          importedAt: new Date().toISOString(),
+        });
         continue;
       }
 
@@ -642,19 +1017,48 @@ async function handleImportNext(
 
       if (insertError || !inserted) {
         rowsFailed++;
-        errors.push(`Row ${pendingRow.sourceRowNumber}: ${insertError?.message || "insert failed"}`);
+        errors.push(
+          `Row ${pendingRow.sourceRowNumber}: ${insertError?.message || "insert failed"}`,
+        );
+        processedRows.push({
+          sourceRowNumber: pendingRow.sourceRowNumber,
+          status: "failed",
+          companyId: null,
+          importedAt: null,
+        });
         continue;
       }
 
       rowsInserted++;
-      importedCompanyIds.push(Number(inserted.id));
+      const insertedId = Number(inserted.id);
+      importedCompanyIds.push(insertedId);
+      processedRows.push({
+        sourceRowNumber: pendingRow.sourceRowNumber,
+        status: "imported",
+        companyId: insertedId,
+        importedAt: new Date().toISOString(),
+      });
     }
 
-    const enrichmentResults = await enrichImportedCompanies(importedCompanyIds, req);
-    const enrichmentFailures = enrichmentResults.filter((item) => !item.success);
+    const writebackResult = await writeRowsBackToGoogleSheet(
+      claimedSource,
+      run.id,
+      processedRows,
+    );
+
+    const enrichmentResults = await enrichImportedCompanies(
+      importedCompanyIds,
+      req,
+    );
+    const enrichmentFailures = enrichmentResults.filter(
+      (item) => !item.success,
+    );
 
     const status: LeadImportRun["status"] =
-      rowsFailed > 0 || enrichmentFailures.length > 0
+      rowsFailed > 0 ||
+      enrichmentFailures.length > 0 ||
+      writebackResult.status === "failed" ||
+      writebackResult.status === "partial"
         ? rowsInserted > 0
           ? "partial"
           : "failed"
@@ -664,6 +1068,7 @@ async function handleImportNext(
       errors.length > 0 || enrichmentFailures.length > 0
         ? [
             ...errors,
+            ...(writebackResult.error ? [writebackResult.error] : []),
             ...enrichmentFailures.map(
               (failure) =>
                 `Company ${failure.company_id}: ${failure.error || "enrichment failed"}`,
@@ -679,7 +1084,12 @@ async function handleImportNext(
       rows_inserted: rowsInserted,
       rows_skipped_duplicates: rowsSkippedDuplicates,
       rows_failed: rowsFailed,
+      actual_batch_size: pendingRows.length,
       imported_company_ids: importedCompanyIds,
+      sheet_writeback_status: writebackResult.status,
+      sheet_rows_marked: writebackResult.rows_marked,
+      sheet_rows_failed: writebackResult.rows_failed,
+      sheet_writeback_error: writebackResult.error ?? null,
       error_summary: errorSummary,
       last_imported_row: lastProcessedRow,
     });
@@ -691,9 +1101,14 @@ async function handleImportNext(
       rows_inserted: rowsInserted,
       rows_skipped_duplicates: rowsSkippedDuplicates,
       rows_failed: rowsFailed,
+      actual_batch_size: pendingRows.length,
       imported_company_ids: importedCompanyIds,
       enrichment_results: enrichmentResults,
       last_imported_row: lastProcessedRow,
+      sheet_writeback_status: writebackResult.status,
+      sheet_rows_marked: writebackResult.rows_marked,
+      sheet_rows_failed: writebackResult.rows_failed,
+      sheet_writeback_error: writebackResult.error ?? null,
       status,
     });
   } catch (error) {
@@ -706,7 +1121,12 @@ async function handleImportNext(
       rows_inserted: 0,
       rows_skipped_duplicates: 0,
       rows_failed: 1,
+      actual_batch_size: 0,
       imported_company_ids: [],
+      sheet_writeback_status: "failed",
+      sheet_rows_marked: 0,
+      sheet_rows_failed: 0,
+      sheet_writeback_error: errorMessage,
       error_summary: errorMessage,
     });
 
@@ -717,8 +1137,10 @@ async function handleImportNext(
 async function handleRequest(req: Request, triggeredBy: TriggeredBy) {
   const body = (await parseOptionalJsonBody(req)) ?? {};
   const action =
-    getEnumField(body, "action", ["import_next", "retry_enrichment"] as const) ||
-    "import_next";
+    getEnumField(body, "action", [
+      "import_next",
+      "retry_enrichment",
+    ] as const) || "import_next";
 
   if (action === "retry_enrichment") {
     const runId = getPositiveIntegerField(body, "run_id", {
@@ -735,6 +1157,12 @@ async function handleRequest(req: Request, triggeredBy: TriggeredBy) {
 
   const batchSize =
     getPositiveIntegerField(body, "batch_size") || source.batch_size_default;
+  if (batchSize > MAX_BATCH_SIZE) {
+    return createErrorResponse(
+      400,
+      `batch_size must be less than or equal to ${MAX_BATCH_SIZE}`,
+    );
+  }
 
   return handleImportNext(source, batchSize, triggeredBy, req);
 }

@@ -175,12 +175,21 @@ export type LeadImportRun = {
   source_id: Identifier;
   triggered_by: "manual" | "scheduled";
   requested_batch_size: number;
+  actual_batch_size: number;
   started_at: string;
   finished_at?: string | null;
   rows_scanned: number;
   rows_inserted: number;
   rows_skipped_duplicates: number;
   rows_failed: number;
+  sheet_writeback_status:
+    | "not_attempted"
+    | "success"
+    | "partial"
+    | "failed";
+  sheet_rows_marked: number;
+  sheet_rows_failed: number;
+  sheet_writeback_error?: string | null;
   status: "running" | "success" | "partial" | "failed";
   error_summary?: string | null;
   imported_company_ids?: number[];

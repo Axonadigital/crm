@@ -46,99 +46,100 @@ export const CompanyCard = (props: CompanyCardProps) => {
         <Checkbox
           checked={props.isSelected}
           aria-label={`Välj ${record.name}`}
-          className="bg-background/90 shadow-sm"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
+          className="cursor-pointer bg-background/90 shadow-sm"
+          onClick={(event) => event.stopPropagation()}
           onCheckedChange={() => props.onToggleSelection?.(record.id)}
         />
       </div>
-      <Link
-        to={createPath({
-          resource: "companies",
-          id: record.id,
-          type: "show",
-        })}
-        className="no-underline"
+      <Card
+        className={cn(
+          "h-[240px] overflow-hidden",
+          props.isSelected && "ring-2 ring-primary bg-primary/5",
+        )}
       >
-        <Card
-          className={cn(
-            "h-[240px] flex flex-col justify-between p-4 hover:bg-muted transition-colors",
-            props.isSelected && "ring-2 ring-primary bg-primary/5",
-          )}
+        <Link
+          to={createPath({
+            resource: "companies",
+            id: record.id,
+            type: "show",
+          })}
+          className="block h-full no-underline"
         >
-          <div className="flex flex-col items-center gap-1">
-            <CompanyAvatar />
-            <div className="text-center mt-1">
-              <h6 className="text-sm font-medium">{record.name}</h6>
-              <p className="text-xs text-muted-foreground">{sectorLabel}</p>
-              {record.lead_status && (
-                <Badge
-                  variant={getLeadStatusBadgeVariant(record.lead_status)}
-                  className="mt-1 text-[10px] px-1.5 py-0"
-                >
-                  {translate(
-                    `resources.companies.lead_status.${record.lead_status}`,
-                    {
-                      _: record.lead_status.replace(/_/g, " "),
-                    },
-                  )}
-                </Badge>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {record.city && (
-              <div className="flex items-center gap-1">
-                <MapPin className="w-3 h-3" />
-                <span className="truncate">{record.city}</span>
-              </div>
-            )}
-            {record.phone_number && (
-              <div className="flex items-center gap-1">
-                <Phone className="w-3 h-3" />
-                <span className="truncate">{record.phone_number}</span>
-              </div>
-            )}
-            {record.next_followup_date &&
-              (() => {
-                const urgency = getFollowupUrgency(record.next_followup_date);
-                const colorClass = getFollowupUrgencyColor(urgency);
-                const label = getFollowupRelativeLabel(
-                  record.next_followup_date,
-                );
-                return (
-                  <Badge className={cn("text-[10px] px-1.5 py-0", colorClass)}>
-                    <Calendar className="w-3 h-3 mr-0.5" />
-                    {label}
+          <div className="flex h-full flex-col justify-between p-4 transition-colors hover:bg-muted">
+            <div className="flex flex-col items-center gap-1">
+              <CompanyAvatar />
+              <div className="text-center mt-1">
+                <h6 className="text-sm font-medium">{record.name}</h6>
+                <p className="text-xs text-muted-foreground">{sectorLabel}</p>
+                {record.lead_status && (
+                  <Badge
+                    variant={getLeadStatusBadgeVariant(record.lead_status)}
+                    className="mt-1 text-[10px] px-1.5 py-0"
+                  >
+                    {translate(
+                      `resources.companies.lead_status.${record.lead_status}`,
+                      {
+                        _: record.lead_status.replace(/_/g, " "),
+                      },
+                    )}
                   </Badge>
-                );
-              })()}
-          </div>
-          <div className="flex flex-row w-full justify-between gap-2">
-            <div className="flex items-center">
-              {record.nb_contacts ? (
-                <ReferenceManyField reference="contacts" target="company_id">
-                  <AvatarGroupIterator />
-                </ReferenceManyField>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {record.city && (
+                <div className="flex items-center gap-1">
+                  <MapPin className="w-3 h-3" />
+                  <span className="truncate">{record.city}</span>
+                </div>
+              )}
+              {record.phone_number && (
+                <div className="flex items-center gap-1">
+                  <Phone className="w-3 h-3" />
+                  <span className="truncate">{record.phone_number}</span>
+                </div>
+              )}
+              {record.next_followup_date &&
+                (() => {
+                  const urgency = getFollowupUrgency(record.next_followup_date);
+                  const colorClass = getFollowupUrgencyColor(urgency);
+                  const label = getFollowupRelativeLabel(
+                    record.next_followup_date,
+                  );
+                  return (
+                    <Badge
+                      className={cn("text-[10px] px-1.5 py-0", colorClass)}
+                    >
+                      <Calendar className="w-3 h-3 mr-0.5" />
+                      {label}
+                    </Badge>
+                  );
+                })()}
+            </div>
+            <div className="flex flex-row w-full justify-between gap-2">
+              <div className="flex items-center">
+                {record.nb_contacts ? (
+                  <ReferenceManyField reference="contacts" target="company_id">
+                    <AvatarGroupIterator />
+                  </ReferenceManyField>
+                ) : null}
+              </div>
+              {record.nb_deals ? (
+                <div className="flex items-center ml-2 gap-0.5">
+                  <Handshake className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{record.nb_deals}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {translate("resources.deals.name", {
+                      smart_count: record.nb_deals,
+                      _: "Deal |||| Deals",
+                    })}
+                  </span>
+                </div>
               ) : null}
             </div>
-            {record.nb_deals ? (
-              <div className="flex items-center ml-2 gap-0.5">
-                <Handshake className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium">{record.nb_deals}</span>
-                <span className="text-xs text-muted-foreground">
-                  {translate("resources.deals.name", {
-                    smart_count: record.nb_deals,
-                    _: "Deal |||| Deals",
-                  })}
-                </span>
-              </div>
-            ) : null}
           </div>
-        </Card>
-      </Link>
+        </Link>
+      </Card>
     </div>
   );
 };

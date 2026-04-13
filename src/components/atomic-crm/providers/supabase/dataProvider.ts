@@ -138,8 +138,11 @@ const dataProviderWithCustomMethods = {
       }
 
       // Strip any leftover custom filter keys before passing to baseDataProvider
-      const { status_preset: _status_preset, never_contacted: _never_contacted, ...cleanFilter } =
-        params.filter ?? {};
+      const {
+        status_preset: _status_preset,
+        never_contacted: _never_contacted,
+        ...cleanFilter
+      } = params.filter ?? {};
       return baseDataProvider.getList("companies_summary", {
         ...params,
         filter: cleanFilter,
@@ -499,7 +502,7 @@ const dataProviderWithCustomMethods = {
       },
     );
     if (error || !data) {
-      throw new Error("Failed to import Google Sheet leads");
+      throw new Error(error?.message || "Failed to import Google Sheet leads");
     }
     return data;
   },
@@ -515,7 +518,7 @@ const dataProviderWithCustomMethods = {
       },
     );
     if (error || !data) {
-      throw new Error("Failed to retry import enrichment");
+      throw new Error(error?.message || "Failed to retry import enrichment");
     }
     return data;
   },
