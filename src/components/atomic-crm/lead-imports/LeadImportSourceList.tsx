@@ -93,33 +93,44 @@ const TriggerImportButton = () => {
         ? Number.parseInt(endRow.trim(), 10)
         : undefined;
 
-      if ((parsedStartRow == null) !== (parsedEndRow == null)) {
-        notify("Ange både från-rad och till-rad för intervallimport", {
-          type: "warning",
-        });
-        return;
-      }
+      const isStartRowImport = parsedStartRow != null;
+      const hasEndRow = parsedEndRow != null;
 
-      const isRangeImport = parsedStartRow != null && parsedEndRow != null;
-      if (isRangeImport) {
+      if (isStartRowImport) {
         if (
           Number.isNaN(parsedStartRow) ||
-          Number.isNaN(parsedEndRow) ||
           parsedStartRow < 2 ||
-          parsedEndRow < 2
+          (hasEndRow && (Number.isNaN(parsedEndRow) || parsedEndRow < 2))
         ) {
           notify("Radintervall måste vara giltiga radnummer från 2 och uppåt", {
             type: "warning",
           });
           return;
         }
-        if (parsedEndRow < parsedStartRow) {
+      }
+
+      if (hasEndRow && !isStartRowImport) {
+        notify("Ange från-rad om du vill ange till-rad", {
+          type: "warning",
+        });
+        return;
+      }
+
+      if (isStartRowImport && !hasEndRow && parsedBatchSize == null) {
+        notify("Ange batchstorlek eller till-rad när du väljer från-rad", {
+          type: "warning",
+        });
+        return;
+      }
+
+      if (hasEndRow) {
+        if (parsedEndRow < parsedStartRow!) {
           notify("Till-rad måste vara samma eller större än från-rad", {
             type: "warning",
           });
           return;
         }
-        if (parsedEndRow - parsedStartRow + 1 > MAX_BATCH_SIZE) {
+        if (parsedEndRow - parsedStartRow! + 1 > MAX_BATCH_SIZE) {
           notify(`Radintervallet får innehålla högst ${MAX_BATCH_SIZE} rader`, {
             type: "warning",
           });
@@ -140,13 +151,19 @@ const TriggerImportButton = () => {
         }
       }
 
+      const derivedEndRow =
+        isStartRowImport && !hasEndRow
+          ? parsedStartRow! + (parsedBatchSize ?? record.batch_size_default) - 1
+          : parsedEndRow;
+      const isRangeImport = isStartRowImport;
+
       setIsRunning(true);
       const result = await dataProvider.importGoogleSheetLeads({
         source_id: record.id,
         ...(isRangeImport
           ? {
               start_row: parsedStartRow,
-              end_row: parsedEndRow,
+              end_row: derivedEndRow,
             }
           : parsedBatchSize
             ? { batch_size: parsedBatchSize }
@@ -157,7 +174,7 @@ const TriggerImportButton = () => {
         return;
       }
       const requestedBatchSize = isRangeImport
-        ? parsedEndRow! - parsedStartRow! + 1
+        ? derivedEndRow! - parsedStartRow! + 1
         : (parsedBatchSize ?? record.batch_size_default);
       const actualBatchSize =
         result.actual_batch_size ?? result.rows_scanned ?? 0;
@@ -167,7 +184,7 @@ const TriggerImportButton = () => {
           ? ` Sheets: ${result.sheet_writeback_status}`
           : "";
       notify(
-        `Import klar${isRangeImport ? ` för rad ${parsedStartRow}-${parsedEndRow}` : ""}: begärde ${requestedBatchSize}, körde ${actualBatchSize}, ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter.${writebackStatus}`,
+        `Import klar${isRangeImport ? ` för rad ${parsedStartRow}-${derivedEndRow}` : ""}: begärde ${requestedBatchSize}, körde ${actualBatchSize}, ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter.${writebackStatus}`,
         { type: "success" },
       );
       refresh();
