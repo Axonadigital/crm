@@ -77,6 +77,7 @@ export type Company = {
   website_quality?: "none" | "poor" | "ok" | "good";
   source?:
     | "google_maps"
+    | "import"
     | "hitta"
     | "allabolag"
     | "eniro"
@@ -142,6 +143,47 @@ export type Company = {
     | "possible_duplicate"
     | "missing_owner"
     | "missing_next_step";
+  import_source_id?: Identifier | null;
+  import_run_id?: Identifier | null;
+  source_row_number?: number | null;
+  processing_order?: number | null;
+  prospecting_status?:
+    | "imported"
+    | "enriching"
+    | "call_ready"
+    | "needs_review"
+    | "completed"
+    | "disqualified";
+} & Pick<RaRecord, "id">;
+
+export type LeadImportSource = {
+  name: string;
+  source_type: "google_sheet_csv";
+  sheet_url: string;
+  sheet_gid?: string | null;
+  is_active: boolean;
+  batch_size_default: number;
+  last_imported_row: number;
+  last_successful_run_at?: string | null;
+  last_run_status: "idle" | "running" | "success" | "partial" | "failed";
+  last_run_message?: string | null;
+  created_at?: string;
+  updated_at?: string;
+} & Pick<RaRecord, "id">;
+
+export type LeadImportRun = {
+  source_id: Identifier;
+  triggered_by: "manual" | "scheduled";
+  requested_batch_size: number;
+  started_at: string;
+  finished_at?: string | null;
+  rows_scanned: number;
+  rows_inserted: number;
+  rows_skipped_duplicates: number;
+  rows_failed: number;
+  status: "running" | "success" | "partial" | "failed";
+  error_summary?: string | null;
+  imported_company_ids?: number[];
 } & Pick<RaRecord, "id">;
 
 export type EmailAndType = {

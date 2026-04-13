@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   Building2,
   CalendarDays,
+  Database,
   FileText,
   Handshake,
   Home,
@@ -60,6 +61,11 @@ export const MobileNavigation = () => {
     currentPath = "/quotes";
   } else if (matchPath("/settings", location.pathname)) {
     currentPath = "/settings";
+  } else if (
+    matchPath("/lead_import_sources", location.pathname) ||
+    matchPath("/lead_import_runs", location.pathname)
+  ) {
+    currentPath = "/lead-import";
   } else {
     currentPath = false;
   }
@@ -70,7 +76,8 @@ export const MobileNavigation = () => {
     currentPath === "/quotes" ||
     currentPath === "/tasks" ||
     currentPath === "/calendar" ||
-    currentPath === "/settings";
+    currentPath === "/settings" ||
+    currentPath === "/lead-import";
 
   return (
     <nav
@@ -290,6 +297,11 @@ const MoreMenu = ({ isActive }: { isActive: boolean }) => {
         smart_count: 2,
         _: "Kalender",
       }),
+    },
+    {
+      href: "/lead_import_sources",
+      Icon: Database,
+      label: "Leadimport",
     },
     {
       href: "/settings",

@@ -138,7 +138,7 @@ const dataProviderWithCustomMethods = {
       }
 
       // Strip any leftover custom filter keys before passing to baseDataProvider
-      const { status_preset, never_contacted, ...cleanFilter } =
+      const { status_preset: _status_preset, never_contacted: _never_contacted, ...cleanFilter } =
         params.filter ?? {};
       return baseDataProvider.getList("companies_summary", {
         ...params,
@@ -484,6 +484,38 @@ const dataProviderWithCustomMethods = {
     });
     if (error || !data) {
       throw new Error("Failed to enrich company");
+    }
+    return data;
+  },
+  async importGoogleSheetLeads(params?: {
+    source_id?: Identifier;
+    batch_size?: number;
+  }) {
+    const { data, error } = await supabase.functions.invoke(
+      "import_google_sheet_leads",
+      {
+        method: "POST",
+        body: params ?? {},
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to import Google Sheet leads");
+    }
+    return data;
+  },
+  async retryLeadImportEnrichment(runId: Identifier) {
+    const { data, error } = await supabase.functions.invoke(
+      "import_google_sheet_leads",
+      {
+        method: "POST",
+        body: {
+          action: "retry_enrichment",
+          run_id: runId,
+        },
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to retry import enrichment");
     }
     return data;
   },

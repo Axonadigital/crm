@@ -1,8 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useGetList,
-  useRecordContext,
-  useGetIdentity,
   useNotify,
   useRefresh,
   useDataProvider,
@@ -38,6 +36,7 @@ import {
   X,
 } from "lucide-react";
 import type { CallLog, Company } from "../types";
+import type { CrmDataProvider } from "../providers/supabase/dataProvider";
 
 const outcomeOptions: { value: CallLog["call_outcome"]; label: string }[] = [
   { value: "no_answer", label: "Inget svar" },
@@ -98,12 +97,32 @@ export const CallQueueContent = () => {
     "interested",
     "callback_requested",
   ]);
+  const [page, setPage] = useState(1);
+  const perPage = 50;
+  const activeStatusesKey = activeStatuses.join(",");
 
-  const { data: companies, isPending } = useGetList<Company>("companies", {
-    filter: {},
-    sort: { field: "created_at", order: "DESC" },
-    pagination: { page: 1, perPage: 100 },
-  });
+  const { data: companies, total = 0, isPending } = useGetList<Company>(
+    "companies",
+    {
+      filter: {
+        "prospecting_status@eq": "call_ready",
+        ...(activeStatuses.length > 0
+          ? { "lead_status@in": `(${activeStatuses.join(",")})` }
+          : {}),
+      },
+      sort: { field: "processing_order", order: "ASC" },
+      pagination: { page, perPage },
+    },
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeStatusesKey]);
+
+  const filteredCompanies = companies ?? [];
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const hasPreviousPage = page > 1;
+  const hasNextPage = page < totalPages;
 
   const statusOptions: { value: string; label: string }[] = [
     { value: "new", label: "Ny" },
@@ -112,13 +131,6 @@ export const CallQueueContent = () => {
     { value: "callback_requested", label: "Ring upp igen" },
   ];
   const allStatusValues = statusOptions.map((status) => status.value);
-
-  const activeStatusSet = new Set(activeStatuses);
-
-  // Filter on client side for now (can be optimized with server-side filter later)
-  const filteredCompanies = companies?.filter((company) =>
-    activeStatusSet.has(company.lead_status),
-  );
 
   const isFilterActive = (status: string) => activeStatuses.includes(status);
 
@@ -144,19 +156,42 @@ export const CallQueueContent = () => {
     return <p>Laddar företag...</p>;
   }
 
-  const hasResults = !!filteredCompanies && filteredCompanies.length > 0;
+  const hasResults = filteredCompanies.length > 0;
   const activeStatusNames = statusOptions
     .filter((status) => activeStatuses.includes(status.value))
     .map((status) => status.label);
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <Badge variant="outline" className="text-sm px-3 py-1">
-          {filteredCompanies?.length || 0} företag att ringa
+          {total} företag att ringa
         </Badge>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!hasPreviousPage}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+          >
+            Föregående
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Sida {page} av {totalPages}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!hasNextPage}
+            onClick={() =>
+              setPage((current) => Math.min(totalPages, current + 1))
+            }
+          >
+            Nästa
+          </Button>
+        </div>
       </div>
-
+ 
       <div className="mb-4 flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -202,7 +237,7 @@ export const CallQueueContent = () => {
         </Card>
       ) : hasResults ? (
         <div className="grid gap-4">
-          {filteredCompanies?.map((company) => (
+          {filteredCompanies.map((company) => (
             <CallQueueItem key={company.id} company={company} />
           ))}
         </div>
@@ -215,12 +250,6 @@ export const CallQueueContent = () => {
                 <> Valda statusar: {activeStatusNames.join(", ")}.</>
               )}
             </p>
-            {companies && companies.length > 0 && (
-              <p className="text-sm text-muted-foreground mt-2">
-                Du har {companies.length} företag totalt, men inga med valda
-                statusfilter.
-              </p>
-            )}
             <Button
               size="sm"
               variant="outline"
@@ -348,7 +377,7 @@ const CallLogDialog = ({
   onClose: () => void;
 }) => {
   const dataProvider =
-    useDataProvider() as import("../../providers/supabase/dataProvider").CrmDataProvider;
+    useDataProvider() as CrmDataProvider;
   const notify = useNotify();
   const refresh = useRefresh();
   const [isSaving, setIsSaving] = useState(false);

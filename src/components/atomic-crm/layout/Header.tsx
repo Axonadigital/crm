@@ -1,8 +1,8 @@
 import {
   Import,
+  Database,
   ListTodo,
   Mail,
-  Phone,
   Settings,
   User,
   Users,
@@ -37,6 +37,11 @@ const Header = () => {
     currentPath = "/deals";
   } else if (matchPath("/quotes/*", location.pathname)) {
     currentPath = "/quotes";
+  } else if (
+    matchPath("/lead_import_sources", location.pathname) ||
+    matchPath("/lead_import_runs", location.pathname)
+  ) {
+    currentPath = "/lead-import";
   } else {
     currentPath = false;
   }
@@ -74,6 +79,11 @@ const Header = () => {
                     label="Ringlista"
                     to="/call-queue"
                     isActive={currentPath === "/call-queue"}
+                  />
+                  <NavigationTab
+                    label="Leadimport"
+                    to="/lead_import_sources"
+                    isActive={currentPath === "/lead-import"}
                   />
                   <NavigationTab
                     label={translate("resources.contacts.name", {
@@ -125,6 +135,7 @@ const Header = () => {
                   </CanAccess>
                   <EmailTemplatesMenu />
                   <SequencesMenu />
+                  <LeadImportsMenu />
                   <ImportFromJsonMenuItem />
                 </UserMenu>
               </div>
@@ -215,6 +226,21 @@ const EmailTemplatesMenu = () => {
       <Link to="/email_templates" className="flex items-center gap-2">
         <Mail />
         E-postmallar
+      </Link>
+    </DropdownMenuItem>
+  );
+};
+
+const LeadImportsMenu = () => {
+  const userMenuContext = useUserMenu();
+  if (!userMenuContext) {
+    throw new Error("<LeadImportsMenu> must be used inside <UserMenu>");
+  }
+  return (
+    <DropdownMenuItem asChild onClick={userMenuContext.onClose}>
+      <Link to="/lead_import_sources" className="flex items-center gap-2">
+        <Database />
+        Leadimport
       </Link>
     </DropdownMenuItem>
   );

@@ -24,6 +24,7 @@ import deals from "../deals";
 import quotes from "../quotes";
 import emailTemplates from "../templates";
 import sequences from "../sequences";
+import { leadImportRuns, leadImportSources } from "../lead-imports";
 import { Layout } from "../layout/Layout";
 import { MobileLayout } from "../layout/MobileLayout";
 import { SignupPage } from "../login/SignupPage";
@@ -280,6 +281,8 @@ const DesktopAdmin = (props: CoreAdminProps) => {
       <Resource name="sequences" {...sequences} />
       <Resource name="sequence_steps" />
       <Resource name="sequence_enrollments" />
+      <Resource name="lead_import_sources" {...leadImportSources} />
+      <Resource name="lead_import_runs" {...leadImportRuns} />
       <Resource name="meeting_transcriptions" />
       <Resource name="tags" />
     </Admin>
@@ -369,6 +372,8 @@ const MobileAdmin = (props: CoreAdminProps) => {
         <Resource name="sequences" list={MobileSequencesList} />
         <Resource name="sequence_steps" />
         <Resource name="sequence_enrollments" />
+        <Resource name="lead_import_sources" {...leadImportSources} />
+        <Resource name="lead_import_runs" {...leadImportRuns} />
         <Resource name="meeting_transcriptions" />
         <Resource name="tags" />
         <Resource name="calendar_events" {...calendarEvents} />

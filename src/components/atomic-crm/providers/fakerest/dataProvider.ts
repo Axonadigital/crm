@@ -315,6 +315,16 @@ export const createDataProvider = ({
       });
       return config;
     },
+    importGoogleSheetLeads: async () => {
+      return {
+        message: "Demo mode: Google Sheet import is not available",
+      };
+    },
+    retryLeadImportEnrichment: async () => {
+      return {
+        message: "Demo mode: import enrichment retry is not available",
+      };
+    },
     generateQuoteText: async (_quoteId: Identifier) => {
       return {
         success: true,

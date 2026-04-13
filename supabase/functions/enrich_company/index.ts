@@ -774,10 +774,23 @@ function calculateLeadScore(company: Record<string, unknown>): {
 
 // --- Main Handler ---
 
+const isCronAuthorized = (req: Request) => {
+  const cronSecret = Deno.env.get("CRON_SECRET");
+  const providedSecret =
+    req.headers.get("x-cron-secret") ||
+    new URL(req.url).searchParams.get("secret");
+
+  return !!cronSecret && providedSecret === cronSecret;
+};
+
 Deno.serve(async (req: Request) =>
   OptionsMiddleware(req, async (req) =>
-    AuthMiddleware(req, async (req) =>
-      UserMiddleware(req, async (req, _user) => {
+    (isCronAuthorized(req)
+      ? (next: () => Promise<Response>) => next()
+      : (next: () => Promise<Response>) =>
+          AuthMiddleware(req, async (req) =>
+            UserMiddleware(req, async () => next()),
+          ))(async () => {
         if (req.method !== "POST") {
           return createErrorResponse(405, "Method Not Allowed");
         }
@@ -1012,6 +1025,5 @@ Deno.serve(async (req: Request) =>
           return errorResponseFromUnknown(error);
         }
       }),
-    ),
   ),
 );
