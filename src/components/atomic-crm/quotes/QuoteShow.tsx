@@ -721,6 +721,10 @@ const PremiumSectionsPreview = ({
     setDraft({
       ...sections,
       highlight_cards: sections.highlight_cards?.map((c) => ({ ...c })) ?? [],
+      problem_cards: sections.problem_cards?.map((c) => ({ ...c })) ?? [],
+      package_includes: sections.package_includes
+        ? [...sections.package_includes]
+        : [],
     });
     setIsEditing(true);
   };
@@ -913,6 +917,285 @@ const PremiumSectionsPreview = ({
           </div>
         )}
       </div>
+
+      {/* Problem cards */}
+      {((isEditing ? draft.problem_cards : sections.problem_cards) ?? [])
+        .length > 0 || isEditing ? (
+        <div className="p-4 border rounded-md bg-muted/30 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              // Problemkort
+            </span>
+            {isEditing && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    problem_cards: [
+                      ...(prev.problem_cards ?? []),
+                      {
+                        number: String(
+                          (prev.problem_cards?.length ?? 0) + 1,
+                        ).padStart(2, "0"),
+                        title: "",
+                        text: "",
+                      },
+                    ],
+                  }))
+                }
+              >
+                + Lägg till
+              </Button>
+            )}
+          </div>
+          <div className="space-y-3 mt-2">
+            {(isEditing ? draft.problem_cards : sections.problem_cards)?.map(
+              (card, i) => (
+                <div key={i} className="flex gap-2 items-start">
+                  <span className="text-2xl font-bold text-muted-foreground/30 leading-none mt-1 w-8 shrink-0">
+                    {card.number}
+                  </span>
+                  {isEditing ? (
+                    <div className="flex-1 space-y-1">
+                      <input
+                        type="text"
+                        value={card.title}
+                        onChange={(e) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            problem_cards: prev.problem_cards?.map((c, j) =>
+                              j === i ? { ...c, title: e.target.value } : c,
+                            ),
+                          }))
+                        }
+                        className="text-sm font-semibold bg-transparent border-b border-dashed w-full outline-none focus:border-foreground"
+                        placeholder="Rubrik"
+                      />
+                      <Textarea
+                        value={card.text}
+                        onChange={(e) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            problem_cards: prev.problem_cards?.map((c, j) =>
+                              j === i ? { ...c, text: e.target.value } : c,
+                            ),
+                          }))
+                        }
+                        rows={2}
+                        className="text-xs resize-y"
+                        placeholder="Beskrivning"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-destructive hover:text-destructive"
+                        onClick={() =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            problem_cards: prev.problem_cards?.filter(
+                              (_, j) => j !== i,
+                            ),
+                          }))
+                        }
+                      >
+                        Ta bort
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-sm font-semibold">{card.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {card.text}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ),
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Package includes */}
+      {((isEditing ? draft.package_includes : sections.package_includes) ?? [])
+        .length > 0 || isEditing ? (
+        <div className="p-4 border rounded-md bg-muted/30 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              // Ingår i paketet
+            </span>
+            {isEditing && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    package_includes: [...(prev.package_includes ?? []), ""],
+                  }))
+                }
+              >
+                + Lägg till
+              </Button>
+            )}
+          </div>
+          <ul className="mt-2 space-y-1">
+            {(isEditing
+              ? draft.package_includes
+              : sections.package_includes
+            )?.map((item, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <span className="text-green-600 shrink-0">✓</span>
+                {isEditing ? (
+                  <>
+                    <input
+                      type="text"
+                      value={item}
+                      onChange={(e) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          package_includes: prev.package_includes?.map(
+                            (v, j) => (j === i ? e.target.value : v),
+                          ),
+                        }))
+                      }
+                      className="text-sm bg-transparent border-b border-dashed flex-1 outline-none focus:border-foreground"
+                      placeholder="Ingår"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 px-1 text-xs text-destructive hover:text-destructive"
+                      onClick={() =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          package_includes: prev.package_includes?.filter(
+                            (_, j) => j !== i,
+                          ),
+                        }))
+                      }
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-sm">{item}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Upgrade package */}
+      {isEditing || sections.upgrade_package !== undefined ? (
+        <div className="p-4 border rounded-md bg-muted/30 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              // Uppgraderingstillägg
+            </span>
+            {isEditing && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    upgrade_package:
+                      prev.upgrade_package == null
+                        ? {
+                            title: "Flersidig hemsida",
+                            description:
+                              "Uppgradera till en flersidig hemsida med dedikerade undersidor.",
+                            price: "Offert på begäran",
+                            includes: [],
+                            benefits: [],
+                          }
+                        : null,
+                  }))
+                }
+              >
+                {draft.upgrade_package == null ? "Aktivera" : "Dölj i PDF"}
+              </Button>
+            )}
+          </div>
+          {(isEditing ? draft.upgrade_package : sections.upgrade_package) ==
+          null ? (
+            <p className="text-xs text-muted-foreground italic">
+              Uppgraderingstillägg dolt i PDF.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {isEditing && draft.upgrade_package ? (
+                <>
+                  <input
+                    type="text"
+                    value={draft.upgrade_package.title}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        upgrade_package: prev.upgrade_package
+                          ? { ...prev.upgrade_package, title: e.target.value }
+                          : null,
+                      }))
+                    }
+                    className="text-sm font-semibold bg-transparent border-b border-dashed w-full outline-none focus:border-foreground"
+                    placeholder="Titel"
+                  />
+                  <Textarea
+                    value={draft.upgrade_package.description}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        upgrade_package: prev.upgrade_package
+                          ? {
+                              ...prev.upgrade_package,
+                              description: e.target.value,
+                            }
+                          : null,
+                      }))
+                    }
+                    rows={2}
+                    className="text-xs resize-y"
+                    placeholder="Beskrivning"
+                  />
+                  <input
+                    type="text"
+                    value={draft.upgrade_package.price}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        upgrade_package: prev.upgrade_package
+                          ? { ...prev.upgrade_package, price: e.target.value }
+                          : null,
+                      }))
+                    }
+                    className="text-sm bg-transparent border-b border-dashed w-full outline-none focus:border-foreground"
+                    placeholder="Pris (ex: Offert på begäran)"
+                  />
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold">
+                    {sections.upgrade_package?.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {sections.upgrade_package?.description}
+                  </p>
+                  <p className="text-xs font-medium">
+                    {sections.upgrade_package?.price}
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -38,7 +38,10 @@ async function getAuthenticatedUser(req: Request) {
     throw new Error("Unauthorized");
   }
 
-  return { id: userId } as User;
+  return {
+    id: userId,
+    email: payload.email as string | undefined,
+  } as User;
 }
 
 /**
@@ -53,7 +56,6 @@ export const AuthMiddleware = async (
   try {
     await getAuthenticatedUser(req);
     return await next(req);
-
   } catch (e) {
     return createErrorResponse(401, e?.toString() || "Unauthorized");
   }

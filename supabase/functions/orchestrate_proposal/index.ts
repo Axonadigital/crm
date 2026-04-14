@@ -481,13 +481,221 @@ Deno.serve(async (req: Request) =>
         );
       }
 
+      // Determine if quote is for a multi-page website (hide upgrade upsell)
+      const isMultiPage =
+        deal.category?.toLowerCase().includes("fler") ||
+        quoteTitle?.toLowerCase().includes("flersidig") ||
+        quoteTitle?.toLowerCase().includes("multi") ||
+        deal.category === "webb-med-support";
+
+      // Default problem cards
+      const defaultProblemCards = [
+        {
+          number: "01",
+          title: "Svårt att bli hittad",
+          text: "Utan en hemsida syns ni inte när potentiella kunder söker efter era tjänster online. Konkurrenter med en webbplats fångar dessa förfrågningar.",
+        },
+        {
+          number: "02",
+          title: "Svårt att visa vad ni gör",
+          text: "Utan en samlad plats att visa era tjänster, kompetens och kontaktuppgifter blir det svårare för kunder att bedöma och lita på er.",
+        },
+        {
+          number: "03",
+          title: "Förlorade förfrågningar",
+          text: "Varje dag söker potentiella kunder online. Utan en webbplats går dessa förfrågningar till konkurrenter som syns.",
+        },
+      ];
+
+      // Default package includes
+      const defaultPackageIncludes = [
+        "Skräddarsydd design",
+        "Mobilanpassat",
+        "SEO-optimerad struktur",
+        "Kontaktformulär",
+        "SSL-certifikat",
+      ];
+
+      // Upgrade package — null if this is already a multi-page quote
+      const defaultUpgradePackage = isMultiPage
+        ? null
+        : {
+            title: "Flersidig hemsida",
+            description:
+              "Vill ni ha mer utrymme att presentera era tjänster, projekt och ert team? Uppgradera till en flersidig hemsida med dedikerade undersidor.",
+            price: "Offert på begäran",
+            includes: [
+              "Upp till 5 undersidor",
+              "Dedikerad tjänstesida",
+              "Om oss-sida med teamet",
+              "Referensprojekt-sida",
+              "Blogg eller nyhetssektion",
+            ],
+            benefits: [
+              "Mer utrymme att berätta er historia",
+              "Bättre SEO med fler indexerbara sidor",
+              "Professionellare intryck för större kunder",
+            ],
+          };
+
+      // Merge AI sections with defaults for any missing fields
+      const enrichedSections = generatedSections
+        ? {
+            ...generatedSections,
+            problem_cards:
+              (generatedSections as Record<string, unknown>).problem_cards ??
+              defaultProblemCards,
+            package_includes:
+              (generatedSections as Record<string, unknown>).package_includes ??
+              defaultPackageIncludes,
+            upgrade_package:
+              "upgrade_package" in generatedSections
+                ? (generatedSections as Record<string, unknown>).upgrade_package
+                : defaultUpgradePackage,
+            process_steps: (generatedSections as Record<string, unknown>)
+              .process_steps ?? [
+              {
+                number: "01",
+                title: "Signering & uppstart",
+                text: "Ni godkänner offerten. Vi samlar in material — logga, texter, bilder — och påbörjar designarbetet.",
+              },
+              {
+                number: "02",
+                title: "Demoversion klar",
+                text: "Vi presenterar en komplett demoversion av er hemsida som ni kan granska och ge feedback på.",
+              },
+              {
+                number: "03",
+                title: "Korrigeringar",
+                text: "Vi justerar efter era önskemål. Upp till två korrigeringsrundor ingår i priset.",
+              },
+              {
+                number: "04",
+                title: "Lansering",
+                text: "Vi publicerar hemsidan, kopplar domänen och säkerställer att allt fungerar. Ni äger allt.",
+              },
+            ],
+            support_cards: (generatedSections as Record<string, unknown>)
+              .support_cards ?? [
+              {
+                icon: "check-circle",
+                title: "Innan lansering",
+                text: "Upp till två korrigeringsrundor ingår i priset efter att demoversionen presenterats. Vi finslipar tills ni är nöjda.",
+              },
+              {
+                icon: "edit",
+                title: "Egna ändringar",
+                text: "Hemsidan byggs i Builder.io — ni kan själva göra enklare justeringar av texter och bilder utan att behöva kontakta oss.",
+              },
+              {
+                icon: "headphones",
+                title: "Support efter lansering",
+                text: "Behöver ni hjälp med ändringar efter lansering? Vi finns tillgängliga på timdebitering — 1 500 kr/h exkl. moms.",
+              },
+              {
+                icon: "shield",
+                title: "Full äganderätt",
+                text: "Vid leverans äger ni hemsidan helt. Inga inlåsningseffekter, inga löpande avgifter från vårt håll.",
+              },
+            ],
+            tech_items: (generatedSections as Record<string, unknown>)
+              .tech_items ?? [
+              {
+                icon: "smartphone",
+                title: "Mobilanpassat",
+                text: "Perfekt på alla enheter",
+              },
+              {
+                icon: "search",
+                title: "SEO-optimerat",
+                text: "Syns på Google lokalt",
+              },
+              {
+                icon: "zap",
+                title: "Snabb laddtid",
+                text: "Optimerad prestanda",
+              },
+              {
+                icon: "lock",
+                title: "SSL-krypterad",
+                text: "Säker anslutning",
+              },
+            ],
+            founders: (generatedSections as Record<string, unknown>)
+              .founders ?? [
+              {
+                initials: "RJ",
+                name: "Rasmus Jönsson",
+                role: "Medgrundare & Teknisk ansvarig",
+                description:
+                  "Ansvarar för teknik och implementation. Fokuserar på robusta lösningar och att varje leverans ger mätbar effekt.",
+              },
+              {
+                initials: "IP",
+                name: "Isak Persson",
+                role: "Medgrundare & Affärsutveckling",
+                description:
+                  "Ansvarar för affärsutveckling och uppföljning. Varje lösning ska ha ett tydligt syfte och ett resultat ni kan följa.",
+              },
+            ],
+            // Section titles/texts — stored so WYSIWYG editor can save edits back
+            problem_section_title:
+              (generatedSections as Record<string, unknown>)
+                .problem_section_title ?? null,
+            package_section_title:
+              (generatedSections as Record<string, unknown>)
+                .package_section_title ?? "Välj det som passar er",
+            package_section_text:
+              (generatedSections as Record<string, unknown>)
+                .package_section_text ??
+              "Paketet nedan är skräddarsytt för er verksamhet och era behov.",
+            reference_section_title:
+              (generatedSections as Record<string, unknown>)
+                .reference_section_title ?? "Hemsidor vi har byggt",
+            reference_section_text:
+              (generatedSections as Record<string, unknown>)
+                .reference_section_text ??
+              "Här är ett urval av webbplatser vi levererat — både ensidiga och flersidiga lösningar för företag i liknande branscher.",
+            reference_projects:
+              (generatedSections as Record<string, unknown>)
+                .reference_projects ?? null,
+            process_section_title:
+              (generatedSections as Record<string, unknown>)
+                .process_section_title ??
+              "Från signering till lanserad hemsida",
+            process_section_text:
+              (generatedSections as Record<string, unknown>)
+                .process_section_text ??
+              "En tydlig process där ni alltid vet vad som händer härnäst.",
+            support_section_title:
+              (generatedSections as Record<string, unknown>)
+                .support_section_title ?? "Vad som gäller efter lansering",
+            tech_section_title:
+              (generatedSections as Record<string, unknown>)
+                .tech_section_title ?? "Byggt för att synas och prestera",
+            about_section_title:
+              (generatedSections as Record<string, unknown>)
+                .about_section_title ?? "Vilka är Axona Digital?",
+            about_section_text:
+              (generatedSections as Record<string, unknown>)
+                .about_section_text ??
+              "Vi är en digital byrå i Östersund som hjälper svenska företag med hemsidor, e-handel och AI-lösningar. Varje leverans ska ge mätbar effekt — inte bara se bra ut.",
+            price_summary_bullets:
+              (generatedSections as Record<string, unknown>)
+                .price_summary_bullets ?? null,
+            // Recurring payment — passed through from deal
+            recurring_amount: deal.recurring_amount ?? null,
+            recurring_interval: deal.recurring_interval ?? null,
+          }
+        : null;
+
       // Update quote with both structured and plain text
       const quoteUpdateData: Record<string, unknown> = {
         generated_text: generatedText,
         status: "generated",
       };
-      if (generatedSections) {
-        quoteUpdateData.generated_sections = generatedSections;
+      if (enrichedSections) {
+        quoteUpdateData.generated_sections = enrichedSections;
       }
 
       await supabase.from("quotes").update(quoteUpdateData).eq("id", quote.id);
@@ -518,28 +726,19 @@ Deno.serve(async (req: Request) =>
       }
 
       // ================================================================
-      // Step 8: Build approval URL and post to Discord
+      // Step 8: Post to Discord for review
       // ================================================================
-      // Refresh quote to get the approval_token
       const { data: updatedQuote } = await supabase
         .from("quotes")
-        .select("approval_token, quote_number")
+        .select("quote_number")
         .eq("id", quote.id)
         .single();
 
-      const approvalToken = updatedQuote?.approval_token;
       const quoteNumber = updatedQuote?.quote_number || `#${quote.id}`;
-      // Public Supabase URL for approve link
-      // SUPABASE_URL is auto-set by Supabase to the project's public URL
-      const publicSupabaseUrl =
-        Deno.env.get("SUPABASE_URL") ||
-        "https://hgyusrlrzdahucljvqsz.supabase.co";
-      const approveUrl = `${publicSupabaseUrl}/functions/v1/approve_proposal?token=${approvalToken}`;
       const crmUrl =
         Deno.env.get("CRM_PUBLIC_URL") ||
         Deno.env.get("ALLOWED_ORIGIN") ||
         "http://localhost:5173";
-      const editUrl = `${crmUrl}/#/quotes/${quote.id}`;
 
       const totalAmount = deal.amount
         ? `${Number(deal.amount).toLocaleString("sv-SE")} ${currency}`
@@ -560,12 +759,8 @@ Deno.serve(async (req: Request) =>
         });
       }
       discordButtons.push({
-        label: "Godkann och skicka",
-        url: approveUrl,
-      });
-      discordButtons.push({
-        label: "Redigera i CRM",
-        url: editUrl,
+        label: "Granska och skicka i CRM",
+        url: `${crmUrl}/#/quotes/${quote.id}/show`,
       });
 
       await notifyDiscord(
@@ -597,8 +792,7 @@ Deno.serve(async (req: Request) =>
           quote_id: quote.id,
           quote_number: quoteNumber,
           pdf_url: pdfUrl,
-          approve_url: approveUrl,
-          edit_url: editUrl,
+          review_url: `${crmUrl}/#/quotes/${quote.id}/show`,
         }),
         {
           headers: {

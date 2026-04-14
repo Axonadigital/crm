@@ -52,7 +52,6 @@ const ChangePasswordButton = () => {
   const notify = useNotify();
   const { identity } = useGetIdentity();
   const dataProvider = useDataProvider<CrmDataProvider>();
-
   const { mutate: updatePassword } = useMutation({
     mutationKey: ["updatePassword"],
     mutationFn: async () => {
@@ -63,17 +62,59 @@ const ChangePasswordButton = () => {
           }),
         );
       }
-      return dataProvider.updatePassword(identity.id);
+
+      const password = window.prompt(
+        translate("crm.profile.password.prompt", {
+          _: "Enter a new password (minimum 8 characters).",
+        }),
+      );
+
+      if (password == null) {
+        return false;
+      }
+
+      const confirmPassword = window.prompt(
+        translate("crm.profile.password.confirm_prompt", {
+          _: "Confirm your new password.",
+        }),
+      );
+
+      if (confirmPassword == null) {
+        return false;
+      }
+
+      const nextPassword = password.trim();
+      if (nextPassword.length < 8) {
+        throw new Error(
+          translate("crm.profile.password.too_short", {
+            _: "Password must be at least 8 characters long",
+          }),
+        );
+      }
+
+      if (nextPassword !== confirmPassword.trim()) {
+        throw new Error(
+          translate("ra-supabase.validation.password_mismatch", {
+            _: "Passwords do not match",
+          }),
+        );
+      }
+
+      return dataProvider.updatePassword(identity.id, nextPassword);
     },
-    onSuccess: () => {
-      notify("crm.profile.password_reset_sent", {
+    onSuccess: (updated) => {
+      if (!updated) {
+        return;
+      }
+
+      notify("crm.profile.password.updated", {
         messageArgs: {
-          _: "A reset password email has been sent to your email address",
+          _: "Your password has been updated",
         },
       });
     },
-    onError: (e) => {
-      notify(`${e}`, { type: "error" });
+    onError: (error) => {
+      notify(`${error}`, { type: "error" });
     },
   });
 
@@ -81,6 +122,7 @@ const ChangePasswordButton = () => {
     <Button
       variant="outline"
       className="w-full text-base h-auto"
+      type="button"
       onClick={() => updatePassword()}
     >
       <KeyRound className="size-5 mr-3" />
@@ -492,7 +534,7 @@ const InboundEmailSection = () => {
       <SectionLabel>{translate("crm.profile.inbound.title")}</SectionLabel>
       <p className="text-sm text-muted-foreground mb-2 px-1">
         {translate("crm.profile.inbound.description", {
-          _: "You can start sending emails to your server's inbound email address, e.g. by adding it to the Cc: field. Atomic CRM will process the emails and add notes to the corresponding contacts.",
+          _: "You can start sending emails to your server's inbound email address, e.g. by adding it to the Cc: field. Axona Digital CRM will process the emails and add notes to the corresponding contacts.",
           field: "Cc:",
         })}
       </p>

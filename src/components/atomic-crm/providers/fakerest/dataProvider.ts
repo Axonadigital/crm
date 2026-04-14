@@ -230,7 +230,12 @@ export const createDataProvider = ({
         password,
       };
     },
-    salesCreate: async ({ ...data }: SalesFormData): Promise<Sale> => {
+    salesCreate: async ({ ...data }: SalesFormData): Promise<{
+      data: Sale;
+      invite_link?: string | null;
+      temporary_password?: string | null;
+      existing_user?: boolean;
+    }> => {
       const response = await dataProvider.create("sales", {
         data: {
           ...data,
@@ -238,7 +243,12 @@ export const createDataProvider = ({
         },
       });
 
-      return response.data;
+      return {
+        data: response.data,
+        invite_link: null,
+        temporary_password: "demo_newPassword42!",
+        existing_user: false,
+      };
     },
     salesUpdate: async (
       id: Identifier,
@@ -270,7 +280,7 @@ export const createDataProvider = ({
       }
       return true;
     },
-    updatePassword: async (id: Identifier): Promise<true> => {
+    updatePassword: async (id: Identifier, password: string): Promise<true> => {
       const currentUser = await getIdentity();
       if (!currentUser) {
         throw new Error("User not found");
@@ -286,7 +296,7 @@ export const createDataProvider = ({
       await dataProvider.update("sales", {
         id,
         data: {
-          password: "demo_newPassword",
+          password,
         },
         previousData,
       });

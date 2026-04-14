@@ -59,7 +59,21 @@ export const useConfigurationContext = () => {
   );
   // Merge with defaults so that missing fields in stored config
   // fall back to default values (e.g. when new settings are added)
-  return useMemo(() => ({ ...defaultConfiguration, ...config }), [config]);
+  return useMemo(() => {
+    const merged = { ...defaultConfiguration, ...config };
+
+    if (merged.title === "Atomic CRM") {
+      merged.title = defaultConfiguration.title;
+    }
+    if (merged.darkModeLogo?.includes("logo_atomic_crm")) {
+      merged.darkModeLogo = defaultConfiguration.darkModeLogo;
+    }
+    if (merged.lightModeLogo?.includes("logo_atomic_crm")) {
+      merged.lightModeLogo = defaultConfiguration.lightModeLogo;
+    }
+
+    return merged;
+  }, [config]);
 };
 
 export const useConfigurationUpdater = () => {

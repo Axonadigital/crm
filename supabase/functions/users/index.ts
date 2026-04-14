@@ -77,8 +77,6 @@ async function updateSaleAvatar(user_id: string, avatar: string) {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_NAME_LENGTH = 100;
-const MIN_PASSWORD_LENGTH = 8;
-const MAX_PASSWORD_LENGTH = 128;
 
 function isValidEmail(email: unknown): email is string {
   return (
@@ -94,12 +92,83 @@ function isValidName(name: unknown): name is string {
   );
 }
 
-function isValidPassword(password: unknown): password is string {
-  return (
-    typeof password === "string" &&
-    password.length >= MIN_PASSWORD_LENGTH &&
-    password.length <= MAX_PASSWORD_LENGTH
-  );
+function buildAuthCallbackUrl() {
+  const siteUrl =
+    Deno.env.get("SITE_URL") ?? "https://crm.axonadigital.se";
+
+  try {
+    return new URL("/auth-callback.html", siteUrl).toString();
+  } catch (error) {
+    console.error("Invalid SITE_URL:", siteUrl, error);
+    return "https://crm.axonadigital.se/auth-callback.html";
+  }
+}
+
+function generateTemporaryPassword(length = 20) {
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
+  const randomBytes = crypto.getRandomValues(new Uint8Array(length));
+
+  return Array.from(randomBytes, (value) =>
+    alphabet[value % alphabet.length]
+  ).join("");
+}
+
+async function generateInviteLink(
+  email: string,
+  first_name: string,
+  last_name: string,
+) {
+  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: {
+      data: { first_name, last_name },
+      redirectTo: buildAuthCallbackUrl(),
+    },
+  });
+
+  if (error) {
+    console.error("generateLink(invite) error:", error);
+    return null;
+  }
+
+  return data.properties?.action_link ?? null;
+}
+
+async function ensureAccessFallback(
+  userId: string,
+  email: string,
+  first_name: string,
+  last_name: string,
+) {
+  const inviteLink = await generateInviteLink(email, first_name, last_name);
+
+  if (inviteLink) {
+    return {
+      invite_link: inviteLink,
+      temporary_password: null,
+    };
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    password: temporaryPassword,
+    user_metadata: { first_name, last_name },
+  });
+
+  if (error) {
+    console.error("updateUserById fallback password error:", error);
+    return {
+      invite_link: null,
+      temporary_password: null,
+    };
+  }
+
+  return {
+    invite_link: null,
+    temporary_password: temporaryPassword,
+  };
 }
 
 // --- Route handlers ---
@@ -108,7 +177,6 @@ async function inviteUser(req: Request, currentUserSale: any) {
   try {
     const body = await parseRequiredJsonBody(req);
     const email = getOptionalStringField(body, "email");
-    const password = getOptionalStringField(body, "password");
     const first_name = getOptionalStringField(body, "first_name");
     const last_name = getOptionalStringField(body, "last_name");
     const disabled = getOptionalBooleanField(body, "disabled");
@@ -120,12 +188,6 @@ async function inviteUser(req: Request, currentUserSale: any) {
 
     if (!isValidEmail(email)) {
       return createErrorResponse(400, "Invalid or missing email address");
-    }
-    if (!isValidPassword(password)) {
-      return createErrorResponse(
-        400,
-        `Password must be between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters`,
-      );
     }
     if (!isValidName(first_name)) {
       return createErrorResponse(
@@ -146,15 +208,16 @@ async function inviteUser(req: Request, currentUserSale: any) {
       return createErrorResponse(400, "administrator must be a boolean");
     }
 
-    const { data, error: userError } = await supabaseAdmin.auth.admin.createUser(
-      {
-        email,
-        password,
-        user_metadata: { first_name, last_name },
-      },
-    );
+    const redirectTo = buildAuthCallbackUrl();
+    const { data, error: userError } =
+      await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        data: { first_name, last_name },
+        redirectTo,
+      });
 
     let user = data?.user;
+    let inviteLink: string | null = null;
+    let temporaryPassword: string | null = null;
 
     if (!user && userError?.code === "email_exists") {
       // This may happen if users cleared their database but not the users
@@ -182,10 +245,18 @@ async function inviteUser(req: Request, currentUserSale: any) {
           });
         }
         if (existingSale.length > 0) {
-          return createErrorResponse(
-            400,
-            "A sales for this email already exists",
+          const fallback = await ensureAccessFallback(
+            user.id,
+            email,
+            first_name,
+            last_name,
           );
+          return createJsonResponse({
+            data: existingSale[0],
+            invite_link: fallback.invite_link,
+            temporary_password: fallback.temporary_password,
+            existing_user: true,
+          });
         }
 
         const sale = await createSale(user.id, {
@@ -197,8 +268,17 @@ async function inviteUser(req: Request, currentUserSale: any) {
           administrator,
         });
 
+        const fallback = await ensureAccessFallback(
+          user.id,
+          email,
+          first_name,
+          last_name,
+        );
+
         return createJsonResponse({
           data: sale,
+          invite_link: fallback.invite_link,
+          temporary_password: fallback.temporary_password,
         });
       } catch (error) {
         return createErrorResponse(
@@ -220,13 +300,14 @@ async function inviteUser(req: Request, currentUserSale: any) {
         console.error("Error inviting user: undefined user");
         return createErrorResponse(500, "Internal Server Error");
       }
-      const { error: emailError } =
-        await supabaseAdmin.auth.admin.inviteUserByEmail(email);
-
-      if (emailError) {
-        console.error(`Error inviting user, email_error=${emailError}`);
-        return createErrorResponse(500, "Failed to send invitation mail");
-      }
+      const fallback = await ensureAccessFallback(
+        data.user.id,
+        email,
+        first_name,
+        last_name,
+      );
+      inviteLink = fallback.invite_link;
+      temporaryPassword = fallback.temporary_password;
     }
 
     try {
@@ -235,6 +316,8 @@ async function inviteUser(req: Request, currentUserSale: any) {
 
       return createJsonResponse({
         data: sale,
+        invite_link: inviteLink,
+        temporary_password: temporaryPassword,
       });
     } catch (e) {
       console.error("Error patching sale:", e);

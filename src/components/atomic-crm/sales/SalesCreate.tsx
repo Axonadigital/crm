@@ -19,12 +19,50 @@ export function SalesCreate() {
     mutationFn: async (data: SalesFormData) => {
       return dataProvider.salesCreate(data);
     },
-    onSuccess: () => {
+    onSuccess: async (result) => {
+      if (result.invite_link) {
+        try {
+          await navigator.clipboard.writeText(result.invite_link);
+        } catch {
+          // Clipboard access can fail outside secure/user-granted contexts.
+        }
+      }
+      if (result.temporary_password) {
+        try {
+          await navigator.clipboard.writeText(result.temporary_password);
+        } catch {
+          // Clipboard access can fail outside secure/user-granted contexts.
+        }
+      }
+
       notify("resources.sales.create.success", {
         messageArgs: {
-          _: "User created. They will soon receive an email to set their password.",
+          _:
+            result.invite_link
+              ? "User created. An invitation link has been copied as a fallback if the email does not arrive."
+              : result.temporary_password
+                ? "User created. A temporary password has been copied because invitation email delivery is unavailable."
+              : "User created. They will soon receive an email to set their password.",
         },
       });
+
+      if (result.invite_link) {
+        window.prompt(
+          translate("resources.sales.create.invite_link", {
+            _: "Copy or share this invitation link",
+          }),
+          result.invite_link,
+        );
+      }
+      if (result.temporary_password) {
+        window.prompt(
+          translate("resources.sales.create.temporary_password", {
+            _: "Share this temporary password with the user",
+          }),
+          result.temporary_password,
+        );
+      }
+
       redirect("/sales");
     },
     onError: (error) => {

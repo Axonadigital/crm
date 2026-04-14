@@ -16,6 +16,11 @@ import type {
   SignUpData,
 } from "../../types";
 import type { ConfigurationContextValue } from "../../root/ConfigurationContext";
+import {
+  defaultDarkModeLogo,
+  defaultLightModeLogo,
+  defaultTitle,
+} from "../../root/defaultConfiguration";
 import { ATTACHMENTS_BUCKET } from "../commons/attachments";
 import { getIsInitialized } from "./authProvider";
 import { supabase } from "./supabase";
@@ -332,13 +337,15 @@ const dataProviderWithCustomMethods = {
           ...body,
           password: crypto.randomUUID() + crypto.randomUUID(),
         };
-    const { data, error } = await supabase.functions.invoke<{ data: Sale }>(
-      "users",
-      {
-        method: "POST",
-        body: bodyWithPassword,
-      },
-    );
+    const { data, error } = await supabase.functions.invoke<{
+      data: Sale;
+      invite_link?: string | null;
+      temporary_password?: string | null;
+      existing_user?: boolean;
+    }>("users", {
+      method: "POST",
+      body: bodyWithPassword,
+    });
 
     if (!data || error) {
       console.error("salesCreate.error", error);
@@ -352,7 +359,7 @@ const dataProviderWithCustomMethods = {
       throw new Error(errorDetails?.message || "Failed to create the user");
     }
 
-    return data.data;
+    return data;
   },
   async salesUpdate(
     id: Identifier,
@@ -383,21 +390,17 @@ const dataProviderWithCustomMethods = {
 
     return updatedData.data;
   },
-  async updatePassword(id: Identifier) {
-    const { data: passwordUpdated, error } =
-      await supabase.functions.invoke<boolean>("update_password", {
-        method: "PATCH",
-        body: {
-          sales_id: id,
-        },
-      });
+  async updatePassword(_id: Identifier, password: string) {
+    const { data, error } = await supabase.auth.updateUser({
+      password,
+    });
 
-    if (!passwordUpdated || error) {
-      console.error("update_password.error", error);
-      throw new Error("Failed to update password");
+    if (!data.user || error) {
+      console.error("updatePassword.error", error);
+      throw new Error(error?.message || "Failed to update password");
     }
 
-    return passwordUpdated;
+    return true;
   },
   async unarchiveDeal(deal: Deal) {
     // get all deals where stage is the same as the deal to unarchive
@@ -701,7 +704,9 @@ const dataProviderWithCustomMethods = {
   },
   async getConfiguration(): Promise<ConfigurationContextValue> {
     const { data } = await baseDataProvider.getOne("configuration", { id: 1 });
-    return (data?.config as ConfigurationContextValue) ?? {};
+    return normalizeLegacyBranding(
+      (data?.config as ConfigurationContextValue) ?? {},
+    );
   },
   async updateConfiguration(
     config: ConfigurationContextValue,
@@ -716,6 +721,30 @@ const dataProviderWithCustomMethods = {
 } satisfies DataProvider;
 
 export type CrmDataProvider = typeof dataProviderWithCustomMethods;
+
+const normalizeLegacyBranding = (
+  config: Partial<ConfigurationContextValue>,
+): ConfigurationContextValue => {
+  const normalized = { ...config } as ConfigurationContextValue;
+
+  if (!normalized.title || normalized.title === "Atomic CRM") {
+    normalized.title = defaultTitle;
+  }
+  if (
+    !normalized.darkModeLogo ||
+    normalized.darkModeLogo.includes("logo_atomic_crm")
+  ) {
+    normalized.darkModeLogo = defaultDarkModeLogo;
+  }
+  if (
+    !normalized.lightModeLogo ||
+    normalized.lightModeLogo.includes("logo_atomic_crm")
+  ) {
+    normalized.lightModeLogo = defaultLightModeLogo;
+  }
+
+  return normalized;
+};
 
 const processConfigLogo = async (logo: any): Promise<string> => {
   if (typeof logo === "string") return logo;

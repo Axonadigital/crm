@@ -100,6 +100,13 @@ type ProcessedRowResult = {
   importedAt: string | null;
 };
 
+type RowStats = {
+  scanned: number[];
+  imported: number[];
+  duplicates: number[];
+  failed: number[];
+};
+
 type SheetWritebackResult = {
   status: WritebackStatus;
   rows_marked: number;
@@ -507,13 +514,15 @@ async function finalizeRun(
     sheet_writeback_error?: string | null;
     error_summary?: string | null;
     last_imported_row?: number;
+    last_run_message?: string | null;
   },
 ) {
   const finishedAt = new Date().toISOString();
   const sourceUpdate: Record<string, unknown> = {
     last_run_status: payload.status,
     last_run_message:
-      payload.error_summary ||
+      payload.last_run_message ??
+      payload.error_summary ??
       `Scanned ${payload.rows_scanned}, inserted ${payload.rows_inserted}`,
   };
 
@@ -545,6 +554,62 @@ async function finalizeRun(
 
   if (runError) throw runError;
   await updateSourceStatus(source.id, sourceUpdate);
+}
+
+function toRowRanges(rowNumbers: number[]) {
+  if (rowNumbers.length === 0) return "inga";
+
+  const sorted = [...rowNumbers].sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let rangeStart = sorted[0];
+  let previous = sorted[0];
+
+  for (let index = 1; index < sorted.length; index++) {
+    const current = sorted[index];
+    if (current === previous || current === previous + 1) {
+      previous = current;
+      continue;
+    }
+
+    ranges.push(
+      rangeStart === previous ? String(rangeStart) : `${rangeStart}-${previous}`,
+    );
+    rangeStart = current;
+    previous = current;
+  }
+
+  ranges.push(
+    rangeStart === previous ? String(rangeStart) : `${rangeStart}-${previous}`,
+  );
+
+  return ranges.join(", ");
+}
+
+function buildRowStats(
+  pendingRows: Array<{ sourceRowNumber: number }>,
+  processedRows: ProcessedRowResult[],
+): RowStats {
+  return {
+    scanned: pendingRows.map((row) => row.sourceRowNumber),
+    imported: processedRows
+      .filter((row) => row.status === "imported")
+      .map((row) => row.sourceRowNumber),
+    duplicates: processedRows
+      .filter((row) => row.status === "duplicate")
+      .map((row) => row.sourceRowNumber),
+    failed: processedRows
+      .filter((row) => row.status === "failed")
+      .map((row) => row.sourceRowNumber),
+  };
+}
+
+function buildLastRunMessage(rowStats: RowStats) {
+  return [
+    `Rader: ${toRowRanges(rowStats.scanned)}`,
+    `Nya: ${toRowRanges(rowStats.imported)}`,
+    `Dubbletter: ${toRowRanges(rowStats.duplicates)}`,
+    `Fel: ${toRowRanges(rowStats.failed)}`,
+  ].join(" | ");
 }
 
 async function fetchParsedRows(source: LeadImportSource) {
@@ -1059,6 +1124,8 @@ async function handleImportNext(
       run.id,
       processedRows,
     );
+    const rowStats = buildRowStats(pendingRows, processedRows);
+    const lastRunMessage = buildLastRunMessage(rowStats);
 
     const enrichmentResults = await enrichImportedCompanies(
       importedCompanyIds,
@@ -1105,6 +1172,7 @@ async function handleImportNext(
       sheet_rows_failed: writebackResult.rows_failed,
       sheet_writeback_error: writebackResult.error ?? null,
       error_summary: errorSummary,
+      last_run_message: lastRunMessage,
       ...(range ? {} : { last_imported_row: lastProcessedRow }),
     });
 
@@ -1124,6 +1192,13 @@ async function handleImportNext(
       sheet_rows_failed: writebackResult.rows_failed,
       sheet_writeback_error: writebackResult.error ?? null,
       status,
+      row_stats: {
+        scanned_rows: rowStats.scanned,
+        imported_rows: rowStats.imported,
+        duplicate_rows: rowStats.duplicates,
+        failed_rows: rowStats.failed,
+      },
+      last_run_message: lastRunMessage,
     });
   } catch (error) {
     const errorMessage =

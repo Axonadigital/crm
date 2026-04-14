@@ -104,6 +104,8 @@ export interface PricingData {
   paymentTerms: string;
   deliveryTerms: string;
   validUntil: string | null;
+  recurringAmount?: number | null;
+  recurringInterval?: "monthly" | "quarterly" | "yearly" | null;
 }
 
 export interface TermsData {
@@ -184,8 +186,8 @@ export function buildSummarySection(
       (card, i) => `
       <div class="summary-card animate-in stagger-${i + 1}">
         <div class="summary-card-icon">${getIcon(card.icon)}</div>
-        <h3>${esc(card.title)}</h3>
-        <p>${esc(card.text)}</p>
+        <h3 data-editable="highlight_cards.${i}.title">${esc(card.title)}</h3>
+        <p data-editable="highlight_cards.${i}.text">${esc(card.text)}</p>
       </div>`,
     )
     .join("");
@@ -195,7 +197,7 @@ export function buildSummarySection(
   <div class="section-inner">
     <p class="section-label animate-in">// Sammanfattning</p>
     <h2 class="section-title animate-in">${esc(firstSentence)}.</h2>
-    <p class="section-text animate-in">${esc(data.pitch)}</p>
+    <p class="section-text animate-in" data-editable="summary_pitch">${esc(data.pitch)}</p>
     <div class="summary-cards">
       ${cardsHtml}
     </div>
@@ -214,8 +216,8 @@ export function buildProblemSection(
       (card, i) => `
       <div class="problem-card animate-in stagger-${i + 1}">
         <div class="problem-number">${esc(card.number)}</div>
-        <h3>${esc(card.title)}</h3>
-        <p>${esc(card.text)}</p>
+        <h3 data-editable="problem_cards.${i}.title">${esc(card.title)}</h3>
+        <p data-editable="problem_cards.${i}.text">${esc(card.text)}</p>
       </div>`,
     )
     .join("");
@@ -224,7 +226,7 @@ export function buildProblemSection(
 <section class="section">
   <div class="section-inner">
     <p class="section-label animate-in">// Varför en hemsida?</p>
-    <h2 class="section-title animate-in">${esc(sectionTitle)}</h2>
+    <h2 class="section-title animate-in" data-editable="problem_section_title">${esc(sectionTitle)}</h2>
     <div class="problem-grid">
       ${cardsHtml}
     </div>
@@ -247,10 +249,13 @@ export function buildPackageSection(
   _header: PageHeaderData,
   _pageNum: number,
   upgrade?: UpgradePackage | null,
+  sectionTitle = "Välj det som passar er",
+  sectionText = "Paketet nedan är skräddarsytt för er verksamhet och era behov.",
 ): string {
   const includesHtml = includes
     .map(
-      (item) => `<li><span class="includes-check">✓</span> ${esc(item)}</li>`,
+      (item, idx) =>
+        `<li><span class="includes-check">✓</span> <span data-editable="package_includes.${idx}">${esc(item)}</span></li>`,
     )
     .join("");
 
@@ -271,10 +276,10 @@ export function buildPackageSection(
         return `
       <div class="includes-box upgrade animate-in stagger-2">
         <div class="includes-badge upgrade-badge">Tillägg</div>
-        <h3>${esc(upgrade.title)}</h3>
-        <div class="includes-price">${esc(upgrade.price)}</div>
+        <h3 data-editable="upgrade_package.title">${esc(upgrade.title)}</h3>
+        <div class="includes-price" data-editable="upgrade_package.price">${esc(upgrade.price)}</div>
         <div class="includes-price-note">exkl. moms · engångsbelopp</div>
-        <p style="font-size:0.88rem;color:var(--color-text-muted);line-height:1.6;margin-bottom:16px;">${esc(upgrade.description)}</p>
+        <p style="font-size:0.88rem;color:var(--color-text-muted);line-height:1.6;margin-bottom:16px;" data-editable="upgrade_package.description">${esc(upgrade.description)}</p>
         <ul class="includes-list">
           ${upgradeIncludesHtml}
         </ul>
@@ -294,8 +299,8 @@ export function buildPackageSection(
 <section class="section">
   <div class="section-inner">
     <p class="section-label animate-in">// Vad som ingår</p>
-    <h2 class="section-title animate-in">Välj det som passar er</h2>
-    <p class="section-text animate-in">Paketet nedan är skräddarsytt för er verksamhet och era behov.</p>
+    <h2 class="section-title animate-in" data-editable="package_section_title">${esc(sectionTitle)}</h2>
+    <p class="section-text animate-in" data-editable="package_section_text">${esc(sectionText)}</p>
     <div class="includes-grid">
       <div class="includes-box primary animate-in stagger-1">
         <div class="includes-badge">Denna offert</div>
@@ -316,6 +321,8 @@ export function buildReferenceSection(
   projects: ReferenceProject[],
   _header: PageHeaderData,
   _pageNum: number,
+  sectionTitle = "Hemsidor vi har byggt",
+  sectionText = "Här är ett urval av webbplatser vi levererat — både ensidiga och flersidiga lösningar för företag i liknande branscher.",
 ): string {
   const cardsHtml = projects
     .map(
@@ -327,9 +334,9 @@ export function buildReferenceSection(
         </div>
         </a>
         <div class="ref-card-info">
-          <div class="ref-card-type">${esc(proj.type)}</div>
-          <h3>${esc(proj.title)}</h3>
-          <p>${esc(proj.description)}</p>
+          <div class="ref-card-type" data-editable="reference_projects.${i}.type">${esc(proj.type)}</div>
+          <h3 data-editable="reference_projects.${i}.title">${esc(proj.title)}</h3>
+          <p data-editable="reference_projects.${i}.description">${esc(proj.description)}</p>
           <a href="${esc(proj.link)}" class="ref-link" target="_blank">Besök sidan →</a>
         </div>
       </div>`,
@@ -340,8 +347,8 @@ export function buildReferenceSection(
 <section class="section" style="background:var(--color-bg-alt);">
   <div class="section-inner">
     <p class="section-label animate-in">// Tidigare projekt</p>
-    <h2 class="section-title animate-in">Hemsidor vi har byggt</h2>
-    <p class="section-text animate-in">Här är ett urval av webbplatser vi levererat — både ensidiga och flersidiga lösningar för företag i liknande branscher.</p>
+    <h2 class="section-title animate-in" data-editable="reference_section_title">${esc(sectionTitle)}</h2>
+    <p class="section-text animate-in" data-editable="reference_section_text">${esc(sectionText)}</p>
     <div class="ref-grid">
       ${cardsHtml}
     </div>
@@ -353,6 +360,8 @@ export function buildProcessSection(
   steps: ProcessStep[],
   _header: PageHeaderData,
   _pageNum: number,
+  sectionTitle = "Från signering till lanserad hemsida",
+  sectionText = "En tydlig process där ni alltid vet vad som händer härnäst.",
 ): string {
   const stepsHtml = steps
     .map(
@@ -361,8 +370,8 @@ export function buildProcessSection(
         <div class="timeline-marker${i === steps.length - 1 ? " active" : ""}"></div>
         <div class="timeline-content">
           <div class="timeline-day">Steg ${i + 1}</div>
-          <h3>${esc(step.title)}</h3>
-          <p>${esc(step.text)}</p>
+          <h3 data-editable="process_steps.${i}.title">${esc(step.title)}</h3>
+          <p data-editable="process_steps.${i}.text">${esc(step.text)}</p>
         </div>
       </div>`,
     )
@@ -372,8 +381,8 @@ export function buildProcessSection(
 <section class="section process">
   <div class="section-inner">
     <p class="section-label animate-in">// Så här går det till</p>
-    <h2 class="section-title animate-in">Från signering till lanserad hemsida</h2>
-    <p class="section-text animate-in">En tydlig process där ni alltid vet vad som händer härnäst.</p>
+    <h2 class="section-title animate-in" data-editable="process_section_title">${esc(sectionTitle)}</h2>
+    <p class="section-text animate-in" data-editable="process_section_text">${esc(sectionText)}</p>
     <div class="timeline animate-in">
       ${stepsHtml}
     </div>
@@ -385,14 +394,15 @@ export function buildSupportSection(
   cards: SupportCard[],
   _header: PageHeaderData,
   _pageNum: number,
+  sectionTitle = "Vad som gäller efter lansering",
 ): string {
   const cardsHtml = cards
     .map(
       (card, i) => `
       <div class="terms-card animate-in stagger-${i + 1}">
         <div class="terms-icon">${getIcon(card.icon)}</div>
-        <h3>${esc(card.title)}</h3>
-        <p>${esc(card.text)}</p>
+        <h3 data-editable="support_cards.${i}.title">${esc(card.title)}</h3>
+        <p data-editable="support_cards.${i}.text">${esc(card.text)}</p>
       </div>`,
     )
     .join("");
@@ -401,7 +411,7 @@ export function buildSupportSection(
 <section class="section">
   <div class="section-inner">
     <p class="section-label animate-in">// Villkor &amp; support</p>
-    <h2 class="section-title animate-in">Vad som gäller efter lansering</h2>
+    <h2 class="section-title animate-in" data-editable="support_section_title">${esc(sectionTitle)}</h2>
     <div class="terms-grid">
       ${cardsHtml}
     </div>
@@ -413,14 +423,15 @@ export function buildTechSection(
   items: TechItem[],
   _header: PageHeaderData,
   _pageNum: number,
+  sectionTitle = "Byggt för att synas och prestera",
 ): string {
   const itemsHtml = items
     .map(
       (item, i) => `
       <div class="tech-item animate-in stagger-${i + 1}">
         <div class="tech-item-icon">${getIcon(item.icon)}</div>
-        <h4>${esc(item.title)}</h4>
-        <p>${esc(item.text)}</p>
+        <h4 data-editable="tech_items.${i}.title">${esc(item.title)}</h4>
+        <p data-editable="tech_items.${i}.text">${esc(item.text)}</p>
       </div>`,
     )
     .join("");
@@ -429,7 +440,7 @@ export function buildTechSection(
 <section class="section">
   <div class="section-inner">
     <p class="section-label animate-in">// Teknik &amp; Optimering</p>
-    <h2 class="section-title animate-in">Byggt för att synas och prestera</h2>
+    <h2 class="section-title animate-in" data-editable="tech_section_title">${esc(sectionTitle)}</h2>
     <div class="tech-row">
       ${itemsHtml}
     </div>
@@ -441,6 +452,8 @@ export function buildAboutSection(
   founders: FounderCard[],
   _header: PageHeaderData,
   _pageNum: number,
+  sectionTitle = "Vilka är Axona Digital?",
+  sectionText = "Vi är en digital byrå i Östersund som hjälper svenska företag med hemsidor, e-handel och AI-lösningar. Varje leverans ska ge mätbar effekt — inte bara se bra ut.",
 ): string {
   const foundersHtml = founders
     .map(
@@ -448,9 +461,9 @@ export function buildAboutSection(
         <div class="about-person animate-in"${i > 0 ? ' style="margin-top:24px"' : ""}>
           <div class="about-avatar">${esc(f.initials)}</div>
           <div class="about-person-info">
-            <h4>${esc(f.name)}</h4>
-            <div class="role">${esc(f.role)}</div>
-            <p>${esc(f.description)}</p>
+            <h4 data-editable="founders.${i}.name">${esc(f.name)}</h4>
+            <div class="role" data-editable="founders.${i}.role">${esc(f.role)}</div>
+            <p data-editable="founders.${i}.description">${esc(f.description)}</p>
           </div>
         </div>`,
     )
@@ -460,8 +473,8 @@ export function buildAboutSection(
 <section class="section about-axona">
   <div class="section-inner">
     <p class="section-label animate-in">// Om oss</p>
-    <h2 class="section-title animate-in">Vilka är Axona Digital?</h2>
-    <p class="section-text animate-in">Vi är en digital byrå i Östersund som hjälper svenska företag med hemsidor, e-handel och AI-lösningar. Varje leverans ska ge mätbar effekt — inte bara se bra ut.</p>
+    <h2 class="section-title animate-in" data-editable="about_section_title">${esc(sectionTitle)}</h2>
+    <p class="section-text animate-in" data-editable="about_section_text">${esc(sectionText)}</p>
     <div class="about-grid">
       <div>
         ${foundersHtml}
@@ -562,6 +575,33 @@ export function buildPricingTableSection(
     }
 
     ${data.validUntil ? `<div class="validity">Denna offert är giltig till och med <strong>${esc(data.validUntil)}</strong>.</div>` : ""}
+
+    ${
+      data.recurringAmount && data.recurringAmount > 0
+        ? (() => {
+            const intervalLabel =
+              data.recurringInterval === "monthly"
+                ? "månad"
+                : data.recurringInterval === "quarterly"
+                  ? "kvartal"
+                  : data.recurringInterval === "yearly"
+                    ? "år"
+                    : "period";
+            const recurringInclVat =
+              data.recurringAmount * (1 + data.vatRate / 100);
+            return `
+    <div class="recurring-box" style="margin-top:28px;padding:20px 24px;border:2px solid var(--color-accent);border-radius:12px;background:rgba(var(--color-accent-rgb,37,99,235),0.04);">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--color-accent);margin-bottom:10px;">Återkommande kostnad</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:24px;font-weight:800;color:var(--color-text);">${fmt(data.recurringAmount)} ${esc(data.currency)}</span>
+        <span style="font-size:13px;color:var(--color-text-muted);">exkl. moms / ${esc(intervalLabel)}</span>
+        <span style="font-size:13px;color:var(--color-text-muted);">(${fmt(recurringInclVat)} ${esc(data.currency)} inkl. moms)</span>
+      </div>
+      <div style="margin-top:6px;font-size:12px;color:var(--color-text-muted);">Debiteras löpande efter leverans, separat från engångsbeloppet ovan.</div>
+    </div>`;
+          })()
+        : ""
+    }
   </div>
 </section>`;
 }
@@ -570,7 +610,41 @@ export function buildPriceSummarySection(
   data: PricingData,
   _header: PageHeaderData,
   _pageNum: number,
+  bullets?: string[],
 ): string {
+  const defaultBullets = [
+    "Kostnadsfri demo — ni ser innan ni bestämmer er",
+    "Inga löpande kostnader från vårt håll",
+    data.paymentTerms || "30 dagars betalningsvillkor",
+    "Full äganderätt till webbplatsen vid leverans",
+  ];
+  const resolvedBullets =
+    bullets && bullets.length > 0 ? bullets : defaultBullets;
+  const bulletsHtml = resolvedBullets
+    .map(
+      (b, i) =>
+        `<li><span class="ps-check">✓</span> <span data-editable="price_summary_bullets.${i}">${esc(b)}</span></li>`,
+    )
+    .join("\n        ");
+
+  const recurringHtml = (() => {
+    if (!data.recurringAmount || data.recurringAmount <= 0) return "";
+    const intervalLabel =
+      data.recurringInterval === "monthly"
+        ? "månad"
+        : data.recurringInterval === "quarterly"
+          ? "kvartal"
+          : data.recurringInterval === "yearly"
+            ? "år"
+            : "period";
+    return `
+      <div class="pricing-summary animate-in" style="margin-top:20px;border-top:1px solid var(--color-border);padding-top:20px;">
+        <div class="pricing-summary-label">Återkommande kostnad</div>
+        <div class="pricing-summary-amount">${fmt(data.recurringAmount)} ${esc(data.currency)}</div>
+        <div class="pricing-summary-note">exkl. moms / ${esc(intervalLabel)}</div>
+      </div>`;
+  })();
+
   return `
 <section class="section">
   <div class="section-inner">
@@ -581,12 +655,10 @@ export function buildPriceSummarySection(
       <div class="pricing-summary-amount">${fmt(data.afterDiscount)} ${esc(data.currency)}</div>
       <div class="pricing-summary-note">exkl. moms</div>
       <ul class="pricing-summary-features">
-        <li><span class="ps-check">✓</span> Kostnadsfri demo — ni ser innan ni bestämmer er</li>
-        <li><span class="ps-check">✓</span> Inga löpande kostnader från vårt håll</li>
-        <li><span class="ps-check">✓</span> ${esc(data.paymentTerms || "30 dagars betalningsvillkor")}</li>
-        <li><span class="ps-check">✓</span> Full äganderätt till webbplatsen vid leverans</li>
+        ${bulletsHtml}
       </ul>
     </div>
+    ${recurringHtml}
   </div>
 </section>`;
 }

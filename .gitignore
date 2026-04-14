@@ -49,3 +49,4 @@ backup_*.sql
 
 # Supabase secrets
 supabase/signing_keys.json
+.vercel

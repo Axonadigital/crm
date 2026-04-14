@@ -4,6 +4,7 @@ import { createErrorResponse } from "../_shared/utils.ts";
 import { UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { buildStylesheet, buildScript } from "../_shared/premiumStyles.ts";
+import { buildEditorScript } from "../_shared/quoteEditorScript.ts";
 import { resolveReferenceProjects } from "../_shared/premiumQuoteReferences.ts";
 import {
   buildHeroSection,
@@ -231,6 +232,8 @@ Deno.serve(async (req: Request) =>
             vatAmount,
             totalInclVat,
             cur,
+            writeToken: (quote.approval_token as string) || "",
+            supabaseUrl: Deno.env.get("SUPABASE_URL") || "",
           });
         } else {
           html = buildLegacyTemplate({
@@ -316,6 +319,16 @@ interface PremiumTemplateData {
     problem_cards?: Array<{ number: string; title: string; text: string }>;
     package_includes?: string[];
     proposal_body?: string;
+    upgrade_package?: UpgradePackage | null;
+    process_steps?: Array<{ number: string; title: string; text: string }>;
+    support_cards?: Array<{ icon: string; title: string; text: string }>;
+    tech_items?: Array<{ icon: string; title: string; text: string }>;
+    founders?: Array<{
+      initials: string;
+      name: string;
+      role: string;
+      description: string;
+    }>;
   };
   quoteText: string;
   company: Record<string, unknown> | null;
@@ -341,6 +354,8 @@ interface PremiumTemplateData {
   vatAmount: number;
   totalInclVat: number;
   cur: string;
+  writeToken: string;
+  supabaseUrl: string;
 }
 
 function buildPremiumTemplate(d: PremiumTemplateData): string {
@@ -418,9 +433,12 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
   ];
 
   const companySector = (d.company?.sector as string) || "";
-  const problemTitle = companySector
+  const problemTitleDefault = companySector
     ? `Kunder söker ${companySector.toLowerCase()} online — hittar de er?`
     : "Kunder söker online — hittar de er?";
+  const problemSectionTitle =
+    (d.sections.problem_section_title as string | undefined) ??
+    problemTitleDefault;
 
   // 2c. Package includes
   const packageIncludes: string[] = d.sections.package_includes || [
@@ -432,34 +450,45 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
   ];
 
   // 2d. Upgrade package (upsell box)
-  const upgradePackage: UpgradePackage = {
-    title: "Flersidig hemsida",
-    description:
-      "Vill ni ha mer utrymme att presentera era tjänster, projekt och ert team? Uppgradera till en flersidig hemsida med dedikerade undersidor.",
-    price: "Offert på begäran",
-    includes: [
-      "Upp till 5 undersidor",
-      "Dedikerad tjänstesida",
-      "Om oss-sida med teamet",
-      "Referensprojekt-sida",
-      "Blogg eller nyhetssektion",
-    ],
-    benefits: [
-      "Mer utrymme att berätta er historia",
-      "Bättre SEO med fler indexerbara sidor",
-      "Professionellare intryck för större kunder",
-    ],
-  };
+  // If sections.upgrade_package is explicitly set (even null = hide), use that.
+  // If not present in sections (undefined), fall back to hardcoded default.
+  const upgradePackage: UpgradePackage | null =
+    "upgrade_package" in d.sections
+      ? (d.sections.upgrade_package as UpgradePackage | null)
+      : {
+          title: "Flersidig hemsida",
+          description:
+            "Vill ni ha mer utrymme att presentera era tjänster, projekt och ert team? Uppgradera till en flersidig hemsida med dedikerade undersidor.",
+          price: "Offert på begäran",
+          includes: [
+            "Upp till 5 undersidor",
+            "Dedikerad tjänstesida",
+            "Om oss-sida med teamet",
+            "Referensprojekt-sida",
+            "Blogg eller nyhetssektion",
+          ],
+          benefits: [
+            "Mer utrymme att berätta er historia",
+            "Bättre SEO med fler indexerbara sidor",
+            "Professionellare intryck för större kunder",
+          ],
+        };
 
-  // 3. Reference projects
-  const referenceImages = (d.quote.reference_images as ReferenceProject[]) || [];
-  const references = resolveReferenceProjects(
-    referenceImages,
-    DEFAULT_REFERENCES,
-  );
+  // 3. Reference projects — sections.reference_projects takes priority over reference_images
+  const referenceImages =
+    (d.quote.reference_images as ReferenceProject[]) || [];
+  const references = d.sections.reference_projects
+    ? (d.sections.reference_projects as ReferenceProject[])
+    : resolveReferenceProjects(referenceImages, DEFAULT_REFERENCES);
+  const referenceSectionTitle =
+    (d.sections.reference_section_title as string | undefined) ??
+    "Hemsidor vi har byggt";
+  const referenceSectionText =
+    (d.sections.reference_section_text as string | undefined) ??
+    "Här är ett urval av webbplatser vi levererat — både ensidiga och flersidiga lösningar för företag i liknande branscher.";
 
-  // 5. Process steps (4 steps matching VPM template)
-  const processSteps: ProcessStep[] = [
+  // 5. Process steps — read from sections if present, else use defaults
+  const processSteps: ProcessStep[] = d.sections.process_steps || [
     {
       number: "01",
       title: "Signering & uppstart",
@@ -482,8 +511,8 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
     },
   ];
 
-  // 5b. Support cards
-  const supportCards: SupportCard[] = [
+  // 5b. Support cards — read from sections if present, else use defaults
+  const supportCards: SupportCard[] = d.sections.support_cards || [
     {
       icon: "check-circle",
       title: "Innan lansering",
@@ -506,8 +535,8 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
     },
   ];
 
-  // 6. Tech items
-  const techItems: TechItem[] = [
+  // 6. Tech items — read from sections if present, else use defaults
+  const techItems: TechItem[] = d.sections.tech_items || [
     {
       icon: "smartphone",
       title: "Mobilanpassat",
@@ -530,8 +559,8 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
     },
   ];
 
-  // 7. Founders
-  const founders: FounderCard[] = [
+  // 7. Founders — read from sections if present, else use defaults
+  const founders: FounderCard[] = d.sections.founders || [
     {
       initials: "RJ",
       name: "Rasmus Jönsson",
@@ -540,13 +569,42 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
         "Ansvarar för teknik och implementation. Fokuserar på robusta lösningar och att varje leverans ger mätbar effekt.",
     },
     {
-      initials: "RJ",
-      name: "Rasmus Jönsson",
+      initials: "IP",
+      name: "Isak Persson",
       role: "Medgrundare & Affärsutveckling",
       description:
         "Ansvarar för affärsutveckling och uppföljning. Varje lösning ska ha ett tydligt syfte och ett resultat ni kan följa.",
     },
   ];
+
+  // Section titles/texts for process, support, tech, about — read from sections with fallback
+  const processSectionTitle =
+    (d.sections.process_section_title as string | undefined) ??
+    "Från signering till lanserad hemsida";
+  const processSectionText =
+    (d.sections.process_section_text as string | undefined) ??
+    "En tydlig process där ni alltid vet vad som händer härnäst.";
+  const supportSectionTitle =
+    (d.sections.support_section_title as string | undefined) ??
+    "Vad som gäller efter lansering";
+  const techSectionTitle =
+    (d.sections.tech_section_title as string | undefined) ??
+    "Byggt för att synas och prestera";
+  const aboutSectionTitle =
+    (d.sections.about_section_title as string | undefined) ??
+    "Vilka är Axona Digital?";
+  const aboutSectionText =
+    (d.sections.about_section_text as string | undefined) ??
+    "Vi är en digital byrå i Östersund som hjälper svenska företag med hemsidor, e-handel och AI-lösningar. Varje leverans ska ge mätbar effekt — inte bara se bra ut.";
+  const packageSectionTitle =
+    (d.sections.package_section_title as string | undefined) ??
+    "Välj det som passar er";
+  const packageSectionText =
+    (d.sections.package_section_text as string | undefined) ??
+    "Paketet nedan är skräddarsytt för er verksamhet och era behov.";
+  const priceSummaryBullets = d.sections.price_summary_bullets as
+    | string[]
+    | undefined;
 
   // 8. Pricing
   const pricingData: PricingData = {
@@ -562,6 +620,15 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
     paymentTerms: (d.quote.payment_terms as string) || "",
     deliveryTerms: (d.quote.delivery_terms as string) || "",
     validUntil: d.validUntil,
+    recurringAmount:
+      (d.sections.recurring_amount as number | null | undefined) ?? null,
+    recurringInterval:
+      (d.sections.recurring_interval as
+        | "monthly"
+        | "quarterly"
+        | "yearly"
+        | null
+        | undefined) ?? null,
   };
 
   // 9. Terms & Signature
@@ -595,6 +662,10 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
   // Page numbers (kept for function signatures, not displayed in VPM template)
   const pn = 0;
 
+  const quoteId = String((d.quote as Record<string, unknown>).id ?? "");
+  const writeToken = esc(d.writeToken ?? "");
+  const supabaseUrl = esc(d.supabaseUrl ?? "");
+
   return `<!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -609,18 +680,24 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
 
 ${buildHeroSection(heroData)}
 ${buildSummarySection(summaryData, pageHeader)}
-${buildProblemSection(problemCards, problemTitle, pageHeader, pn)}
-${buildReferenceSection(references, pageHeader, pn)}
-${buildPackageSection(packageIncludes, (d.quote.title as string) || "Webbprojekt", `${fmt(d.afterDiscount)} ${esc(d.cur)}`, pageHeader, pn, upgradePackage)}
-${buildProcessSection(processSteps, pageHeader, pn)}
-${buildSupportSection(supportCards, pageHeader, pn)}
-${buildTechSection(techItems, pageHeader, pn)}
-${buildAboutSection(founders, pageHeader, pn)}
-${buildPriceSummarySection(pricingData, pageHeader, pn)}
+${buildProblemSection(problemCards, problemSectionTitle, pageHeader, pn)}
+${buildReferenceSection(references, pageHeader, pn, referenceSectionTitle, referenceSectionText)}
+${buildPackageSection(packageIncludes, (d.quote.title as string) || "Webbprojekt", `${fmt(d.afterDiscount)} ${esc(d.cur)}`, pageHeader, pn, upgradePackage, packageSectionTitle, packageSectionText)}
+${buildProcessSection(processSteps, pageHeader, pn, processSectionTitle, processSectionText)}
+${buildSupportSection(supportCards, pageHeader, pn, supportSectionTitle)}
+${buildTechSection(techItems, pageHeader, pn, techSectionTitle)}
+${buildAboutSection(founders, pageHeader, pn, aboutSectionTitle, aboutSectionText)}
+${buildPriceSummarySection(pricingData, pageHeader, pn, priceSummaryBullets)}
 ${buildTermsAndSignatureSection(termsData, sigData, sellerInfo, pageHeader, pn)}
 ${buildDocumentFooter(sellerName, d.quoteNumber, sellerInfo, d.logoDark)}
 
-<script>${buildScript()}</script>
+<script>
+window.QUOTE_SUPABASE_URL="${supabaseUrl}";
+window.QUOTE_ID="${quoteId}";
+window.QUOTE_WRITE_TOKEN="${writeToken}";
+${buildScript()}
+${buildEditorScript()}
+</script>
 </body>
 </html>`;
 }

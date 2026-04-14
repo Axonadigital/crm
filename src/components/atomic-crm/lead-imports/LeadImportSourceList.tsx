@@ -18,6 +18,65 @@ import type { CrmDataProvider } from "../providers/supabase/dataProvider";
 const QUICK_BATCH_SIZES = [50, 100, 200, 300] as const;
 const MAX_BATCH_SIZE = 1000;
 
+type ImportRowStats = {
+  scanned_rows?: number[];
+  imported_rows?: number[];
+  duplicate_rows?: number[];
+  failed_rows?: number[];
+};
+
+type ImportGoogleSheetLeadsResult = {
+  message?: string;
+  rows_inserted?: number;
+  rows_scanned?: number;
+  rows_skipped_duplicates?: number;
+  rows_failed?: number;
+  actual_batch_size?: number;
+  sheet_writeback_status?: string;
+  row_stats?: ImportRowStats;
+  last_run_message?: string;
+};
+
+const toRowRanges = (rowNumbers?: number[]) => {
+  if (!rowNumbers?.length) return "inga";
+
+  const sorted = [...rowNumbers].sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let rangeStart = sorted[0];
+  let previous = sorted[0];
+
+  for (let index = 1; index < sorted.length; index++) {
+    const current = sorted[index];
+    if (current === previous || current === previous + 1) {
+      previous = current;
+      continue;
+    }
+
+    ranges.push(
+      rangeStart === previous ? String(rangeStart) : `${rangeStart}-${previous}`,
+    );
+    rangeStart = current;
+    previous = current;
+  }
+
+  ranges.push(
+    rangeStart === previous ? String(rangeStart) : `${rangeStart}-${previous}`,
+  );
+
+  return ranges.join(", ");
+};
+
+const formatRowStats = (rowStats?: ImportRowStats) => {
+  if (!rowStats?.scanned_rows?.length) return null;
+
+  return [
+    `Rader: ${toRowRanges(rowStats.scanned_rows)}`,
+    `Nya: ${toRowRanges(rowStats.imported_rows)}`,
+    `Dubbletter: ${toRowRanges(rowStats.duplicate_rows)}`,
+    `Fel: ${toRowRanges(rowStats.failed_rows)}`,
+  ].join(" | ");
+};
+
 const statusVariant = (status: LeadImportSource["last_run_status"]) => {
   switch (status) {
     case "success":
@@ -158,7 +217,7 @@ const TriggerImportButton = () => {
       const isRangeImport = isStartRowImport;
 
       setIsRunning(true);
-      const result = await dataProvider.importGoogleSheetLeads({
+      const result = (await dataProvider.importGoogleSheetLeads({
         source_id: record.id,
         ...(isRangeImport
           ? {
@@ -168,7 +227,7 @@ const TriggerImportButton = () => {
           : parsedBatchSize
             ? { batch_size: parsedBatchSize }
             : {}),
-      });
+      })) as ImportGoogleSheetLeadsResult;
       if (typeof result.message === "string" && result.rows_inserted == null) {
         notify(result.message, { type: "info" });
         return;
@@ -183,8 +242,10 @@ const TriggerImportButton = () => {
         result.sheet_writeback_status !== "not_attempted"
           ? ` Sheets: ${result.sheet_writeback_status}`
           : "";
+      const rowStatsMessage =
+        formatRowStats(result.row_stats) ?? result.last_run_message ?? "";
       notify(
-        `Import klar${isRangeImport ? ` för rad ${parsedStartRow}-${derivedEndRow}` : ""}: begärde ${requestedBatchSize}, körde ${actualBatchSize}, ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter.${writebackStatus}`,
+        `Import klar${isRangeImport ? ` för rad ${parsedStartRow}-${derivedEndRow}` : ""}: begärde ${requestedBatchSize}, körde ${actualBatchSize}, ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter.${writebackStatus}${rowStatsMessage ? ` ${rowStatsMessage}` : ""}`,
         { type: "success" },
       );
       refresh();

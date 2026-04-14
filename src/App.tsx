@@ -3,7 +3,7 @@ import { CRM } from "@/components/atomic-crm/root/CRM";
 /**
  * Application entry point
  *
- * Customize Atomic CRM by passing props to the CRM component:
+ * Customize Axona Digital CRM by passing props to the CRM component:
  *  - companySectors
  *  - darkTheme
  *  - dealCategories
@@ -24,6 +24,6 @@ import { CRM } from "@/components/atomic-crm/root/CRM";
  *    />
  * );
  */
-const App = () => <CRM />;
+const App = () => <CRM title="Axona Digital CRM" disableTelemetry />;
 
 export default App;

@@ -182,11 +182,7 @@ export type LeadImportRun = {
   rows_inserted: number;
   rows_skipped_duplicates: number;
   rows_failed: number;
-  sheet_writeback_status:
-    | "not_attempted"
-    | "success"
-    | "partial"
-    | "failed";
+  sheet_writeback_status: "not_attempted" | "success" | "partial" | "failed";
   sheet_rows_marked: number;
   sheet_rows_failed: number;
   sheet_writeback_error?: string | null;
@@ -349,11 +345,76 @@ export type QuoteHighlightCard = {
   text: string;
 };
 
+export type QuoteProblemCard = {
+  number: string;
+  title: string;
+  text: string;
+};
+
+export type QuoteUpgradePackage = {
+  title: string;
+  description: string;
+  price: string;
+  includes: string[];
+  benefits: string[];
+} | null;
+
+export type QuoteProcessStep = {
+  number: string;
+  title: string;
+  text: string;
+};
+
+export type QuoteSupportCard = {
+  icon: string;
+  title: string;
+  text: string;
+};
+
+export type QuoteTechItem = {
+  icon: string;
+  title: string;
+  text: string;
+};
+
+export type QuoteFounderCard = {
+  initials: string;
+  name: string;
+  role: string;
+  description: string;
+};
+
 export type QuoteGeneratedSections = {
   summary_pitch: string;
   highlight_cards: QuoteHighlightCard[];
   design_demo_description?: string | null;
   proposal_body: string;
+  problem_cards?: QuoteProblemCard[];
+  problem_section_title?: string;
+  package_includes?: string[];
+  package_section_title?: string;
+  package_section_text?: string;
+  upgrade_package?: QuoteUpgradePackage;
+  process_steps?: QuoteProcessStep[];
+  process_section_title?: string;
+  process_section_text?: string;
+  support_cards?: QuoteSupportCard[];
+  support_section_title?: string;
+  tech_items?: QuoteTechItem[];
+  tech_section_title?: string;
+  founders?: QuoteFounderCard[];
+  about_section_title?: string;
+  about_section_text?: string;
+  reference_section_title?: string;
+  reference_section_text?: string;
+  reference_projects?: Array<{
+    title: string;
+    description: string;
+    type: string;
+  }>;
+  price_summary_bullets?: string[];
+  recurring_amount?: number | null;
+  recurring_interval?: "monthly" | "quarterly" | "yearly" | null;
 };
 
 export type QuoteReferenceImage = {

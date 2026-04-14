@@ -95,16 +95,35 @@ export const LoginPage = (props: { redirectTo?: string }) => {
         <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
           <div className="absolute inset-0 bg-zinc-900" />
           <div className="relative z-20 flex items-center text-lg font-medium">
-            <img className="h-6 mr-2" src={darkModeLogo} alt={title} />
-            {title}
+            <img className="h-8 mr-3" src={darkModeLogo} alt={title} />
+            <div>
+              <div>{title}</div>
+              <div className="text-sm font-normal text-zinc-300">
+                Secure workspace for Axona Digital
+              </div>
+            </div>
           </div>
         </div>
         <div className="flex flex-col justify-center w-full p-4 lg:p-8">
           <div className="w-full space-y-6 lg:mx-auto lg:w-[350px]">
+            <div className="flex flex-col items-center text-center gap-3">
+              <img className="h-12 w-auto" src={darkModeLogo} alt={title} />
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
+                  Axona Digital
+                </p>
+                <h1 className="text-2xl font-semibold tracking-tight">
+                  {title}
+                </h1>
+              </div>
+            </div>
             <div className="text-center">
               <h1 className="text-2xl font-semibold tracking-tight">
                 {translate("ra.auth.sign_in")}
               </h1>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Sign in to access the Axona Digital CRM workspace.
+              </p>
             </div>
             {disableEmailPasswordAuthentication ? null : (
               <Form className="space-y-8" onSubmit={handleSubmit}>

@@ -432,7 +432,7 @@ export const frenchCrmMessages = {
         creating: "Création...",
         initial_user_created: "Utilisateur initial créé avec succès",
       },
-      welcome_title: "Bienvenue sur Atomic CRM",
+      welcome_title: "Bienvenue sur Axona Digital CRM",
     },
     common: {
       activity: "Activité",
@@ -475,7 +475,7 @@ export const frenchCrmMessages = {
       latest_notes: "Mes dernières notes",
       latest_notes_added_ago: "ajouté %{timeAgo}",
       stepper: {
-        install: "Installer Atomic CRM",
+        install: "Configurer Axona Digital CRM",
         progress: "%{step}/3 terminé",
         whats_next: "Et ensuite ?",
       },
@@ -601,7 +601,7 @@ export const frenchCrmMessages = {
     profile: {
       inbound: {
         description:
-          "Vous pouvez commencer à envoyer des e-mails vers l'adresse de réception de votre serveur, par exemple en l'ajoutant au champ %{field}. Atomic CRM traitera les e-mails et ajoutera des notes aux contacts correspondants.",
+          "Vous pouvez commencer à envoyer des e-mails vers l'adresse de réception de votre serveur, par exemple en l'ajoutant au champ %{field}. Axona Digital CRM traitera les e-mails et ajoutera des notes aux contacts correspondants.",
         title: "E-mail entrant",
       },
       password: {

@@ -8,7 +8,7 @@ export const defaultLightModeLogo = "./logos/axona-logo-light.png";
 
 export const defaultCurrency = "USD";
 
-export const defaultTitle = "Atomic CRM";
+export const defaultTitle = "Axona Digital CRM";
 
 export const defaultCompanySectors = [
   { value: "communication-services", label: "Communication Services" },
