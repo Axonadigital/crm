@@ -238,8 +238,8 @@ export interface UpgradePackage {
   title: string;
   description: string;
   price: string;
-  includes: string[];
-  benefits: string[];
+  includes?: string[];
+  benefits?: string[];
 }
 
 export function buildPackageSection(
@@ -261,13 +261,13 @@ export function buildPackageSection(
 
   const upgradeHtml = upgrade
     ? (() => {
-        const upgradeIncludesHtml = upgrade.includes
+        const upgradeIncludesHtml = (upgrade.includes || [])
           .map(
             (item) =>
               `<li><span class="includes-check">✓</span> ${esc(item)}</li>`,
           )
           .join("");
-        const benefitsHtml = upgrade.benefits
+        const benefitsHtml = (upgrade.benefits || [])
           .map(
             (b) =>
               `<div class="upgrade-benefit"><span class="upgrade-arrow">→</span> ${esc(b)}</div>`,
@@ -330,7 +330,7 @@ export function buildReferenceSection(
       <div class="ref-card animate-in stagger-${i + 1}">
         <a href="${esc(proj.link)}" target="_blank" style="text-decoration:none;color:inherit;display:block;">
         <div class="ref-card-visual">
-          <img src="${esc(proj.url)}" alt="${esc(proj.title)} hemsida" class="ref-card-screenshot" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=ref-card-screenshot-placeholder>${esc(proj.link.replace(/https?:\/\//, ""))}</div>';">
+          <img src="${esc(proj.url)}" alt="${esc(proj.title)} hemsida" class="ref-card-screenshot" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=ref-card-screenshot-placeholder>${esc((proj.link || "").replace(/https?:\/\//, ""))}</div>';">
         </div>
         </a>
         <div class="ref-card-info">

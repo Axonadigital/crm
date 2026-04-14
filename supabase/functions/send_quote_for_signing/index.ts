@@ -45,17 +45,18 @@ Deno.serve(async (req: Request) =>
         return createErrorResponse(400, "Request body must be a JSON object");
       }
 
-      const { quote_id } = body as Record<string, unknown>;
+      const { quote_id: rawQuoteId } = body as Record<string, unknown>;
 
-      if (!quote_id || typeof quote_id !== "string") {
-        return createErrorResponse(400, "Missing or invalid quote_id");
+      if (
+        rawQuoteId === undefined ||
+        rawQuoteId === null ||
+        rawQuoteId === ""
+      ) {
+        return createErrorResponse(400, "Missing quote_id");
       }
 
-      const uuidRegex =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(quote_id)) {
-        return createErrorResponse(400, "quote_id must be a valid UUID");
-      }
+      // Accept both numeric IDs (integer) and UUID strings
+      const quote_id = String(rawQuoteId);
 
       const docusealApiKey = Deno.env.get("DOCUSEAL_API_KEY");
       const docusealTemplateId = Deno.env.get("DOCUSEAL_TEMPLATE_ID");

@@ -67,6 +67,8 @@ Deno.serve(async (req: Request) =>
     // For plain objects (e.g. upgrade_package) we deep-merge so that
     // non-editable sub-fields (includes, benefits) are preserved.
     // Arrays are replaced wholesale — they carry their own structure.
+    // Exception: reference_projects merges by index so that non-editable
+    // fields (url, link) are preserved from the existing DB entry.
     function deepMerge(
       target: Record<string, unknown>,
       source: Record<string, unknown>,
@@ -87,6 +89,17 @@ Deno.serve(async (req: Request) =>
             tv as Record<string, unknown>,
             sv as Record<string, unknown>,
           );
+        } else if (
+          key === "reference_projects" &&
+          Array.isArray(sv) &&
+          Array.isArray(tv)
+        ) {
+          // Merge by index: preserve url/link from existing entries since
+          // the editor only captures visible text (type, title, description).
+          result[key] = (sv as Record<string, unknown>[]).map((item, i) => {
+            const existing = (tv as Record<string, unknown>[])[i] ?? {};
+            return { ...existing, ...item };
+          });
         } else {
           result[key] = sv;
         }
