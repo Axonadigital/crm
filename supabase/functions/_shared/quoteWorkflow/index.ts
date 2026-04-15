@@ -18,3 +18,4 @@ export * from "./generateSections.ts";
 export * from "./normalizeSections.ts";
 export * from "./pipelineLogger.ts";
 export * from "./createSigningSubmission.ts";
+export * from "./saveQuoteContent.ts";

@@ -696,12 +696,17 @@ const PremiumSectionsPreview = ({
   const canEdit = record?.status === "draft" || record?.status === "generated";
 
   const { mutate: saveSections, isPending } = useMutation({
+    // Phase 4: single backend write-path. Previously this called
+    // dataProvider.update("quotes", { data: { generated_sections: draft } })
+    // which bypassed every merge rule and status guard on the backend.
+    // saveQuoteContent delegates to the shared saveQuoteContent helper
+    // used by save_quote_edits too, so both the CRM seller editor and
+    // the public WYSIWYG editor now produce identical merged output.
     mutationFn: () =>
-      dataProvider.update("quotes", {
-        id: record!.id,
-        data: { generated_sections: draft },
-        previousData: record,
-      }),
+      dataProvider.saveQuoteContent(
+        record!.id,
+        draft as unknown as Record<string, unknown>,
+      ),
     onSuccess: () => {
       setIsEditing(false);
       notify("resources.quotes.notifications.text_saved", {

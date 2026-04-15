@@ -2,16 +2,27 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import {
+  SaveQuoteContentError,
+  saveQuoteContent,
+} from "../_shared/quoteWorkflow/index.ts";
 
 /**
  * Save inline quote edits made in the WYSIWYG HTML editor.
  *
+ * Phase 4 — this function is now a thin authentication wrapper around
+ * the shared `saveQuoteContent` helper. All deep-merge rules and
+ * status guards live in the helper so both this endpoint (public
+ * editor, write_token auth) and `save_quote_content` (CRM seller,
+ * user JWT auth) end up with identical merged-sections output for
+ * identical inputs.
+ *
  * Auth: validated via quotes.write_token. No user JWT needed.
  *
  * POST { quote_id: number, write_token: string, sections: object }
- *  → merges sections with existing generated_sections
- *  → regenerates the HTML quote via generate_quote_pdf
- *  → returns { success: true, pdf_url: string }
+ *  → validates write_token against quotes.write_token
+ *  → delegates merge + update + PDF regeneration to saveQuoteContent
+ *  → returns { success: true, pdf_url: string | null }
  */
 
 Deno.serve(async (req: Request) =>
@@ -41,114 +52,72 @@ Deno.serve(async (req: Request) =>
       );
     }
 
-    // Validate write_token against quotes.write_token
+    // Write-token authentication happens BEFORE we touch the shared
+    // helper. The helper assumes the caller is already authorized for
+    // this specific quote — its only remaining job is to enforce the
+    // status guard and run the merge.
     const { data: quote, error: quoteError } = await supabaseAdmin
       .from("quotes")
-      .select("id, write_token, generated_sections, status")
+      .select("id, write_token")
       .eq("id", quote_id)
       .single();
 
     if (quoteError || !quote) {
       return createErrorResponse(404, "Quote not found");
     }
-
     if (quote.write_token !== write_token) {
       return createErrorResponse(403, "Invalid write token");
     }
 
-    if (quote.status === "signed" || quote.status === "declined") {
-      return createErrorResponse(
-        409,
-        "Cannot edit a quote that is already signed or declined",
-      );
-    }
-
-    // Merge incoming sections with existing generated_sections.
-    // For plain objects (e.g. upgrade_package) we deep-merge so that
-    // non-editable sub-fields (includes, benefits) are preserved.
-    // Arrays are replaced wholesale — they carry their own structure.
-    // Exception: reference_projects merges by index so that non-editable
-    // fields (url, link) are preserved from the existing DB entry.
-    function deepMerge(
-      target: Record<string, unknown>,
-      source: Record<string, unknown>,
-    ): Record<string, unknown> {
-      const result: Record<string, unknown> = { ...target };
-      for (const key of Object.keys(source)) {
-        const tv = target[key];
-        const sv = source[key];
-        if (
-          sv !== null &&
-          typeof sv === "object" &&
-          !Array.isArray(sv) &&
-          tv !== null &&
-          typeof tv === "object" &&
-          !Array.isArray(tv)
-        ) {
-          result[key] = deepMerge(
-            tv as Record<string, unknown>,
-            sv as Record<string, unknown>,
-          );
-        } else if (
-          key === "reference_projects" &&
-          Array.isArray(sv) &&
-          Array.isArray(tv)
-        ) {
-          // Merge by index: preserve url/link from existing entries since
-          // the editor only captures visible text (type, title, description).
-          result[key] = (sv as Record<string, unknown>[]).map((item, i) => {
-            const existing = (tv as Record<string, unknown>[])[i] ?? {};
-            return { ...existing, ...item };
-          });
-        } else {
-          result[key] = sv;
-        }
-      }
-      return result;
-    }
-
-    const existing =
-      (quote.generated_sections as Record<string, unknown>) ?? {};
-    const merged = deepMerge(existing, sections as Record<string, unknown>);
-
-    // Update generated_sections in DB
-    const { error: updateError } = await supabaseAdmin
-      .from("quotes")
-      .update({ generated_sections: merged })
-      .eq("id", quote_id);
-
-    if (updateError) {
-      return createErrorResponse(500, `Failed to save: ${updateError.message}`);
-    }
-
-    // Regenerate the HTML quote so the stored file reflects the edits
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    let pdfUrl = "";
-    try {
-      const pdfRes = await fetch(
-        `${supabaseUrl}/functions/v1/generate_quote_pdf`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${serviceKey}`,
+    async function regeneratePdf(qid: number | string): Promise<string | null> {
+      try {
+        const res = await fetch(
+          `${supabaseUrl}/functions/v1/generate_quote_pdf`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceKey}`,
+            },
+            body: JSON.stringify({ quote_id: qid }),
           },
-          body: JSON.stringify({ quote_id }),
-        },
-      );
-      if (pdfRes.ok) {
-        const pdfData = await pdfRes.json();
-        pdfUrl = pdfData.pdf_url ?? "";
+        );
+        if (!res.ok) return null;
+        const data = (await res.json()) as { pdf_url?: string };
+        return data.pdf_url ?? null;
+      } catch (e) {
+        console.error("save_quote_edits: PDF regeneration failed:", e);
+        return null;
       }
-    } catch (e) {
-      // PDF regeneration is best-effort — don't fail the save
-      console.error("save_quote_edits: PDF regeneration failed:", e);
     }
 
-    return new Response(JSON.stringify({ success: true, pdf_url: pdfUrl }), {
-      headers: { "Content-Type": "application/json", ...corsHeaders },
-    });
+    try {
+      const result = await saveQuoteContent({
+        supabase: supabaseAdmin,
+        quoteId: quote_id,
+        sections,
+        initiator: { source: "public_editor", writeTokenVerified: true },
+        regeneratePdf,
+      });
+
+      return new Response(
+        JSON.stringify({ success: result.success, pdf_url: result.pdfUrl }),
+        {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        },
+      );
+    } catch (err) {
+      if (err instanceof SaveQuoteContentError) {
+        return createErrorResponse(err.status, err.message);
+      }
+      console.error("save_quote_edits: unexpected error:", err);
+      return createErrorResponse(
+        500,
+        err instanceof Error ? err.message : "Unknown error",
+      );
+    }
   }),
 );

@@ -494,6 +494,30 @@ const dataProviderWithCustomMethods = {
     }
     return data;
   },
+  /**
+   * Save edits to a quote's generated_sections via the single backend
+   * write-path (Phase 4). Replaces the legacy pattern of calling
+   * `dataProvider.update("quotes", { data: { generated_sections } })`
+   * directly, which bypassed the merge rules and status guards in
+   * `saveQuoteContent`. Authenticated CRM users only — auth happens
+   * at the edge function via UserMiddleware.
+   */
+  async saveQuoteContent(
+    quoteId: Identifier,
+    sections: Record<string, unknown>,
+  ): Promise<{ success: true; pdf_url: string | null }> {
+    const { data, error } = await supabase.functions.invoke(
+      "save_quote_content",
+      {
+        method: "POST",
+        body: { quote_id: quoteId, sections },
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to save quote content");
+    }
+    return data as { success: true; pdf_url: string | null };
+  },
   async duplicateQuote(quoteId: Identifier): Promise<{ id: number }> {
     const { data, error } = await supabase.rpc("duplicate_quote", {
       source_quote_id: quoteId,
