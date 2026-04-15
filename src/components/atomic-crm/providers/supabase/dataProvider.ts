@@ -518,6 +518,56 @@ const dataProviderWithCustomMethods = {
     }
     return data as { success: true; pdf_url: string | null };
   },
+  /**
+   * Phase 7: fetch the latest pipeline step row per step_name for a quote.
+   *
+   * Returns rows sorted by started_at ASC so the UI can render the flow
+   * in execution order. Uses a single PostgREST select with no server-
+   * side grouping; the latest-per-step projection is done in JS to keep
+   * the query trivial and cache-friendly (the table is small per quote,
+   * max ~10 rows after one full pipeline run).
+   *
+   * Reads are authorized via the "Authenticated users can read quote
+   * pipeline steps" RLS policy added in migration
+   * 20260415140000_quote_pipeline_steps_select_policy.sql.
+   */
+  async getQuotePipelineSteps(quoteId: Identifier): Promise<
+    Array<{
+      id: number;
+      quote_id: number;
+      step_name: string;
+      status: "running" | "success" | "failed" | "skipped";
+      started_at: string;
+      completed_at: string | null;
+      duration_ms: number | null;
+      error_message: string | null;
+      error_details: Record<string, unknown> | null;
+      metadata: Record<string, unknown> | null;
+    }>
+  > {
+    const { data, error } = await supabase
+      .from("quote_pipeline_steps")
+      .select(
+        "id, quote_id, step_name, status, started_at, completed_at, duration_ms, error_message, error_details, metadata",
+      )
+      .eq("quote_id", quoteId)
+      .order("started_at", { ascending: true });
+    if (error) {
+      throw new Error(`Failed to load quote pipeline steps: ${error.message}`);
+    }
+    return (data ?? []) as Array<{
+      id: number;
+      quote_id: number;
+      step_name: string;
+      status: "running" | "success" | "failed" | "skipped";
+      started_at: string;
+      completed_at: string | null;
+      duration_ms: number | null;
+      error_message: string | null;
+      error_details: Record<string, unknown> | null;
+      metadata: Record<string, unknown> | null;
+    }>;
+  },
   async duplicateQuote(quoteId: Identifier): Promise<{ id: number }> {
     const { data, error } = await supabase.rpc("duplicate_quote", {
       source_quote_id: quoteId,

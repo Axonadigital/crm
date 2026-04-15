@@ -42,6 +42,7 @@ import MobileHeader from "../layout/MobileHeader";
 import { MobileContent } from "../layout/MobileContent";
 import { MobileBackButton } from "../misc/MobileBackButton";
 import type { Quote, QuoteGeneratedSections } from "../types";
+import { QuotePipelineView } from "./QuotePipelineView";
 import { quoteStatusColors } from "./quoteStatuses";
 
 export const QuoteShow = ({ open, id }: { open: boolean; id?: string }) => {
@@ -207,6 +208,9 @@ const QuoteShowMobileWrapper = () => {
             />
           </>
         )}
+
+        {/* Phase 7: pipeline observability — default collapsed. */}
+        <QuotePipelineView quoteId={record.id} />
 
         {record.generated_sections && (
           <PremiumSectionsPreview
@@ -467,6 +471,9 @@ const QuoteShowContent = () => {
             </Button>
           )}
         </div>
+
+        {/* Phase 7: pipeline observability — default collapsed. */}
+        <QuotePipelineView quoteId={record.id} />
 
         {/* Premium sections preview */}
         {record.generated_sections && (
