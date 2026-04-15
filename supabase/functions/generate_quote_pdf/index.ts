@@ -6,6 +6,7 @@ import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { buildStylesheet, buildScript } from "../_shared/premiumStyles.ts";
 import { buildEditorScript } from "../_shared/quoteEditorScript.ts";
 import { resolveReferenceProjects } from "../_shared/premiumQuoteReferences.ts";
+import { stripWriteTokenFromHtml } from "../_shared/sanitizeQuoteHtml.ts";
 import {
   buildHeroSection,
   buildSummarySection,
@@ -259,11 +260,24 @@ Deno.serve(async (req: Request) =>
           });
         }
 
-        // Upload HTML document
+        // Split the artifact into two variants before persistence:
+        //  - editableHtml (kept as-is): carries the real write_token and
+        //    lives in quotes.html_content for the internal CRM preview/editor
+        //  - publicHtml (sanitized): uploaded to the public Storage bucket
+        //    and exposed as quotes.pdf_url. It MUST NOT contain any real
+        //    editor credential — anyone with the URL sees this variant.
+        //
+        // This split is the core fix for the pdf_url leak discovered post
+        // deploy of the Phase 1+2 refactor: serve_quote strips on the way
+        // out but the Storage URL bypasses serve_quote entirely, so the
+        // sanitization must happen at write time too.
+        const editableHtml = html;
+        const publicHtml = stripWriteTokenFromHtml(editableHtml);
+
         const fileName = `quote_${quote_id}_${Date.now()}.html`;
         const { error: uploadError } = await supabase.storage
           .from("attachments")
-          .upload(fileName, new Blob([html], { type: "text/html" }), {
+          .upload(fileName, new Blob([publicHtml], { type: "text/html" }), {
             contentType: "text/html",
             upsert: true,
           });
@@ -287,7 +301,7 @@ Deno.serve(async (req: Request) =>
 
         await supabase
           .from("quotes")
-          .update({ pdf_url: publicUrl, html_content: html })
+          .update({ pdf_url: publicUrl, html_content: editableHtml })
           .eq("id", quote_id);
 
         return new Response(JSON.stringify({ pdf_url: publicUrl }), {

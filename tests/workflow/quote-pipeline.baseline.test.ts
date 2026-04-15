@@ -37,6 +37,7 @@ import {
   createSigningSubmission,
   type CreateSigningSubmissionInput,
 } from "../../supabase/functions/_shared/quoteWorkflow/createSigningSubmission.ts";
+import { stripWriteTokenFromHtml } from "../../supabase/functions/_shared/sanitizeQuoteHtml.ts";
 import { parseAnthropicResponseCurrentBehavior } from "./helpers/parseAnthropicCurrentBehavior.ts";
 import {
   canonicalizeDocuSealPayload,
@@ -381,5 +382,76 @@ describe("Phase 2 parity: createSigningSubmission from both callers", () => {
     expect(recordedUpdates).toHaveLength(1);
     expect(recordedUpdates[0].approved_at).toBeUndefined();
     expect(recordedUpdates[0].sent_at).toBeDefined();
+  });
+});
+
+describe("Hotfix regression: public quote HTML must not leak write token", () => {
+  // Simulates the two HTML artifacts generate_quote_pdf produces after the
+  // finding-1 fix: the editable variant that lives in quotes.html_content
+  // (may carry the real token) and the public variant that gets uploaded
+  // to Supabase Storage and served via pdf_url (MUST NOT carry the token).
+  //
+  // These tests lock the invariant down at the unit level so that a future
+  // edit to generate_quote_pdf cannot silently reintroduce the leak that
+  // Codex caught during the phase 2 post-deploy review.
+  const realToken = "4b7f8c2e-1a9d-4f0b-8e6c-3d2a5f1c9e8b";
+
+  function buildEditableFixture(): string {
+    return [
+      "<!DOCTYPE html>",
+      "<html>",
+      "<head><title>Offert 42</title></head>",
+      "<body>",
+      "<h1>Offert</h1>",
+      "<script>",
+      `window.QUOTE_WRITE_TOKEN="${realToken}";`,
+      "initEditor();",
+      "</script>",
+      "</body>",
+      "</html>",
+    ].join("\n");
+  }
+
+  it("editable variant carries the real token (internal CRM preview needs it)", () => {
+    const editable = buildEditableFixture();
+    expect(editable).toContain(realToken);
+    expect(editable).toContain(`window.QUOTE_WRITE_TOKEN="${realToken}";`);
+  });
+
+  it("public variant is derived by stripWriteTokenFromHtml and carries no token", () => {
+    const editable = buildEditableFixture();
+    const publicHtml = stripWriteTokenFromHtml(editable);
+
+    expect(publicHtml).not.toContain(realToken);
+    expect(publicHtml).toContain('window.QUOTE_WRITE_TOKEN = "";');
+  });
+
+  it("public variant preserves surrounding HTML and script behavior hooks", () => {
+    const editable = buildEditableFixture();
+    const publicHtml = stripWriteTokenFromHtml(editable);
+
+    // Structure should be intact — only the token assignment is rewritten.
+    expect(publicHtml).toContain("<!DOCTYPE html>");
+    expect(publicHtml).toContain("<title>Offert 42</title>");
+    expect(publicHtml).toContain("<h1>Offert</h1>");
+    expect(publicHtml).toContain("initEditor();");
+  });
+
+  it("public variant with a UUID-shaped token matches the same invariant", () => {
+    // Uses a different shape than the fixture to guard against accidental
+    // hardcoding of the fixture value in the implementation.
+    const anotherUuid = "00000000-aaaa-bbbb-cccc-111122223333";
+    const editable = `<script>window.QUOTE_WRITE_TOKEN="${anotherUuid}";</script>`;
+    const publicHtml = stripWriteTokenFromHtml(editable);
+
+    expect(publicHtml).not.toContain(anotherUuid);
+    expect(publicHtml).toContain('window.QUOTE_WRITE_TOKEN = "";');
+  });
+
+  it("is idempotent — running strip twice yields the same output", () => {
+    const editable = buildEditableFixture();
+    const once = stripWriteTokenFromHtml(editable);
+    const twice = stripWriteTokenFromHtml(once);
+    expect(twice).toBe(once);
   });
 });

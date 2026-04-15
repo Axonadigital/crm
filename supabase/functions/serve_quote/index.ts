@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import { stripWriteTokenFromHtml } from "../_shared/sanitizeQuoteHtml.ts";
 
 /**
  * Serve Quote — returns quote HTML and signing URL as JSON.
@@ -119,12 +120,12 @@ Deno.serve(async (req: Request) => {
   // Always strip the dedicated write token from the public HTML response,
   // regardless of the enforcement flag. This is the non-negotiable fix
   // for the edit-button leak: the customer-facing HTML must never carry
-  // a usable editor credential. Matches both single- and double-quoted
-  // injection formats to cover any legacy generate_quote_pdf output.
-  let html = quote.html_content.replace(
-    /window\.QUOTE_WRITE_TOKEN\s*=\s*["'][^"']*["'];?/g,
-    'window.QUOTE_WRITE_TOKEN = "";',
-  );
+  // a usable editor credential. We use the shared helper (single source
+  // of truth for what "sanitized public HTML" means) so that
+  // serve_quote and generate_quote_pdf can never drift apart on the
+  // stripping logic. Legacy quotes whose html_content still contains
+  // the raw token are cleaned at read time here.
+  const html = stripWriteTokenFromHtml(quote.html_content);
 
   // Include signing URL if the quote is awaiting signature (sent or viewed)
   const signingUrl =

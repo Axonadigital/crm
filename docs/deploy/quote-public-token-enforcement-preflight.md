@@ -33,33 +33,73 @@ feature flag) shipped the following in production:
 
 ## Preconditions for enabling enforcement
 
-### 1. No active quote awaits a customer on a tokenless link
+### 1. No legacy tokenless customer link is still active
 
-Run this SQL against production and confirm zero rows:
+The hotfix that introduced tokenized URLs was deployed in the commit
+that adds this preflight doc. Every quote whose public URL was emailed
+BEFORE that commit's deploy timestamp is a "legacy tokenless" quote and
+will 403 the moment the flag flips. Every quote sent AFTER has
+`&token=<approval_token>` baked into its URL and will keep working.
+
+The correct check is therefore to identify only the legacy group —
+not every active quote — so the preflight does not block forever on
+new tokenized traffic.
+
+Run this SQL against production, substituting
+`<HOTFIX_DEPLOY_TIMESTAMPTZ>` with the ISO-8601 timestamp of the hotfix
+deploy (check the Supabase dashboard → Edge Functions → Deployments
+history for `send_quote_for_signing` — use its deploy timestamp):
 
 ```sql
 SELECT id, quote_number, status, valid_until, sent_at, created_at
 FROM quotes
 WHERE status IN ('generated', 'sent', 'viewed')
+  AND sent_at < '<HOTFIX_DEPLOY_TIMESTAMPTZ>'::timestamptz
   AND (
     valid_until IS NULL
     OR valid_until >= current_date
   )
-ORDER BY created_at DESC;
+ORDER BY sent_at DESC;
 ```
 
 **Expected result for safe flip:** zero rows.
 
-If any rows are returned, each represents a quote where the customer may
-still open the link in their inbox. Do one of the following for each
-row before continuing:
+Why `sent_at` is the right cutoff: the hotfix changes URL generation in
+`send_quote_for_signing` (manual path) and `approve_proposal` (approval
+path). Both write `sent_at = now()` when they create the DocuSeal
+submission and tokenize the URL in the same transaction. So `sent_at`
+is the canonical timestamp of when the customer received the link, and
+anything sent at-or-after the hotfix deploy is guaranteed tokenized.
+Quotes in `generated` status with `sent_at IS NULL` are drafts that
+nobody has received a link for yet — they are safe for the flip
+regardless. The `sent_at < cutoff` filter naturally excludes them
+because the comparison is false when `sent_at` is NULL.
+
+If any rows are returned, each represents a customer who may still
+open a pre-hotfix tokenless link in their inbox. Do one of the following
+for each row before continuing:
 
 - Wait until `valid_until` passes (quote expires, status moves to
   `expired`)
 - Wait until the customer signs (status moves to `signed`) or declines
 - Re-send the quote via `send_quote_for_signing` so a new tokenized URL
   is issued (the old link then serves the same content but will stop
-  working once the flag flips — the customer gets a fresh email)
+  working once the flag flips — the customer gets a fresh email with
+  the new `&token=` URL)
+
+**Sanity check — count the post-hotfix tokenized quotes too:**
+
+```sql
+SELECT COUNT(*) AS tokenized_active_quotes
+FROM quotes
+WHERE status IN ('generated', 'sent', 'viewed')
+  AND sent_at >= '<HOTFIX_DEPLOY_TIMESTAMPTZ>'::timestamptz;
+```
+
+This number should be non-zero if the hotfix has been in production
+for long enough that any new proposals have been sent. If it is zero
+AND preflight #1 is zero, the system has been idle since the hotfix —
+the flip is still safe, but double-check your timestamp.
 
 ### 2. No active approval links in Discord or other channels
 
