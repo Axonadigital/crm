@@ -35,6 +35,7 @@ Deno.serve(async (req: Request) => {
 
   const url = new URL(req.url);
   const quoteIdParam = url.searchParams.get("id");
+  const tokenParam = url.searchParams.get("token") || "";
 
   if (!quoteIdParam) {
     return Response.json(
@@ -60,7 +61,9 @@ Deno.serve(async (req: Request) => {
 
   const { data: quote, error } = await supabaseAdmin
     .from("quotes")
-    .select("html_content, quote_number, docuseal_signing_url, status")
+    .select(
+      "html_content, quote_number, docuseal_signing_url, status, approval_token",
+    )
     .eq("id", quoteId)
     .single();
 
@@ -74,6 +77,20 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  // Strip the write token from HTML unless the caller provides the correct approval_token.
+  // This prevents customers (who receive the plain /quote.html?id=X URL) from seeing
+  // the "Redigera offert" editor button. CRM users open the raw stored HTML via blob URL
+  // and are unaffected by this stripping.
+  let html = quote.html_content;
+  const tokenValid =
+    tokenParam.length > 0 && tokenParam === quote.approval_token;
+  if (!tokenValid) {
+    html = html.replace(
+      /window\.QUOTE_WRITE_TOKEN\s*=\s*'[^']*';?/g,
+      "window.QUOTE_WRITE_TOKEN = '';",
+    );
+  }
+
   // Include signing URL if the quote is awaiting signature (sent or viewed)
   const signingUrl =
     quote.status === "sent" || quote.status === "viewed"
@@ -82,7 +99,7 @@ Deno.serve(async (req: Request) => {
 
   return Response.json(
     {
-      html: quote.html_content,
+      html,
       quote_number: quote.quote_number,
       signing_url: signingUrl,
     },

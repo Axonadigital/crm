@@ -81,11 +81,13 @@
     (async function() {
       var params = new URLSearchParams(window.location.search);
       var id = params.get('id');
+      var token = params.get('token') || '';
       if (!id) { showError(); return; }
 
       try {
         var apiBase = 'https://hgyusrlrzdahucljvqsz.supabase.co/functions/v1';
-        var res = await fetch(apiBase + '/serve_quote?id=' + encodeURIComponent(id));
+        var apiUrl = apiBase + '/serve_quote?id=' + encodeURIComponent(id) + (token ? '&token=' + encodeURIComponent(token) : '');
+        var res = await fetch(apiUrl);
         if (!res.ok) { showError(); return; }
 
         var data = await res.json();

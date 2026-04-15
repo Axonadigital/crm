@@ -186,6 +186,18 @@ const dataProviderWithCustomMethods = {
 
     return baseDataProvider.getOne(resource, params);
   },
+  async getMany(resource: string, params: any) {
+    if (resource === "companies") {
+      return baseDataProvider.getMany("companies_summary", params);
+    }
+    return baseDataProvider.getMany(resource, params);
+  },
+  async getManyReference(resource: string, params: any) {
+    if (resource === "companies") {
+      return baseDataProvider.getManyReference("companies_summary", params);
+    }
+    return baseDataProvider.getManyReference(resource, params);
+  },
   async create(resource: string, params: any) {
     if (resource === "calendar_events") {
       const { data, error } = await supabase.functions.invoke("calendar_sync", {

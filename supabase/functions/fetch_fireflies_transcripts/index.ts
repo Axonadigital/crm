@@ -457,13 +457,15 @@ Deno.serve(async (req: Request) =>
       return createErrorResponse(405, "Method Not Allowed");
     }
 
+    let contact_id: string | undefined;
     try {
       if (!FIREFLIES_API_KEY) {
         return createErrorResponse(500, "FIREFLIES_API_KEY not configured");
       }
 
       const body = await req.json();
-      const { contact_id, import_meeting_id } = body;
+      const { contact_id: cid, import_meeting_id } = body;
+      contact_id = cid;
 
       if (!contact_id) {
         return createErrorResponse(400, "contact_id is required");
@@ -483,11 +485,26 @@ Deno.serve(async (req: Request) =>
           .eq("id", contact_id)
           .single();
 
-        const result = await importTranscript(
-          import_meeting_id,
-          contact_id,
-          contactFull?.company_id ?? null,
-        );
+        let result;
+        try {
+          result = await importTranscript(
+            import_meeting_id,
+            contact_id,
+            contactFull?.company_id ?? null,
+          );
+        } catch (importError) {
+          const msg =
+            importError instanceof Error
+              ? importError.message
+              : String(importError);
+          if (msg.includes("paid plan")) {
+            return createErrorResponse(
+              402,
+              "Fireflies kräver en betald plan för att importera transkript. Uppgradera på fireflies.ai.",
+            );
+          }
+          throw importError;
+        }
 
         return new Response(JSON.stringify(result), {
           status: 200,
@@ -578,7 +595,11 @@ Deno.serve(async (req: Request) =>
         },
       );
     } catch (error) {
-      console.error("fetch_fireflies_transcripts error:", error);
+      console.error(
+        "fetch_fireflies_transcripts error (contact_id=%s):",
+        contact_id ?? "unknown",
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
+      );
       return createErrorResponse(
         500,
         error instanceof Error ? error.message : "Internal error",

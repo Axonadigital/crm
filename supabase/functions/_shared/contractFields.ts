@@ -188,7 +188,7 @@ export function buildSubmissionPayload(
         role: "First Party",
         email: contact.email,
         name: contact.name,
-        send_email: true,
+        send_email: false,
         fields,
       },
     ],
