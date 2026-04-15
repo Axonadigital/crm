@@ -3,6 +3,7 @@ import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import { getUserSale } from "../_shared/getUserSale.ts";
 import {
   SaveQuoteContentError,
   saveQuoteContent,
@@ -17,10 +18,15 @@ import {
  * helper so there is exactly one backend code path that mutates
  * `quotes.generated_sections`.
  *
- * Auth: Supabase user JWT via `AuthMiddleware` + `UserMiddleware`
- * (same pattern as `generate_quote_text`). Any authenticated CRM user
- * can save; we do not enforce per-quote ownership here because the CRM
- * already restricts quote listings to the user's sales territory via RLS.
+ * Auth model:
+ *   1. AuthMiddleware + UserMiddleware enforce a valid Supabase JWT.
+ *   2. We resolve the user's sales row via getUserSale. No sales row =
+ *      401 (caller is authenticated but not registered in the CRM).
+ *   3. Per-quote ownership: the loaded quote's sales_id must match the
+ *      caller's sales id, OR the caller must be an administrator.
+ *      supabaseAdmin bypasses RLS, so this explicit check is the only
+ *      thing standing between a valid JWT and arbitrary write access
+ *      to other sellers' quotes.
  *
  * POST { quote_id: number, sections: object }
  *   → merges sections with existing generated_sections via the shared
@@ -55,6 +61,46 @@ Deno.serve(async (req: Request) =>
           );
         }
 
+        // Resolve the caller's sales row. Authenticated users without a
+        // sales record are not CRM operators and have no business
+        // mutating quote content.
+        const callerSale = await getUserSale(user);
+        if (!callerSale) {
+          return createErrorResponse(
+            401,
+            "Caller is not registered as a CRM sales user",
+          );
+        }
+
+        // Per-quote ownership check. supabaseAdmin bypasses RLS, so
+        // this is the only thing protecting quotes that belong to
+        // other sellers from being mutated by a valid JWT.
+        // Administrators bypass the ownership requirement.
+        const { data: ownership, error: ownershipError } = await supabaseAdmin
+          .from("quotes")
+          .select("id, sales_id")
+          .eq("id", quote_id)
+          .single();
+
+        if (ownershipError || !ownership) {
+          return createErrorResponse(404, "Quote not found");
+        }
+
+        const isOwner = ownership.sales_id === callerSale.id;
+        const isAdmin = callerSale.administrator === true;
+        if (!isOwner && !isAdmin) {
+          console.warn("save_quote_content: forbidden write attempt", {
+            quoteId: ownership.id,
+            quoteSalesId: ownership.sales_id,
+            callerSalesId: callerSale.id,
+            callerUserId: user.id,
+          });
+          return createErrorResponse(
+            403,
+            "You do not have permission to edit this quote",
+          );
+        }
+
         const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
         const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
@@ -83,11 +129,13 @@ Deno.serve(async (req: Request) =>
         }
 
         try {
+          // user is guaranteed non-null by UserMiddleware; the access
+          // check above also failed loudly if the sales record was missing.
           const result = await saveQuoteContent({
             supabase: supabaseAdmin,
             quoteId: quote_id,
             sections,
-            initiator: { source: "crm_seller", userId: user?.id ?? null },
+            initiator: { source: "crm_seller", userId: user.id },
             regeneratePdf,
           });
 

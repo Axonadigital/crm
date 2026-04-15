@@ -179,17 +179,24 @@ export async function saveQuoteContent(
     throw new SaveQuoteContentError(404, "quote_not_found", "Quote not found");
   }
 
-  // Both editors refuse to mutate a quote that is already signed or
-  // declined. Keeping the guard here — not in each caller — means a new
-  // editor surface cannot accidentally skip it.
-  if (
-    quote.status === QUOTE_STATUS.SIGNED ||
-    quote.status === QUOTE_STATUS.DECLINED
-  ) {
+  // Status guard. Editing is only permitted while the quote is still in
+  // the seller-controlled phase (draft, generated). Once a quote moves to
+  // sent or viewed the customer either has the link in their inbox or has
+  // already opened it — silently mutating the content from this point
+  // would let the customer see a different version than what was approved
+  // and create reproducibility holes that no audit trail can close.
+  // Signed and declined are obviously locked. Sellers who need to change
+  // a sent quote must explicitly recall it (move status back to generated)
+  // before editing.
+  const editableStatuses: readonly string[] = [
+    QUOTE_STATUS.DRAFT,
+    QUOTE_STATUS.GENERATED,
+  ];
+  if (!quote.status || !editableStatuses.includes(quote.status)) {
     throw new SaveQuoteContentError(
       409,
       "quote_locked",
-      "Cannot edit a quote that is already signed or declined",
+      `Cannot edit a quote in status '${quote.status ?? "unknown"}' — recall to 'generated' first`,
     );
   }
 

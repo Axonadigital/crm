@@ -211,9 +211,51 @@ describe("saveQuoteContent", () => {
     });
   });
 
-  it("throws 409 when the quote is already signed", async () => {
+  it.each([
+    ["sent", "the quote has been sent to the customer"],
+    ["viewed", "the customer has already opened the quote"],
+    ["signed", "the quote has been signed"],
+    ["declined", "the quote has been declined"],
+  ])(
+    "throws 409 when the quote is in non-editable status '%s' (%s)",
+    async (status) => {
+      const { client } = makeSupabaseStub({
+        quote: { id: 1, generated_sections: {}, status },
+      });
+      await expect(
+        saveQuoteContent({
+          supabase: client,
+          quoteId: 1,
+          sections: { summary_pitch: "x" },
+          initiator: { source: "crm_seller", userId: "u1" },
+        }),
+      ).rejects.toMatchObject({ status: 409, code: "quote_locked" });
+    },
+  );
+
+  it.each(["draft", "generated"])(
+    "allows editing when the quote is in editable status '%s'",
+    async (status) => {
+      const { client, recordedUpdates } = makeSupabaseStub({
+        quote: { id: 2, generated_sections: { a: 1 }, status },
+      });
+      const result = await saveQuoteContent({
+        supabase: client,
+        quoteId: 2,
+        sections: { b: 2 },
+        initiator: { source: "crm_seller", userId: "u1" },
+      });
+      expect(result.success).toBe(true);
+      expect(recordedUpdates).toHaveLength(1);
+      expect(recordedUpdates[0]).toEqual({
+        generated_sections: { a: 1, b: 2 },
+      });
+    },
+  );
+
+  it("error message names the current status so sellers know why", async () => {
     const { client } = makeSupabaseStub({
-      quote: { id: 1, generated_sections: {}, status: "signed" },
+      quote: { id: 1, generated_sections: {}, status: "sent" },
     });
     await expect(
       saveQuoteContent({
@@ -222,21 +264,7 @@ describe("saveQuoteContent", () => {
         sections: { summary_pitch: "x" },
         initiator: { source: "crm_seller", userId: "u1" },
       }),
-    ).rejects.toMatchObject({ status: 409, code: "quote_locked" });
-  });
-
-  it("throws 409 when the quote is already declined", async () => {
-    const { client } = makeSupabaseStub({
-      quote: { id: 1, generated_sections: {}, status: "declined" },
-    });
-    await expect(
-      saveQuoteContent({
-        supabase: client,
-        quoteId: 1,
-        sections: { summary_pitch: "x" },
-        initiator: { source: "public_editor", writeTokenVerified: true },
-      }),
-    ).rejects.toMatchObject({ status: 409 });
+    ).rejects.toThrow(/'sent'/);
   });
 
   it("merges incoming sections with existing and writes the merged result", async () => {
