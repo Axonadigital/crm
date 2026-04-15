@@ -15,6 +15,7 @@ import {
 import {
   generateSections,
   PIPELINE_STEP,
+  postDevDiscordAlert,
   QUOTE_STATUS,
   withPipelineStep,
 } from "../_shared/quoteWorkflow/index.ts";
@@ -204,6 +205,22 @@ Deno.serve(async (req: Request) =>
                   validation: {
                     supabase,
                     quoteId: Number(quote_id),
+                    // Phase 3: dev alert even on the manual CRM path so
+                    // quarantine policy matches the orchestrated path.
+                    // Small shared helper keeps this tiny — no need to
+                    // duplicate the full notifyDiscord logic from
+                    // orchestrate_proposal here.
+                    notifyDiscord: async (summary) => {
+                      await postDevDiscordAlert({
+                        supabase,
+                        title: "AI output quarantined (manual generate)",
+                        message: [
+                          `**Quote:** ${quote_id}`,
+                          `**Schema:** ${summary.schemaName}`,
+                          `**Error:** ${summary.validationError}`,
+                        ].join("\n"),
+                      });
+                    },
                   },
                 }),
             );

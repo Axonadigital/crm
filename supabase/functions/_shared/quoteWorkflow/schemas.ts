@@ -131,28 +131,39 @@ export type DocuSealWebhookPayload = z.infer<
  * is STRICT — our own code produces it, so a mismatch is our bug and
  * we want to catch it before it hits a third-party API and fails
  * opaquely halfway through the signing flow.
+ *
+ * Note — every object here uses `.strict()` explicitly. Plain
+ * `z.object(...)` in Zod v4 silently STRIPS unknown keys instead of
+ * failing, which would quietly let a drifted buildSubmissionPayload
+ * slip through. Codex caught this during the phase 3 review.
  */
-export const docuSealSubmitterFieldSchema = z.object({
-  name: z.string().min(1),
-  default_value: z.string(),
-  readonly: z.boolean(),
-});
+export const docuSealSubmitterFieldSchema = z
+  .object({
+    name: z.string().min(1),
+    default_value: z.string(),
+    readonly: z.boolean(),
+  })
+  .strict();
 
-export const docuSealSubmitterSchema = z.object({
-  role: z.string().min(1),
-  email: z.string().email(),
-  name: z.string().min(1),
-  completed: z.boolean().optional(),
-  send_email: z.boolean().optional(),
-  fields: z.array(docuSealSubmitterFieldSchema),
-});
+export const docuSealSubmitterSchema = z
+  .object({
+    role: z.string().min(1),
+    email: z.string().email(),
+    name: z.string().min(1),
+    completed: z.boolean().optional(),
+    send_email: z.boolean().optional(),
+    fields: z.array(docuSealSubmitterFieldSchema),
+  })
+  .strict();
 
-export const docuSealOutgoingPayloadSchema = z.object({
-  template_id: z.number().int().positive(),
-  send_email: z.boolean(),
-  order: z.string().min(1),
-  submitters: z.array(docuSealSubmitterSchema).min(1),
-});
+export const docuSealOutgoingPayloadSchema = z
+  .object({
+    template_id: z.number().int().positive(),
+    send_email: z.boolean(),
+    order: z.string().min(1),
+    submitters: z.array(docuSealSubmitterSchema).min(1),
+  })
+  .strict();
 
 export type DocuSealOutgoingPayload = z.infer<
   typeof docuSealOutgoingPayloadSchema

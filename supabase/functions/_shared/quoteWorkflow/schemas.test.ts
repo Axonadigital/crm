@@ -255,4 +255,34 @@ describe("docuSealOutgoingPayloadSchema", () => {
     const parsed = docuSealOutgoingPayloadSchema.safeParse(payload);
     expect(parsed.success).toBe(false);
   });
+
+  // Strictness regression tests — these lock the fix for Codex phase 3
+  // review finding 1. Without .strict() Zod silently strips unknown keys
+  // instead of rejecting, so a future edit to buildSubmissionPayload
+  // adding a typo or experimental field could slip past the schema.
+
+  it("rejects an unknown top-level key (strict)", () => {
+    const payload = {
+      ...makeValidPayload(),
+      typo_field: "should fail",
+    };
+    const parsed = docuSealOutgoingPayloadSchema.safeParse(payload);
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects an unknown key on a submitter (strict)", () => {
+    const payload = makeValidPayload();
+    (payload.submitters[0] as Record<string, unknown>).extra_submitter_prop =
+      "nope";
+    const parsed = docuSealOutgoingPayloadSchema.safeParse(payload);
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects an unknown key on a submitter field (strict)", () => {
+    const payload = makeValidPayload();
+    (payload.submitters[0].fields[0] as Record<string, unknown>).extra_field =
+      "nope";
+    const parsed = docuSealOutgoingPayloadSchema.safeParse(payload);
+    expect(parsed.success).toBe(false);
+  });
 });

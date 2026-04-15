@@ -156,3 +156,85 @@ export function summarizeZodError(error: {
     })
     .join("; ");
 }
+
+/**
+ * Minimal Discord dev-channel alert helper. Takes a title and message
+ * and posts to the `DISCORD_WEBHOOK_URL` environment variable (or the
+ * `get_discord_webhook_url` RPC as a fallback, matching the pattern
+ * orchestrate_proposal already uses).
+ *
+ * Intentionally thin — this helper exists so every boundary that needs
+ * to ping Discord on a quarantine event can share the same transport
+ * without importing orchestrate_proposal's larger notifyDiscord
+ * implementation (which builds full embeds with bot-API buttons).
+ *
+ * Never throws. All failures are logged and swallowed so a missing
+ * webhook URL or offline Discord cannot break the primary flow.
+ */
+export async function postDevDiscordAlert(params: {
+  supabase?: {
+    rpc(
+      name: string,
+      args?: Record<string, unknown>,
+    ): Promise<{
+      data: unknown;
+      error: unknown;
+    }>;
+  };
+  title: string;
+  message: string;
+}): Promise<void> {
+  try {
+    let webhookUrl = "";
+    try {
+      webhookUrl =
+        (
+          globalThis as {
+            Deno?: { env: { get(k: string): string | undefined } };
+          }
+        ).Deno?.env.get("DISCORD_WEBHOOK_URL") || "";
+    } catch {
+      webhookUrl = "";
+    }
+
+    if (!webhookUrl && params.supabase) {
+      try {
+        const { data } = await params.supabase.rpc("get_discord_webhook_url");
+        if (typeof data === "string") webhookUrl = data;
+      } catch {
+        // fall through to the no-webhook path
+      }
+    }
+
+    if (!webhookUrl) {
+      console.warn(
+        "postDevDiscordAlert: no DISCORD_WEBHOOK_URL configured, skipping",
+      );
+      return;
+    }
+
+    const embed = {
+      title: params.title,
+      description: params.message.slice(0, 1900),
+      color: 15105570, // amber — not as severe as a red error
+      timestamp: new Date().toISOString(),
+    };
+
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+    if (!res.ok) {
+      console.warn(
+        "postDevDiscordAlert: Discord webhook returned non-ok:",
+        res.status,
+      );
+    }
+  } catch (alertError) {
+    console.warn(
+      "postDevDiscordAlert: swallowed alert error (continuing):",
+      alertError,
+    );
+  }
+}
