@@ -3,8 +3,11 @@ import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import {
-  SaveQuoteContentError,
+  reportValidationFailure,
   saveQuoteContent,
+  SaveQuoteContentError,
+  saveQuoteEditsPayloadSchema,
+  summarizeZodError,
 } from "../_shared/quoteWorkflow/index.ts";
 
 /**
@@ -31,26 +34,39 @@ Deno.serve(async (req: Request) =>
       return createErrorResponse(405, "Method Not Allowed");
     }
 
-    let body: {
-      quote_id: number | string;
-      write_token: string;
-      sections: Record<string, unknown>;
-    };
-
+    let rawBody: unknown;
     try {
-      body = await req.json();
+      rawBody = await req.json();
     } catch {
       return createErrorResponse(400, "Invalid JSON body");
     }
 
-    const { quote_id, write_token, sections } = body;
-
-    if (!quote_id || !write_token || !sections) {
-      return createErrorResponse(
-        400,
-        "Missing required fields: quote_id, write_token, sections",
-      );
+    // Phase 3: fail-fast Zod validation of the incoming payload. The
+    // public editor should only ever send the shape the schema describes;
+    // anything else is either a client bug or a probe worth logging.
+    const parseResult = saveQuoteEditsPayloadSchema.safeParse(rawBody);
+    if (!parseResult.success) {
+      const summary = summarizeZodError(parseResult.error);
+      const quoteIdFromRaw =
+        rawBody &&
+        typeof rawBody === "object" &&
+        "quote_id" in (rawBody as Record<string, unknown>)
+          ? Number((rawBody as Record<string, unknown>).quote_id)
+          : null;
+      await reportValidationFailure({
+        supabase: supabaseAdmin,
+        quoteId: Number.isFinite(quoteIdFromRaw) ? quoteIdFromRaw : null,
+        boundary: "save_quote_edits_payload",
+        schemaName: "saveQuoteEditsPayloadSchema",
+        policy: "fail_fast",
+        rawInput: rawBody,
+        validationError: summary,
+        errorDetails: { issues: parseResult.error.issues },
+      });
+      return createErrorResponse(400, `Invalid payload: ${summary}`);
     }
+
+    const { quote_id, write_token, sections } = parseResult.data;
 
     // Write-token authentication happens BEFORE we touch the shared
     // helper. The helper assumes the caller is already authorized for

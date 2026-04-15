@@ -15,6 +15,7 @@ import {
 import {
   generateSections,
   PIPELINE_STEP,
+  postDevDiscordAlert,
   QUOTE_STATUS,
   withPipelineStep,
 } from "../_shared/quoteWorkflow/index.ts";
@@ -184,6 +185,9 @@ Deno.serve(async (req: Request) =>
 
           // Delegate Anthropic call + regex parse to shared helper.
           // Phase 1: single source of truth for AI response handling.
+          // Phase 3: quarantine AI output shape mismatches so a prompt
+          // iteration or model drift does not silently save broken
+          // sections into quote_pipeline_steps / generated_sections.
           let sectionResult;
           try {
             sectionResult = await withPipelineStep(
@@ -198,6 +202,26 @@ Deno.serve(async (req: Request) =>
                   prompt,
                   systemPrompt,
                   apiKey: anthropicApiKey,
+                  validation: {
+                    supabase,
+                    quoteId: Number(quote_id),
+                    // Phase 3: dev alert even on the manual CRM path so
+                    // quarantine policy matches the orchestrated path.
+                    // Small shared helper keeps this tiny — no need to
+                    // duplicate the full notifyDiscord logic from
+                    // orchestrate_proposal here.
+                    notifyDiscord: async (summary) => {
+                      await postDevDiscordAlert({
+                        supabase,
+                        title: "AI output quarantined (manual generate)",
+                        message: [
+                          `**Quote:** ${quote_id}`,
+                          `**Schema:** ${summary.schemaName}`,
+                          `**Error:** ${summary.validationError}`,
+                        ].join("\n"),
+                      });
+                    },
+                  },
                 }),
             );
           } catch (_aiError) {

@@ -444,6 +444,11 @@ Deno.serve(async (req: Request) =>
 
       // Delegate Anthropic API call + regex parse to shared workflow helper.
       // Phase 1: single source of truth for AI response handling.
+      // Phase 3: pass the validation hook so AI output that fails the
+      // Zod shape check lands in quote_validation_failures instead of
+      // silently being saved. On quarantine, generateSections nulls out
+      // sections and downstream normalizeSections keeps production on
+      // the legacy template path until the prompt/model is fixed.
       let sectionResult;
       try {
         sectionResult = await withPipelineStep(
@@ -458,6 +463,16 @@ Deno.serve(async (req: Request) =>
               prompt,
               systemPrompt,
               apiKey: anthropicApiKey,
+              validation: {
+                supabase,
+                quoteId: quote.id,
+                notifyDiscord: async (summary) => {
+                  await notifyDiscordError(
+                    dealName,
+                    `AI output failed validation: ${summary.validationError}`,
+                  );
+                },
+              },
             }),
         );
       } catch (_aiError) {

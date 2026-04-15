@@ -5,8 +5,11 @@ import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { getUserSale } from "../_shared/getUserSale.ts";
 import {
-  SaveQuoteContentError,
+  reportValidationFailure,
   saveQuoteContent,
+  SaveQuoteContentError,
+  saveQuoteContentPayloadSchema,
+  summarizeZodError,
 } from "../_shared/quoteWorkflow/index.ts";
 
 /**
@@ -43,23 +46,40 @@ Deno.serve(async (req: Request) =>
           return createErrorResponse(405, "Method Not Allowed");
         }
 
-        let body: {
-          quote_id?: number | string;
-          sections?: Record<string, unknown>;
-        };
+        let rawBody: unknown;
         try {
-          body = await req.json();
+          rawBody = await req.json();
         } catch {
           return createErrorResponse(400, "Invalid JSON body");
         }
 
-        const { quote_id, sections } = body;
-        if (!quote_id || !sections) {
-          return createErrorResponse(
-            400,
-            "Missing required fields: quote_id, sections",
-          );
+        // Phase 3: fail-fast Zod validation of the incoming payload.
+        // Caller sees a 400 with a clear error summary; the failing
+        // payload is persisted to quote_validation_failures so we can
+        // audit which clients are sending malformed requests.
+        const parseResult = saveQuoteContentPayloadSchema.safeParse(rawBody);
+        if (!parseResult.success) {
+          const summary = summarizeZodError(parseResult.error);
+          const quoteIdFromRaw =
+            rawBody &&
+            typeof rawBody === "object" &&
+            "quote_id" in (rawBody as Record<string, unknown>)
+              ? Number((rawBody as Record<string, unknown>).quote_id)
+              : null;
+          await reportValidationFailure({
+            supabase: supabaseAdmin,
+            quoteId: Number.isFinite(quoteIdFromRaw) ? quoteIdFromRaw : null,
+            boundary: "save_quote_content_payload",
+            schemaName: "saveQuoteContentPayloadSchema",
+            policy: "fail_fast",
+            rawInput: rawBody,
+            validationError: summary,
+            errorDetails: { issues: parseResult.error.issues },
+          });
+          return createErrorResponse(400, `Invalid payload: ${summary}`);
         }
+
+        const { quote_id, sections } = parseResult.data;
 
         // Resolve the caller's sales row. Authenticated users without a
         // sales record are not CRM operators and have no business
