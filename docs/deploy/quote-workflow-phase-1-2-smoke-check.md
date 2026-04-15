@@ -209,9 +209,43 @@ revert immediately.
 
 ## 6. Idempotence check (re-send protection)
 
-**Reuse the quote from section 4 (manual path, already status=sent).**
+**IMPORTANT — post-deploy update (2026-04-15):**
 
-Before starting this section, note down these three values from the DB:
+The CRM "Send for signing" button is **not re-clickable** from the UI
+once a quote has status `sent`, so you cannot trigger a second invocation
+of `send_quote_for_signing` through normal user actions. That removes
+the easy path this section originally described.
+
+Two alternatives you can use instead:
+
+- **A. Invoke the function directly via curl/Postman** using the same
+  service role the CRM uses. Run from the repo root:
+  ```bash
+  curl -X POST \
+    "https://hgyusrlrzdahucljvqsz.supabase.co/functions/v1/send_quote_for_signing" \
+    -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"quote_id": <section 4 quote id>}'
+  ```
+  This is the cleanest way to exercise the idempotence guard without
+  touching the DB.
+- **B. Temporarily set the quote back to status=generated** in the DB,
+  then click Send for signing again in CRM. Revert the status after.
+  This is risky if the quote is real customer data — only do it on the
+  test quote from section 4. Example:
+  ```sql
+  UPDATE quotes SET status = 'generated' WHERE id = <section 4 quote id>;
+  -- click Send for signing in CRM
+  -- then re-verify: status should go to 'sent' again
+  ```
+
+If neither approach is feasible in the time window, **skip this section
+and verify the idempotence guard via the workflow parity tests only**
+(which are already green on CI). The idempotence behavior is locked
+down by `tests/workflow/quote-pipeline.baseline.test.ts` and does not
+have to be re-verified in prod to pass the smoke check.
+
+**Before retesting, snapshot the current state of the quote:**
 
 ```sql
 SELECT docuseal_submission_id, docuseal_signing_url, sent_at
@@ -220,15 +254,16 @@ FROM quotes WHERE id = <section 4 quote id>;
 
 Keep them on screen — they are the "before" snapshot.
 
-- [ ] Re-open the same quote in CRM
-- [ ] Click **Send for signing** a SECOND time
-- [ ] Toast "Quote sent for signing" appears (success path — NOT 502)
+- [ ] Trigger a second invocation via option A or B above
+- [ ] Response is success (200 for curl, toast in CRM path)
 
 **Verify (primary assertions via DB + DocuSeal dashboard):**
 
 The source of truth that idempotence worked is the DB state and the
-DocuSeal dashboard. The helper logs nothing when it reuses a submission,
-so logs alone cannot prove reuse — that is why we inspect state directly.
+DocuSeal dashboard. The helper now also emits a `console.warn` on the
+reuse path ("createSigningSubmission: reusing existing DocuSeal
+submission") — check the function logs for that line as a secondary
+signal, but do not rely on it alone.
 
 - [ ] Re-query the quote row:
   ```sql
@@ -266,7 +301,14 @@ Touch adjacent functionality to confirm nothing unrelated broke:
 - [ ] Open an **existing** customer quote (from before the refactor) in CRM
   and confirm it still renders correctly
 - [ ] Open `quote.html?id=<existing>` in a private browser window — public
-  viewer still works, no leaked write token visible in page source
+  viewer still works
+- [ ] **Edit-token leak check (hotfix verification):** view the page source
+  of the public quote in the private browser. Search for `QUOTE_WRITE_TOKEN`.
+  The value MUST be an empty string: `window.QUOTE_WRITE_TOKEN = ""`.
+  If any non-empty token is present, the edit-leak fix has regressed.
+- [ ] **"Redigera offert" button must NOT appear** when viewing
+  `quote.html?id=<any id>` without a token. If it does, the editor
+  script is still activating on the customer-facing HTML — escalate.
 - [ ] Call `generate_quote_text` manually from the CRM quote page
   (Generate text button) — should work and produce new `generated_sections`
 - [ ] DocuSeal webhook: if any test submission is completed by signing it
@@ -276,6 +318,59 @@ Touch adjacent functionality to confirm nothing unrelated broke:
   touched by the migration:
   `SELECT COUNT(*) FROM quotes WHERE status IN ('sent','viewed','signed');`
   → same count as before deploy
+
+### 7.1 Hotfix-specific verification (write_token + feature flag)
+
+After the quote-edit-token-leak hotfix is deployed, also verify:
+
+- [ ] `quotes.write_token` column exists and is populated for every row:
+  ```sql
+  SELECT COUNT(*) AS total,
+         COUNT(write_token) AS with_token,
+         COUNT(*) FILTER (WHERE write_token IS NULL) AS null_tokens
+  FROM quotes;
+  ```
+  Expected: `total = with_token`, `null_tokens = 0`.
+
+- [ ] `write_token` and `approval_token` are distinct values (not aliases):
+  ```sql
+  SELECT COUNT(*) FROM quotes
+  WHERE write_token::text = approval_token::text;
+  ```
+  Expected: 0 rows. Backfill used `gen_random_uuid()` independently, so
+  collision is astronomically unlikely — any match means something is
+  wrong.
+
+- [ ] Feature flag defaults to off: call serve_quote WITHOUT a token for
+  an existing quote and confirm 200:
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    "https://hgyusrlrzdahucljvqsz.supabase.co/functions/v1/serve_quote?id=<existing_id>"
+  ```
+  Expected: `200`. If you get `403`, the flag is on in production
+  already — check Supabase dashboard → Edge Functions → Secrets and
+  verify `QUOTE_PUBLIC_TOKEN_ENFORCEMENT` is unset or equal to `off`.
+
+- [ ] Regenerate HTML for a test quote (click Generate PDF in CRM) and
+  confirm the stored HTML contains the new `write_token` value from the
+  quote row, not the old `approval_token`:
+  ```sql
+  SELECT write_token,
+         (html_content LIKE '%' || write_token::text || '%') AS has_write_token,
+         (html_content LIKE '%' || approval_token::text || '%') AS has_approval_token
+  FROM quotes WHERE id = <test_id>;
+  ```
+  Expected: `has_write_token = true` AND `has_approval_token = false`.
+
+- [ ] Seller editor flow still works for the freshly regenerated quote:
+  open the CRM preview URL (which includes `&token=`), click into a
+  text block, edit, save. The save should return 200 and the edit
+  should persist across a refresh.
+
+**Rollback trigger for this section:** If any write_token check fails,
+OR if the Redigera offert button appears on a customer URL, OR if the
+feature flag is accidentally on in production, treat it as a critical
+security regression and revert the hotfix commits immediately.
 
 ---
 
