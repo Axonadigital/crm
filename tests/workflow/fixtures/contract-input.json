@@ -1,0 +1,52 @@
+{
+  "templateId": 42,
+  "quote": {
+    "id": 1001,
+    "quote_number": "2026-0042",
+    "valid_until": "2026-05-15",
+    "total_amount": 231250,
+    "subtotal": 185000,
+    "vat_amount": 46250,
+    "vat_rate": 25,
+    "payment_terms": "30 dagar netto",
+    "delivery_terms": "Leverans enligt överenskommelse",
+    "terms_and_conditions": "Standardvillkor enligt offert. Betalning inom 30 dagar efter fakturadatum.",
+    "generated_text": "Offerttext för Acme AB",
+    "currency": "SEK"
+  },
+  "company": {
+    "name": "Acme AB",
+    "org_number": "556789-0123"
+  },
+  "contact": {
+    "name": "Anna Andersson",
+    "email": "anna@acme.se"
+  },
+  "lineItems": [
+    {
+      "description": "Ny responsiv webbplats i Next.js",
+      "quantity": 1,
+      "unit_price": 85000,
+      "total": 85000
+    },
+    {
+      "description": "AI-chattbott integrerad med CRM",
+      "quantity": 1,
+      "unit_price": 65000,
+      "total": 65000
+    },
+    {
+      "description": "SEO-optimering och launch-paket",
+      "quantity": 1,
+      "unit_price": 25000,
+      "total": 25000
+    },
+    {
+      "description": "Support efter lansering",
+      "quantity": 3,
+      "unit_price": 3333.33,
+      "total": 10000
+    }
+  ],
+  "proposalUrl": "https://crm.axonadigital.se/quote.html?id=1001&token=fixture-token"
+}

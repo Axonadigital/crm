@@ -1,0 +1,45 @@
+{
+  "about_axona": {
+    "founded": "string",
+    "specialty": "string",
+    "team_size": "string"
+  },
+  "package_includes": [
+    "string"
+  ],
+  "pricing_summary": {
+    "currency": "string",
+    "total_excl_vat": "number",
+    "total_incl_vat": "number",
+    "vat_amount": "number"
+  },
+  "problem_cards": [
+    {
+      "description": "string",
+      "title": "string"
+    }
+  ],
+  "process_steps": [
+    {
+      "description": "string",
+      "duration": "string",
+      "title": "string"
+    }
+  ],
+  "proposal_body": "string",
+  "reference_highlight": {
+    "client_name": "string",
+    "quote": "string",
+    "result": "string"
+  },
+  "summary_pitch": "string",
+  "support_details": {
+    "included_hours": "number",
+    "response_time": "string",
+    "scope": "string"
+  },
+  "tech_stack": [
+    "string"
+  ],
+  "terms_highlight": "string"
+}

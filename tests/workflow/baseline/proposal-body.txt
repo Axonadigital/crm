@@ -1,0 +1,7 @@
+Tack för ett givande möte! Efter att ha lyssnat på era behov kring webbplats och kundtjänstautomation har vi satt ihop ett förslag som adresserar era tre huvudsakliga utmaningar: föråldrad webbplats, manuell kundtjänst och låg konvertering.
+
+Vi föreslår en helhetslösning där vi bygger en ny responsiv webbplats i Next.js och integrerar en AI-chattbott som hanterar de vanligaste kundfrågorna automatiskt. Baserat på liknande projekt (t.ex. Bolinder Industri) räknar vi med att ni kan se en ökning i leadgenerering med 150-250% inom 6 månader.
+
+Projektet genomförs i fyra faser över cirka 8 veckor och inkluderar 3 månaders support efter lansering. Total investering är 185 000 SEK exkl. moms.
+
+Låt oss boka ett uppföljningsmöte för att gå igenom detaljer och besvara frågor.

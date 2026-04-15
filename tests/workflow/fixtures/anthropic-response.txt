@@ -1,0 +1,79 @@
+Här är en fullständig offert för Acme AB baserat på mötet vi hade:
+
+{
+  "summary_pitch": "En komplett webbplats och AI-chattbott som hjälper Acme automatisera kundtjänst och öka konvertering med uppskattningsvis 30%.",
+  "problem_cards": [
+    {
+      "title": "Föråldrad webbplats",
+      "description": "Nuvarande sida är byggd 2018 och fungerar dåligt på mobil."
+    },
+    {
+      "title": "Manuell kundtjänst",
+      "description": "Teamet spenderar 4h/dag på repetitiva kundfrågor."
+    },
+    {
+      "title": "Låg konvertering",
+      "description": "Endast 1,2% av besökarna blir leads — branschsnitt är 3%."
+    }
+  ],
+  "reference_highlight": {
+    "client_name": "Bolinder Industri AB",
+    "result": "Ökade leadgenereringen med 240% på sex månader.",
+    "quote": "Axona levererade över förväntan — en riktig samarbetspartner."
+  },
+  "package_includes": [
+    "Ny responsiv webbplats i Next.js",
+    "AI-chattbott integrerad med befintlig CRM",
+    "SEO-optimering och Google Search Console-setup",
+    "3 månaders support efter lansering"
+  ],
+  "process_steps": [
+    {
+      "title": "Upptäcktsfas",
+      "description": "Vi kartlägger er målgrupp och kundresa.",
+      "duration": "1 vecka"
+    },
+    {
+      "title": "Design & prototyp",
+      "description": "Vi designar och validerar med er.",
+      "duration": "2 veckor"
+    },
+    {
+      "title": "Utveckling",
+      "description": "Vi bygger webbplatsen och tränar chattbotten.",
+      "duration": "4 veckor"
+    },
+    {
+      "title": "Lansering",
+      "description": "Vi går live och följer upp mätetal.",
+      "duration": "1 vecka"
+    }
+  ],
+  "support_details": {
+    "included_hours": 20,
+    "response_time": "Inom 24h på vardagar",
+    "scope": "Buggfix, mindre innehållsuppdateringar, teknisk rådgivning"
+  },
+  "tech_stack": [
+    "Next.js 15",
+    "Tailwind CSS",
+    "Supabase",
+    "Vercel",
+    "OpenAI GPT-4o"
+  ],
+  "about_axona": {
+    "founded": "2024",
+    "team_size": "2 grundare + nätverk av specialister",
+    "specialty": "AI-drivna webbplatser och automation för SMB"
+  },
+  "pricing_summary": {
+    "total_excl_vat": 185000,
+    "vat_amount": 46250,
+    "total_incl_vat": 231250,
+    "currency": "SEK"
+  },
+  "terms_highlight": "30 dagars betalningsvillkor. Offert giltig i 30 dagar.",
+  "proposal_body": "Tack för ett givande möte! Efter att ha lyssnat på era behov kring webbplats och kundtjänstautomation har vi satt ihop ett förslag som adresserar era tre huvudsakliga utmaningar: föråldrad webbplats, manuell kundtjänst och låg konvertering.\n\nVi föreslår en helhetslösning där vi bygger en ny responsiv webbplats i Next.js och integrerar en AI-chattbott som hanterar de vanligaste kundfrågorna automatiskt. Baserat på liknande projekt (t.ex. Bolinder Industri) räknar vi med att ni kan se en ökning i leadgenerering med 150-250% inom 6 månader.\n\nProjektet genomförs i fyra faser över cirka 8 veckor och inkluderar 3 månaders support efter lansering. Total investering är 185 000 SEK exkl. moms.\n\nLåt oss boka ett uppföljningsmöte för att gå igenom detaljer och besvara frågor."
+}
+
+Hör gärna av dig om något behöver justeras!
