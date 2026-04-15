@@ -304,12 +304,26 @@ Deno.serve(async (req: Request) =>
           .update({ pdf_url: publicUrl, html_content: editableHtml })
           .eq("id", quote_id);
 
-        return new Response(JSON.stringify({ pdf_url: publicUrl }), {
-          headers: {
-            "Content-Type": "application/json",
-            ...corsHeaders,
+        // Return BOTH variants so authenticated CRM callers can preview
+        // the editable HTML directly (for the internal seller preview,
+        // which needs the WYSIWYG editor) without having to fetch the
+        // sanitized public artifact via pdf_url. The pdf_url stays as
+        // the customer-safe link, html_content as the editor source.
+        // Customer-facing UIs MUST NOT consume the html_content field —
+        // it intentionally carries the real write_token. The CRM is the
+        // only authenticated caller of this endpoint today.
+        return new Response(
+          JSON.stringify({
+            pdf_url: publicUrl,
+            html_content: editableHtml,
+          }),
+          {
+            headers: {
+              "Content-Type": "application/json",
+              ...corsHeaders,
+            },
           },
-        });
+        );
       } catch (error) {
         console.error("generate_quote_pdf error:", error);
         return createErrorResponse(

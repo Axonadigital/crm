@@ -1213,22 +1213,32 @@ const PreviewPdfButton = () => {
     mutationFn: async () => {
       if (!recordId) throw new Error("No record");
       const data = await dataProvider.generateQuotePdf(recordId);
-      return data as { pdf_url: string };
+      return data as { pdf_url: string; html_content: string };
     },
-    onSuccess: async (data: { pdf_url: string }) => {
+    onSuccess: async (data: { pdf_url: string; html_content: string }) => {
       refresh();
+
+      // Internal seller preview must use the editable html_content variant
+      // (carries the real write_token so the WYSIWYG editor can save).
+      // pdf_url points to the sanitized public artifact in Storage and
+      // would render the customer-facing version with no edit button —
+      // that was the regression the post-deploy review caught.
+      const html = data.html_content;
+      if (!html) {
+        // Defensive fallback: if the edge function ever stops returning
+        // html_content, fall back to opening pdf_url directly so the
+        // preview at least loads (read-only).
+        window.open(data.pdf_url, "_blank");
+        return;
+      }
+
       try {
-        // Fetch the HTML and open via blob URL to ensure correct content-type
-        const response = await fetch(data.pdf_url);
-        const html = await response.text();
         const blob = new Blob([html], { type: "text/html" });
         const blobUrl = URL.createObjectURL(blob);
         const win = window.open(blobUrl, "_blank");
-        // Clean up blob URL after the window loads
         if (win) {
           win.addEventListener("load", () => URL.revokeObjectURL(blobUrl));
         } else {
-          // Fallback if popup blocked
           URL.revokeObjectURL(blobUrl);
           notify("resources.quotes.notifications.popup_blocked", {
             type: "warning",
@@ -1236,7 +1246,9 @@ const PreviewPdfButton = () => {
           });
         }
       } catch {
-        // Fallback: open URL directly
+        // Browser refused the blob URL for some reason; surface the
+        // sanitized public version as a last resort so the seller
+        // at least gets a read-only preview.
         window.open(data.pdf_url, "_blank");
       }
     },
