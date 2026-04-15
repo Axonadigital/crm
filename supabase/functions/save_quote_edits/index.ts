@@ -6,7 +6,7 @@ import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 /**
  * Save inline quote edits made in the WYSIWYG HTML editor.
  *
- * Auth: validated via quotes.approval_token (write_token). No user JWT needed.
+ * Auth: validated via quotes.write_token. No user JWT needed.
  *
  * POST { quote_id: number, write_token: string, sections: object }
  *  → merges sections with existing generated_sections
@@ -41,10 +41,10 @@ Deno.serve(async (req: Request) =>
       );
     }
 
-    // Validate write_token against quotes.approval_token
+    // Validate write_token against quotes.write_token
     const { data: quote, error: quoteError } = await supabaseAdmin
       .from("quotes")
-      .select("id, approval_token, generated_sections, status")
+      .select("id, write_token, generated_sections, status")
       .eq("id", quote_id)
       .single();
 
@@ -52,7 +52,7 @@ Deno.serve(async (req: Request) =>
       return createErrorResponse(404, "Quote not found");
     }
 
-    if (quote.approval_token !== write_token) {
+    if (quote.write_token !== write_token) {
       return createErrorResponse(403, "Invalid write token");
     }
 

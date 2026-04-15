@@ -232,7 +232,7 @@ Deno.serve(async (req: Request) =>
             vatAmount,
             totalInclVat,
             cur,
-            writeToken: (quote.approval_token as string) || "",
+            writeToken: (quote.write_token as string) || "",
             supabaseUrl: Deno.env.get("SUPABASE_URL") || "",
           });
         } else {

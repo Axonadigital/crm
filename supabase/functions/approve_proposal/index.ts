@@ -233,7 +233,7 @@ Deno.serve(async (req: Request) =>
         Deno.env.get("CRM_PUBLIC_URL") ||
         Deno.env.get("ALLOWED_ORIGIN") ||
         "http://localhost:5173";
-      const proposalUrl = `${crmPublicUrl}/quote.html?id=${quote.id}`;
+      const proposalUrl = `${crmPublicUrl}/quote.html?id=${quote.id}&token=${quote.approval_token}`;
 
       const docusealApiKey = Deno.env.get("DOCUSEAL_API_KEY");
       const docusealTemplateId = Deno.env.get("DOCUSEAL_TEMPLATE_ID");

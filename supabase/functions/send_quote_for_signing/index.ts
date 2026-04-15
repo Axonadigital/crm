@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) =>
         Deno.env.get("CRM_PUBLIC_URL") ||
         Deno.env.get("ALLOWED_ORIGIN") ||
         "http://localhost:5173";
-      const proposalUrl = `${crmPublicUrl}/quote.html?id=${quote.id}`;
+      const proposalUrl = `${crmPublicUrl}/quote.html?id=${quote.id}&token=${quote.approval_token}`;
 
       // Delegate DocuSeal submission + status update to shared helper.
       // Phase 2: single source of truth for signing submissions.

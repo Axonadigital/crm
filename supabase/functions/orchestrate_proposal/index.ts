@@ -545,7 +545,7 @@ Deno.serve(async (req: Request) =>
         ? `${Number(deal.amount).toLocaleString("sv-SE")} ${currency}`
         : "Ej angivet";
 
-      const previewUrl = `${crmUrl}/quote.html?id=${quote.id}`;
+      const previewUrl = `${crmUrl}/quote.html?id=${quote.id}&token=${quote.approval_token}`;
 
       // Build Discord link buttons
       const discordButtons: Array<{
