@@ -29,12 +29,13 @@ export function getAnthropicApiUrl(): string {
   );
 }
 
-/** DocuSeal REST base URL. Callers append `/api/submissions` etc. */
+/**
+ * DocuSeal REST base URL. Callers append `/api/submissions` etc.
+ * Default matches the pre-refactor hardcoded fallback in send_quote_for_signing
+ * and approve_proposal. Production overrides via DOCUSEAL_BASE_URL env.
+ */
 export function getDocuSealBaseUrl(): string {
-  return envOrDefault(
-    "DOCUSEAL_BASE_URL",
-    "https://docuseal.sign.axonadigital.se",
-  );
+  return envOrDefault("DOCUSEAL_BASE_URL", "https://sign.axonadigital.se");
 }
 
 /** Resend transactional email API base URL. */

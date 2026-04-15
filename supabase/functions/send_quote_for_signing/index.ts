@@ -2,7 +2,16 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
-import { buildSubmissionPayload } from "../_shared/contractFields.ts";
+import {
+  getDocuSealBaseUrl,
+  getResendApiUrl,
+} from "../_shared/serviceEndpoints.ts";
+import {
+  createSigningSubmission,
+  DocuSealSubmissionError,
+  PIPELINE_STEP,
+  withPipelineStep,
+} from "../_shared/quoteWorkflow/index.ts";
 
 Deno.serve(async (req: Request) =>
   OptionsMiddleware(req, async (req) => {
@@ -67,8 +76,7 @@ Deno.serve(async (req: Request) =>
         );
       }
 
-      const docusealBaseUrl =
-        Deno.env.get("DOCUSEAL_BASE_URL") || "https://sign.axonadigital.se";
+      const docusealBaseUrl = getDocuSealBaseUrl();
       const supabase = supabaseAdmin;
 
       const { data: quote, error: quoteError } = await supabase
@@ -120,69 +128,62 @@ Deno.serve(async (req: Request) =>
         "http://localhost:5173";
       const proposalUrl = `${crmPublicUrl}/quote.html?id=${quote.id}`;
 
-      const submissionPayload = buildSubmissionPayload({
-        templateId: Number(docusealTemplateId),
-        quote: {
-          id: quote.id,
-          quote_number: quote.quote_number,
-          valid_until: quote.valid_until,
-          total_amount: quote.total_amount,
-          subtotal: quote.subtotal,
-          vat_amount: quote.vat_amount,
-          vat_rate: quote.vat_rate,
-          payment_terms: quote.payment_terms,
-          delivery_terms: quote.delivery_terms,
-          terms_and_conditions: quote.terms_and_conditions,
-          generated_text: quote.generated_text,
-          currency: quote.currency,
-        },
-        company: { name: companyName, org_number: companyOrgNumber },
-        contact: { name: signerName, email: signerEmail },
-        lineItems: lineItems || [],
-        proposalUrl,
-      });
-
-      const docusealResponse = await fetch(
-        `${docusealBaseUrl}/api/submissions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Auth-Token": docusealApiKey,
+      // Delegate DocuSeal submission + status update to shared helper.
+      // Phase 2: single source of truth for signing submissions.
+      let signingResult;
+      try {
+        signingResult = await withPipelineStep(
+          {
+            supabase,
+            quoteId: Number(quote.id),
+            stepName: PIPELINE_STEP.DOCUSEAL_SUBMIT,
+            metadata: { trigger: "crm_manual" },
           },
-          body: JSON.stringify(submissionPayload),
-        },
-      );
-
-      if (!docusealResponse.ok) {
-        const errorText = await docusealResponse.text();
-        console.error("DocuSeal submission error:", errorText);
-        return createErrorResponse(502, "Failed to create signing submission");
+          () =>
+            createSigningSubmission({
+              supabase,
+              initiator: { source: "crm_manual" },
+              quote: {
+                id: quote.id,
+                quote_number: quote.quote_number,
+                valid_until: quote.valid_until,
+                total_amount: quote.total_amount,
+                subtotal: quote.subtotal,
+                vat_amount: quote.vat_amount,
+                vat_rate: quote.vat_rate,
+                payment_terms: quote.payment_terms,
+                delivery_terms: quote.delivery_terms,
+                terms_and_conditions: quote.terms_and_conditions,
+                generated_text: quote.generated_text,
+                currency: quote.currency,
+                docuseal_submission_id: quote.docuseal_submission_id,
+                docuseal_signing_url: quote.docuseal_signing_url,
+                status: quote.status,
+              },
+              company: { name: companyName, org_number: companyOrgNumber },
+              contact: { name: signerName, email: signerEmail },
+              lineItems: lineItems || [],
+              proposalUrl,
+              docusealApiKey,
+              docusealTemplateId: Number(docusealTemplateId),
+              docusealBaseUrl,
+            }),
+        );
+      } catch (err) {
+        if (err instanceof DocuSealSubmissionError) {
+          return createErrorResponse(
+            502,
+            "Failed to create signing submission",
+          );
+        }
+        throw err;
       }
 
-      const submissionResult = await docusealResponse.json();
-      const submitters = Array.isArray(submissionResult)
-        ? submissionResult
-        : [submissionResult];
-      const submissionId = submitters[0]?.submission_id || submitters[0]?.id;
-      // Customer's signing slug is the last submitter (Axona is first, already completed)
-      const customerSubmitter = submitters[submitters.length - 1];
-      const signingSlug = customerSubmitter?.slug;
-      const signingUrl = signingSlug
-        ? `${docusealBaseUrl}/s/${signingSlug}`
-        : null;
+      const { submissionId, signingUrl } = signingResult;
 
-      await supabase
-        .from("quotes")
-        .update({
-          docuseal_submission_id: String(submissionId),
-          docuseal_signing_url: signingUrl,
-          status: "sent",
-          sent_at: new Date().toISOString(),
-        })
-        .eq("id", quote_id);
-
-      // Send signing invitation email via Resend
+      // Send signing invitation email via Resend.
+      // Note: the email template diverges from approve_proposal today; phase 3
+      // will unify them behind a shared sendSigningEmail helper.
       if (signingUrl) {
         const resendApiKey = Deno.env.get("RESEND_API_KEY");
         const fromEmail =
@@ -205,7 +206,7 @@ Deno.serve(async (req: Request) =>
             `<p>Med vänlig hälsning,<br>Rasmus Jönsson<br>Axona Digital AB</p>`,
           ].join("\n");
 
-          const emailRes = await fetch("https://api.resend.com/emails", {
+          const emailRes = await fetch(`${getResendApiUrl()}/emails`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${resendApiKey}`,
@@ -227,7 +228,7 @@ Deno.serve(async (req: Request) =>
               errBody,
             );
           } else {
-            console.log("Signing invitation sent via Resend to:", signerEmail);
+            console.warn("Signing invitation sent via Resend to:", signerEmail);
           }
         } else {
           console.warn(

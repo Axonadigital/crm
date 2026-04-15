@@ -1,8 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
+import { OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
-import { buildSubmissionPayload } from "../_shared/contractFields.ts";
+import { getDocuSealBaseUrl } from "../_shared/serviceEndpoints.ts";
+import {
+  createSigningSubmission,
+  DEAL_STAGE_PROPOSAL_FLOW,
+  DocuSealSubmissionError,
+  PIPELINE_STEP,
+  withPipelineStep,
+} from "../_shared/quoteWorkflow/index.ts";
 
 /**
  * Approve Proposal
@@ -245,93 +252,73 @@ Deno.serve(async (req: Request) =>
         );
       }
 
-      const docusealBaseUrl =
-        Deno.env.get("DOCUSEAL_BASE_URL") || "https://sign.axonadigital.se";
+      const docusealBaseUrl = getDocuSealBaseUrl();
 
-      const submissionPayload = buildSubmissionPayload({
-        templateId: Number(docusealTemplateId),
-        quote: {
-          id: quote.id,
-          quote_number: quote.quote_number,
-          valid_until: quote.valid_until,
-          total_amount: quote.total_amount,
-          subtotal: quote.subtotal,
-          vat_amount: quote.vat_amount,
-          vat_rate: quote.vat_rate,
-          payment_terms: quote.payment_terms,
-          delivery_terms: quote.delivery_terms,
-          terms_and_conditions: quote.terms_and_conditions,
-          generated_text: quote.generated_text,
-          currency: quote.currency,
-        },
-        company: { name: companyName, org_number: companyOrgNumber },
-        contact: { name: contactName, email: contactEmail },
-        lineItems: lineItems || [],
-        proposalUrl,
-      });
-
-      const docusealResponse = await fetch(
-        `${docusealBaseUrl}/api/submissions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Auth-Token": docusealApiKey,
-          },
-          body: JSON.stringify(submissionPayload),
-        },
-      );
-
-      if (!docusealResponse.ok) {
-        const errorText = await docusealResponse.text();
-        console.error(
-          `DocuSeal API error (${docusealResponse.status}):`,
-          errorText,
-        );
-
-        await notifyDiscord({
-          title: "E-signering misslyckades",
-          description: `**Offert:** ${quote.quote_number || quote.id}\n**DocuSeal ${docusealResponse.status}:** ${errorText.slice(0, 500)}`,
-          color: 15548997,
-        });
-
-        return new Response(
-          htmlPage(
-            "E-signering misslyckades",
-            `DocuSeal API ${docusealResponse.status}: ${errorText}`,
-            "error",
-          ),
+      // Delegate DocuSeal submission + quote status update to shared helper.
+      // Phase 2: both signing paths go through createSigningSubmission.
+      let signingResult;
+      try {
+        signingResult = await withPipelineStep(
           {
-            headers: { "Content-Type": "text/html; charset=utf-8" },
-            status: 502,
+            supabase,
+            quoteId: Number(quote.id),
+            stepName: PIPELINE_STEP.DOCUSEAL_SUBMIT,
+            metadata: { trigger: "discord_approval" },
           },
+          () =>
+            createSigningSubmission({
+              supabase,
+              initiator: { source: "discord_approval" },
+              quote: {
+                id: quote.id,
+                quote_number: quote.quote_number,
+                valid_until: quote.valid_until,
+                total_amount: quote.total_amount,
+                subtotal: quote.subtotal,
+                vat_amount: quote.vat_amount,
+                vat_rate: quote.vat_rate,
+                payment_terms: quote.payment_terms,
+                delivery_terms: quote.delivery_terms,
+                terms_and_conditions: quote.terms_and_conditions,
+                generated_text: quote.generated_text,
+                currency: quote.currency,
+                docuseal_submission_id: quote.docuseal_submission_id,
+                docuseal_signing_url: quote.docuseal_signing_url,
+                status: quote.status,
+              },
+              company: { name: companyName, org_number: companyOrgNumber },
+              contact: { name: contactName, email: contactEmail },
+              lineItems: lineItems || [],
+              proposalUrl,
+              docusealApiKey,
+              docusealTemplateId: Number(docusealTemplateId),
+              docusealBaseUrl,
+            }),
         );
+      } catch (err) {
+        if (err instanceof DocuSealSubmissionError) {
+          await notifyDiscord({
+            title: "E-signering misslyckades",
+            description: `**Offert:** ${quote.quote_number || quote.id}\n**DocuSeal ${err.status}:** ${err.body.slice(0, 500)}`,
+            color: 15548997,
+          });
+          return new Response(
+            htmlPage(
+              "E-signering misslyckades",
+              `DocuSeal API ${err.status}: ${err.body}`,
+              "error",
+            ),
+            {
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+              status: 502,
+            },
+          );
+        }
+        throw err;
       }
 
-      const submissionResult = await docusealResponse.json();
-      const submitters = Array.isArray(submissionResult)
-        ? submissionResult
-        : [submissionResult];
-      const submissionId = submitters[0]?.submission_id || submitters[0]?.id;
-      // Customer's signing slug is the last submitter (Axona is first, already completed)
-      const customerSubmitter = submitters[submitters.length - 1];
-      const signingSlug = customerSubmitter?.slug;
-      const signingUrl = signingSlug
-        ? `${docusealBaseUrl}/s/${signingSlug}`
-        : null;
-
+      const { signingUrl } = signingResult;
       const quoteNumber = quote.quote_number || `#${quote.id}`;
-
-      await supabase
-        .from("quotes")
-        .update({
-          docuseal_submission_id: String(submissionId),
-          docuseal_signing_url: signingUrl,
-          status: "sent",
-          sent_at: new Date().toISOString(),
-          approved_at: new Date().toISOString(),
-        })
-        .eq("id", quote.id);
 
       await sendProposalEmail({
         to: contactEmail,
@@ -344,7 +331,7 @@ Deno.serve(async (req: Request) =>
       if (quote.deal_id) {
         await supabase
           .from("deals")
-          .update({ stage: "proposal-sent" })
+          .update({ stage: DEAL_STAGE_PROPOSAL_FLOW.PROPOSAL_SENT })
           .eq("id", quote.deal_id);
       }
 
