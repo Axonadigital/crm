@@ -11,28 +11,40 @@
  * migrates existing hardcoded URLs to use these helpers.
  */
 
+/**
+ * Return an env override or fall back to the provided default. Treats empty
+ * string as unset (because Deno.env.get returns empty string for missing
+ * keys in some runtimes, and test mocks also commonly return empty strings).
+ */
+function envOrDefault(key: string, defaultUrl: string): string {
+  const override = Deno.env.get(key);
+  return override && override.length > 0 ? override : defaultUrl;
+}
+
 /** Anthropic Messages API endpoint used for AI section generation. */
 export function getAnthropicApiUrl(): string {
-  return (
-    Deno.env.get("ANTHROPIC_API_URL") ?? "https://api.anthropic.com/v1/messages"
+  return envOrDefault(
+    "ANTHROPIC_API_URL",
+    "https://api.anthropic.com/v1/messages",
   );
 }
 
 /** DocuSeal REST base URL. Callers append `/api/submissions` etc. */
 export function getDocuSealBaseUrl(): string {
-  return (
-    Deno.env.get("DOCUSEAL_BASE_URL") ?? "https://docuseal.sign.axonadigital.se"
+  return envOrDefault(
+    "DOCUSEAL_BASE_URL",
+    "https://docuseal.sign.axonadigital.se",
   );
 }
 
 /** Resend transactional email API base URL. */
 export function getResendApiUrl(): string {
-  return Deno.env.get("RESEND_API_URL") ?? "https://api.resend.com";
+  return envOrDefault("RESEND_API_URL", "https://api.resend.com");
 }
 
 /** Discord bot API base (v10). Used for posting via bot token + channel id. */
 export function getDiscordApiUrl(): string {
-  return Deno.env.get("DISCORD_API_URL") ?? "https://discord.com/api/v10";
+  return envOrDefault("DISCORD_API_URL", "https://discord.com/api/v10");
 }
 
 /**

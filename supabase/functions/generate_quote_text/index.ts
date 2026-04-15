@@ -12,6 +12,12 @@ import {
   fetchRecentCallLogs,
   type QuoteGeneratedSections,
 } from "../_shared/quoteGeneration.ts";
+import {
+  generateSections,
+  PIPELINE_STEP,
+  QUOTE_STATUS,
+  withPipelineStep,
+} from "../_shared/quoteWorkflow/index.ts";
 
 /**
  * Generate Quote Text — AI-powered structured proposal content.
@@ -176,63 +182,36 @@ Deno.serve(async (req: Request) =>
             kbTemplate,
           });
 
-          // Call Claude API
-          const response = await fetch(
-            "https://api.anthropic.com/v1/messages",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-api-key": anthropicApiKey,
-                "anthropic-version": "2023-06-01",
+          // Delegate Anthropic call + regex parse to shared helper.
+          // Phase 1: single source of truth for AI response handling.
+          let sectionResult;
+          try {
+            sectionResult = await withPipelineStep(
+              {
+                supabase,
+                quoteId: quote_id,
+                stepName: PIPELINE_STEP.GENERATE_TEXT,
+                metadata: { trigger: "manual" },
               },
-              body: JSON.stringify({
-                model: "claude-sonnet-4-20250514",
-                max_tokens: 3000,
-                messages: [{ role: "user", content: prompt }],
-                system: systemPrompt,
-              }),
-            },
-          );
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Claude API error:", errorText);
+              () =>
+                generateSections({
+                  prompt,
+                  systemPrompt,
+                  apiKey: anthropicApiKey,
+                }),
+            );
+          } catch (_aiError) {
             return createErrorResponse(502, "Failed to generate text from AI");
           }
 
-          const result = await response.json();
-          const rawText =
-            result.content?.[0]?.text || "Failed to generate text";
-
-          // Try to parse structured JSON
-          let generatedSections: QuoteGeneratedSections | null = null;
-          let generatedText = rawText;
-
-          try {
-            // Extract JSON from response (handle potential markdown code blocks)
-            const jsonMatch = rawText.match(
-              /\{[\s\S]*"summary_pitch"[\s\S]*"proposal_body"[\s\S]*\}/,
-            );
-            if (jsonMatch) {
-              generatedSections = JSON.parse(
-                jsonMatch[0],
-              ) as QuoteGeneratedSections;
-              // Use proposal_body as the plain text fallback
-              generatedText = generatedSections.proposal_body || generatedText;
-            }
-          } catch (parseError) {
-            console.warn(
-              "Failed to parse structured JSON from AI, falling back to plain text:",
-              parseError,
-            );
-            // generatedSections stays null, generatedText stays as raw response
-          }
+          const { generatedText } = sectionResult;
+          const generatedSections =
+            sectionResult.generatedSections as QuoteGeneratedSections | null;
 
           // Update quote with both structured and plain text
           const updateData: Record<string, unknown> = {
             generated_text: generatedText,
-            status: "generated",
+            status: QUOTE_STATUS.GENERATED,
           };
           if (generatedSections) {
             updateData.generated_sections = generatedSections;

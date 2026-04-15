@@ -31,6 +31,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { buildSubmissionPayload } from "../../supabase/functions/_shared/contractFields.ts";
+import { parseAnthropicSections } from "../../supabase/functions/_shared/quoteWorkflow/generateSections.ts";
 import { parseAnthropicResponseCurrentBehavior } from "./helpers/parseAnthropicCurrentBehavior.ts";
 import {
   canonicalizeDocuSealPayload,
@@ -86,6 +87,39 @@ describe("Phase 0 baseline: AI response parsing", () => {
     const result = parseAnthropicResponseCurrentBehavior(malformed);
     expect(result.generatedSections).toBeNull();
     expect(result.generatedText).toBe(malformed);
+  });
+});
+
+describe("Phase 1 parity: extracted parseAnthropicSections matches legacy", () => {
+  const rawAnthropicResponse = loadFixture("anthropic-response.txt");
+
+  it("extracted helper produces identical sections for fixture", () => {
+    const legacy = parseAnthropicResponseCurrentBehavior(rawAnthropicResponse);
+    const extracted = parseAnthropicSections(rawAnthropicResponse);
+
+    expect(extracted.generatedSections).toEqual(legacy.generatedSections);
+    expect(extracted.generatedText).toBe(legacy.generatedText);
+  });
+
+  it("extracted helper produces null for plain text input", () => {
+    const raw = "Bara fri text utan JSON-struktur alls.";
+    const legacy = parseAnthropicResponseCurrentBehavior(raw);
+    const extracted = parseAnthropicSections(raw);
+
+    expect(extracted.generatedSections).toBeNull();
+    expect(extracted.generatedSections).toEqual(legacy.generatedSections);
+    expect(extracted.generatedText).toBe(legacy.generatedText);
+  });
+
+  it("extracted helper falls back to raw text on malformed JSON", () => {
+    const malformed =
+      'Texten innehåller { "summary_pitch": "x", "proposal_body": broken }';
+    const legacy = parseAnthropicResponseCurrentBehavior(malformed);
+    const extracted = parseAnthropicSections(malformed);
+
+    expect(extracted.generatedSections).toBeNull();
+    expect(extracted.generatedSections).toEqual(legacy.generatedSections);
+    expect(extracted.generatedText).toBe(legacy.generatedText);
   });
 });
 
