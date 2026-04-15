@@ -196,6 +196,18 @@ export async function createSigningSubmission(
     input.quote.status &&
     reusableStatuses.includes(input.quote.status)
   ) {
+    // Observability signal: the guard hit, no DocuSeal call will be made.
+    // Makes production reuse visible in edge function logs so smoke-check
+    // section 6 and future debugging can rely on it.
+    console.warn(
+      "createSigningSubmission: reusing existing DocuSeal submission",
+      {
+        quoteId: input.quote.id,
+        submissionId: input.quote.docuseal_submission_id,
+        quoteStatus: input.quote.status,
+        initiatorSource: input.initiator.source,
+      },
+    );
     return {
       submissionId: input.quote.docuseal_submission_id,
       signingUrl: input.quote.docuseal_signing_url ?? null,
