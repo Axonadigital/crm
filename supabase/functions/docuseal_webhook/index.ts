@@ -2,6 +2,11 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import {
+  docuSealWebhookPayloadSchema,
+  reportValidationFailure,
+  summarizeZodError,
+} from "../_shared/quoteWorkflow/index.ts";
 
 Deno.serve(async (req: Request) =>
   OptionsMiddleware(req, async (req) => {
@@ -26,7 +31,39 @@ Deno.serve(async (req: Request) =>
         return createErrorResponse(401, "Invalid webhook secret");
       }
 
-      const payload = await req.json();
+      const rawPayload = await req.json();
+
+      // Phase 3: quarantine-policy validation. DocuSeal controls the
+      // payload shape, so a mismatch is either a new event type we have
+      // not seen before or a probe against the endpoint. We record it
+      // in quote_validation_failures and ACK the webhook with 200 so
+      // DocuSeal does not retry — but we stop processing it here.
+      const parseResult = docuSealWebhookPayloadSchema.safeParse(rawPayload);
+      if (!parseResult.success) {
+        const summary = summarizeZodError(parseResult.error);
+        await reportValidationFailure({
+          supabase: supabaseAdmin,
+          quoteId: null,
+          boundary: "docuseal_webhook",
+          schemaName: "docuSealWebhookPayloadSchema",
+          policy: "quarantine",
+          rawInput: rawPayload,
+          validationError: summary,
+          errorDetails: { issues: parseResult.error.issues },
+        });
+        return new Response(
+          JSON.stringify({
+            received: true,
+            quarantined: true,
+            error: "payload_schema_mismatch",
+          }),
+          {
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+            status: 200,
+          },
+        );
+      }
+      const payload = parseResult.data;
       const eventType = payload.event_type || payload.type;
 
       // DocuSeal CE sends submission ID in data.submission.id (form events)

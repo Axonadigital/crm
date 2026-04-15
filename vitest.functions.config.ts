@@ -19,6 +19,10 @@ export default defineConfig({
         __dirname,
         "node_modules/@supabase/supabase-js",
       ),
+      // Map the Deno npm: specifier for zod to the installed npm package
+      // so edge function tests can import the same schemas that run in
+      // production without requiring the full Deno runtime.
+      "npm:zod@4": path.resolve(__dirname, "node_modules/zod"),
     },
   },
 });

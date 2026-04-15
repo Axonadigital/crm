@@ -19,6 +19,8 @@ export default defineConfig({
         __dirname,
         "node_modules/@supabase/supabase-js",
       ),
+      // Deno npm: specifier for zod — match the production import style.
+      "npm:zod@4": path.resolve(__dirname, "node_modules/zod"),
     },
   },
 });

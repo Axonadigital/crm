@@ -184,6 +184,9 @@ Deno.serve(async (req: Request) =>
 
           // Delegate Anthropic call + regex parse to shared helper.
           // Phase 1: single source of truth for AI response handling.
+          // Phase 3: quarantine AI output shape mismatches so a prompt
+          // iteration or model drift does not silently save broken
+          // sections into quote_pipeline_steps / generated_sections.
           let sectionResult;
           try {
             sectionResult = await withPipelineStep(
@@ -198,6 +201,10 @@ Deno.serve(async (req: Request) =>
                   prompt,
                   systemPrompt,
                   apiKey: anthropicApiKey,
+                  validation: {
+                    supabase,
+                    quoteId: Number(quote_id),
+                  },
                 }),
             );
           } catch (_aiError) {

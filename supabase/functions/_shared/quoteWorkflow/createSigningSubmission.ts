@@ -30,6 +30,11 @@ import {
   type DocuSealSubmissionPayload,
 } from "../contractFields.ts";
 import { QUOTE_STATUS } from "./constants.ts";
+import { docuSealOutgoingPayloadSchema } from "./schemas.ts";
+import {
+  reportValidationFailure,
+  summarizeZodError,
+} from "./validationReporter.ts";
 
 /** Minimal supabase client surface needed by the helper — matches the
  *  pattern already used by pipelineLogger for test-compatible types. */
@@ -184,6 +189,34 @@ export async function createSigningSubmission(
   const now = input.now ?? (() => new Date());
 
   const payload = buildSigningPayload(input);
+
+  // Phase 3: fail-fast validation of the outgoing DocuSeal payload.
+  // Our own code produces this payload, so a schema mismatch is a
+  // bug in buildSubmissionPayload or its inputs — not something to
+  // swallow. We quarantine the failing payload to the DB for audit
+  // and throw a DocuSealSubmissionError so the caller maps it to
+  // its own response (HTML page / JSON error) the same way it would
+  // treat an actual DocuSeal API failure.
+  const outgoingCheck = docuSealOutgoingPayloadSchema.safeParse(payload);
+  if (!outgoingCheck.success) {
+    const summary = summarizeZodError(outgoingCheck.error);
+    await reportValidationFailure({
+      supabase: input.supabase as Parameters<
+        typeof reportValidationFailure
+      >[0]["supabase"],
+      quoteId: typeof input.quote.id === "number" ? input.quote.id : null,
+      boundary: "docuseal_outgoing_payload",
+      schemaName: "docuSealOutgoingPayloadSchema",
+      policy: "fail_fast",
+      rawInput: payload,
+      validationError: summary,
+      errorDetails: { issues: outgoingCheck.error.issues },
+    });
+    throw new DocuSealSubmissionError(
+      500,
+      `Outgoing DocuSeal payload failed schema validation: ${summary}`,
+    );
+  }
 
   // Minimal idempotence guard.
   const reusableStatuses: readonly string[] = [
