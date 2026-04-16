@@ -24,6 +24,7 @@ import {
   fmt,
   textToHtml,
 } from "../_shared/premiumSections.ts";
+import { normalizePremiumSections } from "../_shared/quoteWorkflow/normalizeSections.ts";
 import type {
   HeroData,
   SummaryData,
@@ -153,21 +154,10 @@ Deno.serve(async (req: Request) =>
           ? `${contact.first_name} ${contact.last_name}`
           : "";
         const quoteText = quote.custom_text || quote.generated_text || "";
-        const sections = quote.generated_sections as {
-          summary_pitch?: string;
-          highlight_cards?: Array<{
-            icon: string;
-            title: string;
-            text: string;
-          }>;
-          problem_cards?: Array<{
-            number: string;
-            title: string;
-            text: string;
-          }>;
-          package_includes?: string[];
-          proposal_body?: string;
-        } | null;
+        const sections = quote.generated_sections as Record<
+          string,
+          unknown
+        > | null;
 
         // Calculate totals
         const subtotal = lineItems.reduce(
@@ -210,9 +200,12 @@ Deno.serve(async (req: Request) =>
         let html: string;
 
         if (usePremiumTemplate) {
+          // Normalize a copy — fills Kat. B defaults without mutating DB data.
+          const normalizedSections: Record<string, unknown> = { ...sections! };
+          normalizePremiumSections(normalizedSections);
           html = buildPremiumTemplate({
             quote,
-            sections: sections!,
+            sections: normalizedSections,
             quoteText,
             company,
             contact,
@@ -341,23 +334,8 @@ Deno.serve(async (req: Request) =>
 
 interface PremiumTemplateData {
   quote: Record<string, unknown>;
-  sections: {
-    summary_pitch?: string;
-    highlight_cards?: Array<{ icon: string; title: string; text: string }>;
-    problem_cards?: Array<{ number: string; title: string; text: string }>;
-    package_includes?: string[];
-    proposal_body?: string;
-    upgrade_package?: UpgradePackage | null;
-    process_steps?: Array<{ number: string; title: string; text: string }>;
-    support_cards?: Array<{ icon: string; title: string; text: string }>;
-    tech_items?: Array<{ icon: string; title: string; text: string }>;
-    founders?: Array<{
-      initials: string;
-      name: string;
-      role: string;
-      description: string;
-    }>;
-  };
+  /** Normalized sections — all Kat. A + B copy keys guaranteed present after normalizePremiumSections(). */
+  sections: Record<string, unknown>;
   quoteText: string;
   company: Record<string, unknown> | null;
   contact: Record<string, unknown> | null;
@@ -419,46 +397,15 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
       .join(" \u00b7 "),
   };
 
-  // 2. Summary
+  // 2. Summary — highlight_cards default guaranteed by normalizePremiumSections().
   const summaryData: SummaryData = {
     pitch: d.sections.summary_pitch || d.quoteText.substring(0, 300),
-    cards: d.sections.highlight_cards || [
-      {
-        icon: "palette",
-        title: "Skräddarsydd design",
-        text: "Anpassad efter ert varumärke",
-      },
-      {
-        icon: "smartphone",
-        title: "Mobilanpassat",
-        text: "Fungerar på alla enheter",
-      },
-      {
-        icon: "rocket",
-        title: "Snabb lansering",
-        text: "Leverans inom 2-6 veckor",
-      },
-    ],
+    cards: d.sections.highlight_cards as SummaryData["cards"],
   };
 
   // 2b. Problem section ("Varför en hemsida?")
-  const problemCards: ProblemCard[] = d.sections.problem_cards || [
-    {
-      number: "01",
-      title: "Svårt att bli hittad",
-      text: "Utan en hemsida syns ni inte när potentiella kunder söker efter era tjänster online. Konkurrenter med en webbplats fångar dessa förfrågningar.",
-    },
-    {
-      number: "02",
-      title: "Svårt att visa vad ni gör",
-      text: "Utan en samlad plats att visa era tjänster, kompetens och kontaktuppgifter blir det svårare för kunder att bedöma och lita på er.",
-    },
-    {
-      number: "03",
-      title: "Förlorade förfrågningar",
-      text: "Varje dag söker potentiella kunder online. Utan en webbplats går dessa förfrågningar till konkurrenter som syns.",
-    },
-  ];
+  // Defaults guaranteed by normalizePremiumSections() — cast only.
+  const problemCards = d.sections.problem_cards as ProblemCard[];
 
   const companySector = (d.company?.sector as string) || "";
   const problemTitleDefault = companySector
@@ -468,39 +415,12 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
     (d.sections.problem_section_title as string | undefined) ??
     problemTitleDefault;
 
-  // 2c. Package includes
-  const packageIncludes: string[] = d.sections.package_includes || [
-    "Skräddarsydd design",
-    "Mobilanpassat",
-    "SEO-optimerad struktur",
-    "Kontaktformulär",
-    "SSL-certifikat",
-  ];
+  // 2c. Package includes — defaults guaranteed by normalizePremiumSections().
+  const packageIncludes = d.sections.package_includes as string[];
 
-  // 2d. Upgrade package (upsell box)
-  // If sections.upgrade_package is explicitly set (even null = hide), use that.
-  // If not present in sections (undefined), fall back to hardcoded default.
-  const upgradePackage: UpgradePackage | null =
-    "upgrade_package" in d.sections
-      ? (d.sections.upgrade_package as UpgradePackage | null)
-      : {
-          title: "Flersidig hemsida",
-          description:
-            "Vill ni ha mer utrymme att presentera era tjänster, projekt och ert team? Uppgradera till en flersidig hemsida med dedikerade undersidor.",
-          price: "Offert på begäran",
-          includes: [
-            "Upp till 5 undersidor",
-            "Dedikerad tjänstesida",
-            "Om oss-sida med teamet",
-            "Referensprojekt-sida",
-            "Blogg eller nyhetssektion",
-          ],
-          benefits: [
-            "Mer utrymme att berätta er historia",
-            "Bättre SEO med fler indexerbara sidor",
-            "Professionellare intryck för större kunder",
-          ],
-        };
+  // 2d. Upgrade package — normalizePremiumSections() sets default when absent;
+  // preserves explicit null (= hide upsell for multi-page quotes).
+  const upgradePackage = d.sections.upgrade_package as UpgradePackage | null;
 
   // 3. Reference projects — sections.reference_projects takes priority over reference_images
   const referenceImages =
@@ -515,124 +435,40 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
     (d.sections.reference_section_text as string | undefined) ??
     "Här är ett urval av webbplatser vi levererat — både ensidiga och flersidiga lösningar för företag i liknande branscher.";
 
-  // 5. Process steps — read from sections if present, else use defaults
-  const processSteps: ProcessStep[] = d.sections.process_steps || [
-    {
-      number: "01",
-      title: "Signering & uppstart",
-      text: "Ni godkänner offerten. Vi samlar in material — logga, texter, bilder — och påbörjar designarbetet.",
-    },
-    {
-      number: "02",
-      title: "Demoversion klar",
-      text: "Vi presenterar en komplett demoversion av er hemsida som ni kan granska och ge feedback på.",
-    },
-    {
-      number: "03",
-      title: "Korrigeringar",
-      text: "Vi justerar efter era önskemål. Upp till två korrigeringsrundor ingår i priset.",
-    },
-    {
-      number: "04",
-      title: "Lansering",
-      text: "Vi publicerar hemsidan, kopplar domänen och säkerställer att allt fungerar. Ni äger allt.",
-    },
-  ];
+  // 5. Process steps — defaults guaranteed by normalizePremiumSections().
+  const processSteps = d.sections.process_steps as ProcessStep[];
 
-  // 5b. Support cards — read from sections if present, else use defaults
-  const supportCards: SupportCard[] = d.sections.support_cards || [
-    {
-      icon: "check-circle",
-      title: "Innan lansering",
-      text: "Upp till två korrigeringsrundor ingår i priset efter att demoversionen presenterats. Vi finslipar tills ni är nöjda.",
-    },
-    {
-      icon: "edit",
-      title: "Egna ändringar",
-      text: "Hemsidan byggs i Builder.io — ni kan själva göra enklare justeringar av texter och bilder utan att behöva kontakta oss.",
-    },
-    {
-      icon: "headphones",
-      title: "Support efter lansering",
-      text: "Behöver ni hjälp med ändringar efter lansering? Vi finns tillgängliga på timdebitering — 1 500 kr/h exkl. moms.",
-    },
-    {
-      icon: "shield",
-      title: "Full äganderätt",
-      text: "Vid leverans äger ni hemsidan helt. Inga inlåsningseffekter, inga löpande avgifter från vårt håll.",
-    },
-  ];
+  // 5b. Support cards — defaults guaranteed by normalizePremiumSections().
+  const supportCards = d.sections.support_cards as SupportCard[];
 
-  // 6. Tech items — read from sections if present, else use defaults
-  const techItems: TechItem[] = d.sections.tech_items || [
-    {
-      icon: "smartphone",
-      title: "Mobilanpassat",
-      text: "Perfekt på alla enheter",
-    },
-    {
-      icon: "search",
-      title: "SEO-optimerat",
-      text: "Syns på Google lokalt",
-    },
-    {
-      icon: "zap",
-      title: "Snabb laddtid",
-      text: "Optimerad prestanda",
-    },
-    {
-      icon: "lock",
-      title: "SSL-krypterad",
-      text: "Säker anslutning",
-    },
-  ];
+  // 6. Tech items — defaults guaranteed by normalizePremiumSections().
+  const techItems = d.sections.tech_items as TechItem[];
 
-  // 7. Founders — read from sections if present, else use defaults
-  const founders: FounderCard[] = d.sections.founders || [
-    {
-      initials: "RJ",
-      name: "Rasmus Jönsson",
-      role: "Medgrundare & Teknisk ansvarig",
-      description:
-        "Ansvarar för teknik och implementation. Fokuserar på robusta lösningar och att varje leverans ger mätbar effekt.",
-    },
-    {
-      initials: "IP",
-      name: "Isak Persson",
-      role: "Medgrundare & Affärsutveckling",
-      description:
-        "Ansvarar för affärsutveckling och uppföljning. Varje lösning ska ha ett tydligt syfte och ett resultat ni kan följa.",
-    },
-  ];
+  // 7. Founders — defaults guaranteed by normalizePremiumSections().
+  const founders = d.sections.founders as FounderCard[];
 
-  // Section titles/texts for process, support, tech, about — read from sections with fallback
-  const processSectionTitle =
-    (d.sections.process_section_title as string | undefined) ??
-    "Från signering till lanserad hemsida";
-  const processSectionText =
-    (d.sections.process_section_text as string | undefined) ??
-    "En tydlig process där ni alltid vet vad som händer härnäst.";
-  const supportSectionTitle =
-    (d.sections.support_section_title as string | undefined) ??
-    "Vad som gäller efter lansering";
-  const techSectionTitle =
-    (d.sections.tech_section_title as string | undefined) ??
-    "Byggt för att synas och prestera";
-  const aboutSectionTitle =
-    (d.sections.about_section_title as string | undefined) ??
-    "Vilka är Axona Digital?";
-  const aboutSectionText =
-    (d.sections.about_section_text as string | undefined) ??
-    "Vi är en digital byrå i Östersund som hjälper svenska företag med hemsidor, e-handel och AI-lösningar. Varje leverans ska ge mätbar effekt — inte bara se bra ut.";
-  const packageSectionTitle =
-    (d.sections.package_section_title as string | undefined) ??
-    "Välj det som passar er";
-  const packageSectionText =
-    (d.sections.package_section_text as string | undefined) ??
-    "Paketet nedan är skräddarsytt för er verksamhet och era behov.";
+  // Section titles/texts — all guaranteed present after normalizePremiumSections().
+  const processSectionTitle = d.sections.process_section_title as string;
+  const processSectionText = d.sections.process_section_text as string;
+  const supportSectionTitle = d.sections.support_section_title as string;
+  const techSectionTitle = d.sections.tech_section_title as string;
+  const aboutSectionTitle = d.sections.about_section_title as string;
+  const aboutSectionText = d.sections.about_section_text as string;
+  const packageSectionTitle = d.sections.package_section_title as string;
+  const packageSectionText = d.sections.package_section_text as string;
   const priceSummaryBullets = d.sections.price_summary_bullets as
     | string[]
     | undefined;
+
+  // Kat. B copy keys — guaranteed present after normalizePremiumSections().
+  const upgradeBenefitsTitle = d.sections.upgrade_benefits_title as string;
+  const referenceCTALabel = d.sections.reference_cta_label as string;
+  const aboutFacts = d.sections.about_facts as Array<{
+    value: string;
+    label: string;
+  }>;
+  const priceSummaryTitle = d.sections.price_summary_title as string;
+  const termsSectionTitle = d.sections.terms_section_title as string;
 
   // 8. Pricing
   const pricingData: PricingData = {
@@ -709,14 +545,14 @@ function buildPremiumTemplate(d: PremiumTemplateData): string {
 ${buildHeroSection(heroData)}
 ${buildSummarySection(summaryData, pageHeader)}
 ${buildProblemSection(problemCards, problemSectionTitle, pageHeader, pn)}
-${buildReferenceSection(references, pageHeader, pn, referenceSectionTitle, referenceSectionText)}
-${buildPackageSection(packageIncludes, (d.quote.title as string) || "Webbprojekt", `${fmt(d.afterDiscount)} ${esc(d.cur)}`, pageHeader, pn, upgradePackage, packageSectionTitle, packageSectionText)}
+${buildReferenceSection(references, pageHeader, pn, referenceSectionTitle, referenceSectionText, referenceCTALabel)}
+${buildPackageSection(packageIncludes, (d.quote.title as string) || "Webbprojekt", `${fmt(d.afterDiscount)} ${esc(d.cur)}`, pageHeader, pn, upgradePackage, packageSectionTitle, packageSectionText, upgradeBenefitsTitle)}
 ${buildProcessSection(processSteps, pageHeader, pn, processSectionTitle, processSectionText)}
 ${buildSupportSection(supportCards, pageHeader, pn, supportSectionTitle)}
 ${buildTechSection(techItems, pageHeader, pn, techSectionTitle)}
-${buildAboutSection(founders, pageHeader, pn, aboutSectionTitle, aboutSectionText)}
-${buildPriceSummarySection(pricingData, pageHeader, pn, priceSummaryBullets)}
-${buildTermsAndSignatureSection(termsData, sigData, sellerInfo, pageHeader, pn)}
+${buildAboutSection(founders, pageHeader, pn, aboutSectionTitle, aboutSectionText, aboutFacts)}
+${buildPriceSummarySection(pricingData, pageHeader, pn, priceSummaryBullets, priceSummaryTitle)}
+${buildTermsAndSignatureSection(termsData, sigData, sellerInfo, pageHeader, pn, termsSectionTitle)}
 ${buildDocumentFooter(sellerName, d.quoteNumber, sellerInfo, d.logoDark)}
 
 <script>

@@ -384,6 +384,11 @@ export type QuoteFounderCard = {
   description: string;
 };
 
+export type QuoteAboutFact = {
+  value: string;
+  label: string;
+};
+
 export type QuoteGeneratedSections = {
   summary_pitch: string;
   highlight_cards: QuoteHighlightCard[];
@@ -415,6 +420,12 @@ export type QuoteGeneratedSections = {
   price_summary_bullets?: string[];
   recurring_amount?: number | null;
   recurring_interval?: "monthly" | "quarterly" | "yearly" | null;
+  // Kat. B — copy keys that were hardcoded literals in premiumSections.ts
+  upgrade_benefits_title?: string;
+  reference_cta_label?: string;
+  about_facts?: QuoteAboutFact[];
+  price_summary_title?: string;
+  terms_section_title?: string;
 };
 
 export type QuoteReferenceImage = {
@@ -454,6 +465,7 @@ export type Quote = {
   docuseal_submission_id?: string;
   docuseal_document_url?: string;
   pdf_url?: string;
+  approval_token?: string;
   signed_at?: string;
   sent_at?: string;
   created_at: string;

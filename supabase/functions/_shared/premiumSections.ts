@@ -251,6 +251,7 @@ export function buildPackageSection(
   upgrade?: UpgradePackage | null,
   sectionTitle = "Välj det som passar er",
   sectionText = "Paketet nedan är skräddarsytt för er verksamhet och era behov.",
+  upgradeBenefitsTitle = "Fördelar med en flersidig hemsida",
 ): string {
   const includesHtml = includes
     .map(
@@ -263,14 +264,14 @@ export function buildPackageSection(
     ? (() => {
         const upgradeIncludesHtml = (upgrade.includes || [])
           .map(
-            (item) =>
-              `<li><span class="includes-check">✓</span> ${esc(item)}</li>`,
+            (item, idx) =>
+              `<li><span class="includes-check">✓</span> <span data-editable="upgrade_package.includes.${idx}">${esc(item)}</span></li>`,
           )
           .join("");
         const benefitsHtml = (upgrade.benefits || [])
           .map(
-            (b) =>
-              `<div class="upgrade-benefit"><span class="upgrade-arrow">→</span> ${esc(b)}</div>`,
+            (b, idx) =>
+              `<div class="upgrade-benefit"><span class="upgrade-arrow">→</span> <span data-editable="upgrade_package.benefits.${idx}">${esc(b)}</span></div>`,
           )
           .join("");
         return `
@@ -286,7 +287,7 @@ export function buildPackageSection(
         ${
           benefitsHtml
             ? `<div class="upgrade-benefits">
-          <div class="upgrade-benefits-title">Fördelar med en flersidig hemsida</div>
+          <div class="upgrade-benefits-title" data-editable="upgrade_benefits_title">${esc(upgradeBenefitsTitle)}</div>
           ${benefitsHtml}
         </div>`
             : ""
@@ -323,6 +324,7 @@ export function buildReferenceSection(
   _pageNum: number,
   sectionTitle = "Hemsidor vi har byggt",
   sectionText = "Här är ett urval av webbplatser vi levererat — både ensidiga och flersidiga lösningar för företag i liknande branscher.",
+  ctaLabel = "Besök sidan →",
 ): string {
   const cardsHtml = projects
     .map(
@@ -337,7 +339,7 @@ export function buildReferenceSection(
           <div class="ref-card-type" data-editable="reference_projects.${i}.type">${esc(proj.type)}</div>
           <h3 data-editable="reference_projects.${i}.title">${esc(proj.title)}</h3>
           <p data-editable="reference_projects.${i}.description">${esc(proj.description)}</p>
-          <a href="${esc(proj.link)}" class="ref-link" target="_blank">Besök sidan →</a>
+          <a href="${esc(proj.link)}" class="ref-link" target="_blank" data-editable="reference_cta_label">${esc(ctaLabel)}</a>
         </div>
       </div>`,
     )
@@ -448,12 +450,25 @@ export function buildTechSection(
 </section>`;
 }
 
+export interface AboutFact {
+  value: string;
+  label: string;
+}
+
+const DEFAULT_ABOUT_FACTS: AboutFact[] = [
+  { value: "2–6 v", label: "Typisk leveranstid" },
+  { value: "100%", label: "Äganderätt till kunden" },
+  { value: "24h", label: "Svar på förfrågningar" },
+  { value: "0 kr", label: "Löpande kostnad" },
+];
+
 export function buildAboutSection(
   founders: FounderCard[],
   _header: PageHeaderData,
   _pageNum: number,
   sectionTitle = "Vilka är Axona Digital?",
   sectionText = "Vi är en digital byrå i Östersund som hjälper svenska företag med hemsidor, e-handel och AI-lösningar. Varje leverans ska ge mätbar effekt — inte bara se bra ut.",
+  facts?: AboutFact[],
 ): string {
   const foundersHtml = founders
     .map(
@@ -469,6 +484,17 @@ export function buildAboutSection(
     )
     .join("");
 
+  const resolvedFacts = facts && facts.length > 0 ? facts : DEFAULT_ABOUT_FACTS;
+  const factsHtml = resolvedFacts
+    .map(
+      (f, i) => `
+          <div class="about-fact">
+            <div class="about-fact-value" data-editable="about_facts.${i}.value">${esc(f.value)}</div>
+            <div class="about-fact-label" data-editable="about_facts.${i}.label">${esc(f.label)}</div>
+          </div>`,
+    )
+    .join("");
+
   return `
 <section class="section about-axona">
   <div class="section-inner">
@@ -481,10 +507,7 @@ export function buildAboutSection(
       </div>
       <div>
         <div class="about-facts animate-in">
-          <div class="about-fact"><div class="about-fact-value">2–6 v</div><div class="about-fact-label">Typisk leveranstid</div></div>
-          <div class="about-fact"><div class="about-fact-value">100%</div><div class="about-fact-label">Äganderätt till kunden</div></div>
-          <div class="about-fact"><div class="about-fact-value">24h</div><div class="about-fact-label">Svar på förfrågningar</div></div>
-          <div class="about-fact"><div class="about-fact-value">0 kr</div><div class="about-fact-label">Löpande kostnad</div></div>
+          ${factsHtml}
         </div>
       </div>
     </div>
@@ -611,6 +634,7 @@ export function buildPriceSummarySection(
   _header: PageHeaderData,
   _pageNum: number,
   bullets?: string[],
+  sectionTitle = "Sammanfattning",
 ): string {
   const defaultBullets = [
     "Kostnadsfri demo — ni ser innan ni bestämmer er",
@@ -649,7 +673,7 @@ export function buildPriceSummarySection(
 <section class="section">
   <div class="section-inner">
     <p class="section-label animate-in">// Investering</p>
-    <h2 class="section-title animate-in">Sammanfattning</h2>
+    <h2 class="section-title animate-in" data-editable="price_summary_title">${esc(sectionTitle)}</h2>
     <div class="pricing-summary animate-in">
       <div class="pricing-summary-label">Engångsinvestering</div>
       <div class="pricing-summary-amount">${fmt(data.afterDiscount)} ${esc(data.currency)}</div>
@@ -669,6 +693,7 @@ export function buildTermsAndSignatureSection(
   seller: SellerInfo,
   _header: PageHeaderData,
   _pageNum: number,
+  sectionTitle = "Det här gäller för offerten",
 ): string {
   const sellerFacts = [
     seller.companyName ? `Avsändare: ${esc(seller.companyName)}` : "",
@@ -681,7 +706,7 @@ export function buildTermsAndSignatureSection(
 <section class="section" style="background:var(--color-bg-alt);">
   <div class="section-inner">
     <p class="section-label animate-in">// Villkor &amp; information</p>
-    <h2 class="section-title animate-in">Det här gäller för offerten</h2>
+    <h2 class="section-title animate-in" data-editable="terms_section_title">${esc(sectionTitle)}</h2>
     <div class="terms-summary animate-in">
       <p>Offerten sammanfattar leveransen, omfattningen och villkoren för projektet. Den fullständiga digitala offerten är det underlag ni granskar inför ett eventuellt godkännande.</p>
       <p style="margin-top:8px;"><a href="https://www.axonadigital.se/villkor" target="_blank" class="terms-link">Läs fullständiga villkor →</a></p>

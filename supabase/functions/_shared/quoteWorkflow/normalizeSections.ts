@@ -1,21 +1,51 @@
 /**
- * Section normalization for the orchestrated proposal flow.
+ * Section normalization for premium quote templates.
  *
- * Phase 1 extraction — lifted verbatim from the inline defaults block in
- * `orchestrate_proposal/index.ts`. Applies default content (problem cards,
- * process steps, support cards, tech items, founders, section titles) to
- * any field missing from the AI-generated output.
+ * Two exported functions:
  *
- * This helper must reproduce the exact same object shape as the legacy
- * inline code. The workflow baseline tests do not cover this transform
- * yet (its output only feeds the PDF renderer), but the enriched keys
- * are read by premium section builders and by the public quote viewer,
- * so drift here will be visible downstream.
+ *  normalizePremiumSections(sections)
+ *    Context-free: fills copy defaults for ALL premium template sections.
+ *    Mutates in place. Idempotent — never overwrites existing values.
+ *    Call from any code path: generate_quote_pdf, orchestrate_proposal, tests.
+ *
+ *  enrichSectionsForOrchestration(sections, context)
+ *    Orchestration-aware: calls normalizePremiumSections then applies
+ *    orchestration overrides (isMultiPage → hide upsell, recurring amounts).
+ *    Returns null when sections is null (preserves legacy branch in
+ *    orchestrate_proposal).
+ *
+ * Default copy values live in sectionDefaults.ts (runtime-neutral).
+ * Frontend mirror of defaults: src/lib/quoteSectionDefaults.ts
  *
  * generate_quote_text does NOT currently use this helper — it stores the
- * raw parsed sections. Phase 1 preserves that split. Future phases may
- * converge both callers behind a single normalization stage.
+ * raw parsed sections. Phase 1 preserves that split.
  */
+
+import {
+  DEFAULT_HIGHLIGHT_CARDS,
+  DEFAULT_PROBLEM_CARDS,
+  DEFAULT_PACKAGE_INCLUDES,
+  DEFAULT_UPGRADE_PACKAGE,
+  DEFAULT_PROCESS_STEPS,
+  DEFAULT_SUPPORT_CARDS,
+  DEFAULT_TECH_ITEMS,
+  DEFAULT_FOUNDERS,
+  DEFAULT_ABOUT_FACTS,
+  DEFAULT_PACKAGE_SECTION_TITLE,
+  DEFAULT_PACKAGE_SECTION_TEXT,
+  DEFAULT_REFERENCE_SECTION_TITLE,
+  DEFAULT_REFERENCE_SECTION_TEXT,
+  DEFAULT_PROCESS_SECTION_TITLE,
+  DEFAULT_PROCESS_SECTION_TEXT,
+  DEFAULT_SUPPORT_SECTION_TITLE,
+  DEFAULT_TECH_SECTION_TITLE,
+  DEFAULT_ABOUT_SECTION_TITLE,
+  DEFAULT_ABOUT_SECTION_TEXT,
+  DEFAULT_UPGRADE_BENEFITS_TITLE,
+  DEFAULT_REFERENCE_CTA_LABEL,
+  DEFAULT_PRICE_SUMMARY_TITLE,
+  DEFAULT_TERMS_SECTION_TITLE,
+} from "./sectionDefaults.ts";
 
 export interface NormalizeSectionsContext {
   /** True when the deal/quote is already for a multi-page website, so the
@@ -24,6 +54,115 @@ export interface NormalizeSectionsContext {
   /** Recurring payment pass-through from the deal. */
   recurringAmount?: number | null;
   recurringInterval?: string | null;
+}
+
+/**
+ * Fill default copy content for all premium template sections.
+ * Idempotent — existing values are never overwritten.
+ * Mutates the sections object in place.
+ */
+export function normalizePremiumSections(
+  sections: Record<string, unknown>,
+): void {
+  const s = sections;
+
+  // ── Highlight cards ──
+  if (
+    !Array.isArray(s.highlight_cards) ||
+    (s.highlight_cards as unknown[]).length === 0
+  ) {
+    s.highlight_cards = DEFAULT_HIGHLIGHT_CARDS;
+  }
+
+  // ── Problem cards ──
+  if (
+    !Array.isArray(s.problem_cards) ||
+    (s.problem_cards as unknown[]).length === 0
+  ) {
+    s.problem_cards = DEFAULT_PROBLEM_CARDS;
+  }
+
+  // ── Package includes ──
+  if (
+    !Array.isArray(s.package_includes) ||
+    (s.package_includes as unknown[]).length === 0
+  ) {
+    s.package_includes = DEFAULT_PACKAGE_INCLUDES;
+  }
+
+  // ── Upgrade package ──
+  // If the key is absent (never set), provide the default upsell package.
+  // If the key exists (even as null = "hide it"), preserve the caller's value.
+  // enrichSectionsForOrchestration overrides this to null when isMultiPage=true.
+  if (!("upgrade_package" in s)) {
+    s.upgrade_package = DEFAULT_UPGRADE_PACKAGE;
+  }
+
+  // ── Process steps ──
+  if (
+    !Array.isArray(s.process_steps) ||
+    (s.process_steps as unknown[]).length === 0
+  ) {
+    s.process_steps = DEFAULT_PROCESS_STEPS;
+  }
+
+  // ── Support cards ──
+  if (
+    !Array.isArray(s.support_cards) ||
+    (s.support_cards as unknown[]).length === 0
+  ) {
+    s.support_cards = DEFAULT_SUPPORT_CARDS;
+  }
+
+  // ── Tech items ──
+  if (
+    !Array.isArray(s.tech_items) ||
+    (s.tech_items as unknown[]).length === 0
+  ) {
+    s.tech_items = DEFAULT_TECH_ITEMS;
+  }
+
+  // ── Founders ──
+  if (!Array.isArray(s.founders) || (s.founders as unknown[]).length === 0) {
+    s.founders = DEFAULT_FOUNDERS;
+  }
+
+  // ── Section titles / texts ──
+  if (!s.package_section_title)
+    s.package_section_title = DEFAULT_PACKAGE_SECTION_TITLE;
+  if (!s.package_section_text)
+    s.package_section_text = DEFAULT_PACKAGE_SECTION_TEXT;
+  if (!s.reference_section_title)
+    s.reference_section_title = DEFAULT_REFERENCE_SECTION_TITLE;
+  if (!s.reference_section_text)
+    s.reference_section_text = DEFAULT_REFERENCE_SECTION_TEXT;
+  // problem_section_title intentionally left null-able — buildPremiumTemplate derives it from companySector
+  if (!s.process_section_title)
+    s.process_section_title = DEFAULT_PROCESS_SECTION_TITLE;
+  if (!s.process_section_text)
+    s.process_section_text = DEFAULT_PROCESS_SECTION_TEXT;
+  if (!s.support_section_title)
+    s.support_section_title = DEFAULT_SUPPORT_SECTION_TITLE;
+  if (!s.tech_section_title) s.tech_section_title = DEFAULT_TECH_SECTION_TITLE;
+  if (!s.about_section_title)
+    s.about_section_title = DEFAULT_ABOUT_SECTION_TITLE;
+  if (!s.about_section_text) s.about_section_text = DEFAULT_ABOUT_SECTION_TEXT;
+
+  // ── Kat. B: new copy keys (were hardcoded literals in premiumSections.ts) ──
+  if (!s.upgrade_benefits_title)
+    s.upgrade_benefits_title = DEFAULT_UPGRADE_BENEFITS_TITLE;
+  if (!s.reference_cta_label)
+    s.reference_cta_label = DEFAULT_REFERENCE_CTA_LABEL;
+  if (
+    !Array.isArray(s.about_facts) ||
+    (s.about_facts as unknown[]).length === 0
+  ) {
+    s.about_facts = DEFAULT_ABOUT_FACTS;
+  }
+  if (!s.price_summary_title)
+    s.price_summary_title = DEFAULT_PRICE_SUMMARY_TITLE;
+  if (!s.terms_section_title)
+    s.terms_section_title = DEFAULT_TERMS_SECTION_TITLE;
 }
 
 /**
@@ -37,170 +176,15 @@ export function enrichSectionsForOrchestration(
 ): Record<string, unknown> | null {
   if (!sections) return null;
 
-  const src = sections as Record<string, unknown>;
+  const enriched = { ...sections };
+  normalizePremiumSections(enriched);
 
-  const defaultProblemCards = [
-    {
-      number: "01",
-      title: "Svårt att bli hittad",
-      text: "Utan en hemsida syns ni inte när potentiella kunder söker efter era tjänster online. Konkurrenter med en webbplats fångar dessa förfrågningar.",
-    },
-    {
-      number: "02",
-      title: "Svårt att visa vad ni gör",
-      text: "Utan en samlad plats att visa era tjänster, kompetens och kontaktuppgifter blir det svårare för kunder att bedöma och lita på er.",
-    },
-    {
-      number: "03",
-      title: "Förlorade förfrågningar",
-      text: "Varje dag söker potentiella kunder online. Utan en webbplats går dessa förfrågningar till konkurrenter som syns.",
-    },
-  ];
+  // Orchestration overrides — applied after normalization so they always win.
+  if (context.isMultiPage) {
+    enriched.upgrade_package = null;
+  }
+  enriched.recurring_amount = context.recurringAmount ?? null;
+  enriched.recurring_interval = context.recurringInterval ?? null;
 
-  const defaultPackageIncludes = [
-    "Skräddarsydd design",
-    "Mobilanpassat",
-    "SEO-optimerad struktur",
-    "Kontaktformulär",
-    "SSL-certifikat",
-  ];
-
-  const defaultUpgradePackage = context.isMultiPage
-    ? null
-    : {
-        title: "Flersidig hemsida",
-        description:
-          "Vill ni ha mer utrymme att presentera era tjänster, projekt och ert team? Uppgradera till en flersidig hemsida med dedikerade undersidor.",
-        price: "Offert på begäran",
-        includes: [
-          "Upp till 5 undersidor",
-          "Dedikerad tjänstesida",
-          "Om oss-sida med teamet",
-          "Referensprojekt-sida",
-          "Blogg eller nyhetssektion",
-        ],
-        benefits: [
-          "Mer utrymme att berätta er historia",
-          "Bättre SEO med fler indexerbara sidor",
-          "Professionellare intryck för större kunder",
-        ],
-      };
-
-  return {
-    ...src,
-    problem_cards: src.problem_cards ?? defaultProblemCards,
-    package_includes: src.package_includes ?? defaultPackageIncludes,
-    upgrade_package:
-      "upgrade_package" in src ? src.upgrade_package : defaultUpgradePackage,
-    process_steps: src.process_steps ?? [
-      {
-        number: "01",
-        title: "Signering & uppstart",
-        text: "Ni godkänner offerten. Vi samlar in material — logga, texter, bilder — och påbörjar designarbetet.",
-      },
-      {
-        number: "02",
-        title: "Demoversion klar",
-        text: "Vi presenterar en komplett demoversion av er hemsida som ni kan granska och ge feedback på.",
-      },
-      {
-        number: "03",
-        title: "Korrigeringar",
-        text: "Vi justerar efter era önskemål. Upp till två korrigeringsrundor ingår i priset.",
-      },
-      {
-        number: "04",
-        title: "Lansering",
-        text: "Vi publicerar hemsidan, kopplar domänen och säkerställer att allt fungerar. Ni äger allt.",
-      },
-    ],
-    support_cards: src.support_cards ?? [
-      {
-        icon: "check-circle",
-        title: "Innan lansering",
-        text: "Upp till två korrigeringsrundor ingår i priset efter att demoversionen presenterats. Vi finslipar tills ni är nöjda.",
-      },
-      {
-        icon: "edit",
-        title: "Egna ändringar",
-        text: "Hemsidan byggs i Builder.io — ni kan själva göra enklare justeringar av texter och bilder utan att behöva kontakta oss.",
-      },
-      {
-        icon: "headphones",
-        title: "Support efter lansering",
-        text: "Behöver ni hjälp med ändringar efter lansering? Vi finns tillgängliga på timdebitering — 1 500 kr/h exkl. moms.",
-      },
-      {
-        icon: "shield",
-        title: "Full äganderätt",
-        text: "Vid leverans äger ni hemsidan helt. Inga inlåsningseffekter, inga löpande avgifter från vårt håll.",
-      },
-    ],
-    tech_items: src.tech_items ?? [
-      {
-        icon: "smartphone",
-        title: "Mobilanpassat",
-        text: "Perfekt på alla enheter",
-      },
-      {
-        icon: "search",
-        title: "SEO-optimerat",
-        text: "Syns på Google lokalt",
-      },
-      {
-        icon: "zap",
-        title: "Snabb laddtid",
-        text: "Optimerad prestanda",
-      },
-      {
-        icon: "lock",
-        title: "SSL-krypterad",
-        text: "Säker anslutning",
-      },
-    ],
-    founders: src.founders ?? [
-      {
-        initials: "RJ",
-        name: "Rasmus Jönsson",
-        role: "Medgrundare & Teknisk ansvarig",
-        description:
-          "Ansvarar för teknik och implementation. Fokuserar på robusta lösningar och att varje leverans ger mätbar effekt.",
-      },
-      {
-        initials: "IP",
-        name: "Isak Persson",
-        role: "Medgrundare & Affärsutveckling",
-        description:
-          "Ansvarar för affärsutveckling och uppföljning. Varje lösning ska ha ett tydligt syfte och ett resultat ni kan följa.",
-      },
-    ],
-    problem_section_title: src.problem_section_title ?? null,
-    package_section_title:
-      src.package_section_title ?? "Välj det som passar er",
-    package_section_text:
-      src.package_section_text ??
-      "Paketet nedan är skräddarsytt för er verksamhet och era behov.",
-    reference_section_title:
-      src.reference_section_title ?? "Hemsidor vi har byggt",
-    reference_section_text:
-      src.reference_section_text ??
-      "Här är ett urval av webbplatser vi levererat — både ensidiga och flersidiga lösningar för företag i liknande branscher.",
-    reference_projects: src.reference_projects ?? null,
-    process_section_title:
-      src.process_section_title ?? "Från signering till lanserad hemsida",
-    process_section_text:
-      src.process_section_text ??
-      "En tydlig process där ni alltid vet vad som händer härnäst.",
-    support_section_title:
-      src.support_section_title ?? "Vad som gäller efter lansering",
-    tech_section_title:
-      src.tech_section_title ?? "Byggt för att synas och prestera",
-    about_section_title: src.about_section_title ?? "Vilka är Axona Digital?",
-    about_section_text:
-      src.about_section_text ??
-      "Vi är en digital byrå i Östersund som hjälper svenska företag med hemsidor, e-handel och AI-lösningar. Varje leverans ska ge mätbar effekt — inte bara se bra ut.",
-    price_summary_bullets: src.price_summary_bullets ?? null,
-    recurring_amount: context.recurringAmount ?? null,
-    recurring_interval: context.recurringInterval ?? null,
-  };
+  return enriched;
 }
