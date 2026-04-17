@@ -124,69 +124,71 @@ export const CallLogModal = () => {
           Logga samtal
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] grid-rows-[auto_1fr_auto] overflow-hidden">
         <DialogHeader>
           <DialogTitle>Logga samtal</DialogTitle>
           <DialogDescription>
             Registrera ett samtal med {company?.name}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="outcome">Resultat</Label>
-            <Select
-              value={outcome}
-              onValueChange={(value) =>
-                setOutcome(value as CallLog["call_outcome"])
-              }
-            >
-              <SelectTrigger id="outcome">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {outcomeOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="notes">Anteckningar</Label>
-            <Textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Vad hände under samtalet?"
-              rows={4}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="followup_date">Uppföljningsdatum och tid</Label>
-            <input
-              id="followup_date"
-              type="datetime-local"
-              value={followupDate}
-              onChange={(e) => setFollowupDate(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            />
-          </div>
-
-          {followupDate && (
+        <div className="overflow-y-auto min-h-0 pr-1">
+          <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="followup_note">Uppföljningsnotering</Label>
+              <Label htmlFor="outcome">Resultat</Label>
+              <Select
+                value={outcome}
+                onValueChange={(value) =>
+                  setOutcome(value as CallLog["call_outcome"])
+                }
+              >
+                <SelectTrigger id="outcome">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {outcomeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="notes">Anteckningar</Label>
               <Textarea
-                id="followup_note"
-                value={followupNote}
-                onChange={(e) => setFollowupNote(e.target.value)}
-                placeholder="Vad ska göras vid uppföljningen?"
-                rows={2}
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Vad hände under samtalet?"
+                rows={4}
               />
             </div>
-          )}
+
+            <div className="grid gap-2">
+              <Label htmlFor="followup_date">Uppföljningsdatum och tid</Label>
+              <input
+                id="followup_date"
+                type="datetime-local"
+                value={followupDate}
+                onChange={(e) => setFollowupDate(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
+
+            {followupDate && (
+              <div className="grid gap-2">
+                <Label htmlFor="followup_note">Uppföljningsnotering</Label>
+                <Textarea
+                  id="followup_note"
+                  value={followupNote}
+                  onChange={(e) => setFollowupNote(e.target.value)}
+                  placeholder="Vad ska göras vid uppföljningen?"
+                  rows={2}
+                />
+              </div>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
