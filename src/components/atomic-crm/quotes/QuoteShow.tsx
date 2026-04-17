@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import type { Identifier } from "ra-core";
 import {
   ShowBase,
   useDataProvider,
@@ -15,6 +16,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  Link,
   Pencil,
   Check,
   X,
@@ -74,6 +76,58 @@ export const QuoteShow = ({ open, id }: { open: boolean; id?: string }) => {
     </Dialog>
   );
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// URL helper — builds the customer-facing quote link (NOT the pdf_url artifact).
+// Used by CopyCustomerLinkButton and PreviewContractButton.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildCustomerQuoteUrl(
+  id: Identifier,
+  approvalToken?: string | null,
+): string {
+  const base = `${window.location.origin}/quote.html?id=${id}`;
+  return approvalToken ? `${base}&token=${approvalToken}` : base;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CopyCustomerLinkButton — copies the real customer link to clipboard.
+// Visible only when a PDF artifact exists (serve_quote has html_content to serve)
+// and the quote is not declined or expired.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CopyCustomerLinkButton() {
+  const record = useRecordContext<Quote>();
+  const notify = useNotify();
+  const translate = useTranslate();
+
+  if (!record) return null;
+  if (!record.pdf_url || ["declined", "expired"].includes(record.status))
+    return null;
+
+  const handleCopy = () => {
+    const url = buildCustomerQuoteUrl(record.id, record.approval_token);
+    navigator.clipboard.writeText(url).then(
+      () =>
+        notify("resources.quotes.notifications.link_copied", {
+          type: "info",
+          _: "Länk kopierad",
+        }),
+      () =>
+        notify("resources.quotes.notifications.link_copy_failed", {
+          type: "warning",
+          _: "Kunde inte kopiera länken",
+        }),
+    );
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={handleCopy}>
+      <Link className="w-4 h-4 mr-1" />
+      {translate("resources.quotes.actions.copy_link", { _: "Kundlänk" })}
+    </Button>
+  );
+}
 
 const QuoteShowMobileWrapper = () => {
   const record = useRecordContext<Quote>();
@@ -181,6 +235,7 @@ const QuoteShowMobileWrapper = () => {
             displayText && <PreviewContractButton />}
           {(record.status === "generated" || record.status === "draft") &&
             displayText && <SendForSigningButton />}
+          <CopyCustomerLinkButton />
           {record.pdf_url && (
             <Button variant="outline" size="sm" asChild>
               <a
@@ -441,6 +496,7 @@ const QuoteShowContent = () => {
             displayText && <PreviewContractButton />}
           {(record.status === "generated" || record.status === "draft") &&
             displayText && <SendForSigningButton />}
+          <CopyCustomerLinkButton />
           {record.pdf_url && (
             <Button variant="outline" size="sm" asChild>
               <a
@@ -947,12 +1003,15 @@ const PreviewContractButton = () => {
           : "Inga rader";
 
       // Include approval_token so this link continues to work when
+      // Always use the real customer-facing URL, never the pdf_url artifact.
+      // Include approval_token so this link continues to work when
       // QUOTE_PUBLIC_TOKEN_ENFORCEMENT is eventually flipped on.
       // Do NOT flip that flag until production SQL-check confirms no
       // legacy tokenless links are still active (see Fas 5 preflight).
-      const proposalUrl =
-        record.pdf_url ||
-        `${window.location.origin}/quote.html?id=${record.id}${record.approval_token ? `&token=${record.approval_token}` : ""}`;
+      const proposalUrl = buildCustomerQuoteUrl(
+        record.id,
+        record.approval_token,
+      );
 
       const result: ContractField[] = [
         { name: "Offertnummer", value: record.quote_number || `#${record.id}` },
