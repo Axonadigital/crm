@@ -113,15 +113,18 @@ export const LeadImportFilterSettings = () => {
           {hasActiveFilters && <span className="ml-1">Aktiva filter</span>}
         </Button>
       </SheetTrigger>
-      <SheetContent onClick={(e) => e.stopPropagation()}>
-        <SheetHeader>
+      <SheetContent
+        className="flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SheetHeader className="shrink-0">
           <SheetTitle>Filterinställningar</SheetTitle>
           <p className="text-muted-foreground text-sm">
             Rader som matchar ett filter hoppas över vid import.
           </p>
         </SheetHeader>
 
-        <div className="mt-6 flex flex-col gap-5">
+        <div className="mt-6 flex flex-1 flex-col gap-5 overflow-y-auto pr-1">
           {/* Revenue */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="min-revenue">Minsta omsättning (kkr)</Label>
@@ -213,7 +216,7 @@ export const LeadImportFilterSettings = () => {
           </div>
         </div>
 
-        <div className="mt-8 flex gap-2">
+        <div className="mt-4 shrink-0 border-t pt-4 flex gap-2">
           <Button onClick={handleSave} disabled={isSaving}>
             {isSaving ? "Sparar..." : "Spara filter"}
           </Button>
