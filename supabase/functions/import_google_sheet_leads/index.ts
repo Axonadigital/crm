@@ -32,6 +32,15 @@ type ServiceAccountConfig = {
   token_uri: string;
 };
 
+type ImportFilterConfig = {
+  min_revenue_kkr?: number | null;
+  exclude_holding?: boolean;
+  exclude_name_keywords?: string[];
+  exclude_org_forms?: string[];
+  min_employees?: number | null;
+  max_employees?: number | null;
+};
+
 type LeadImportSource = {
   id: number;
   name: string;
@@ -44,6 +53,7 @@ type LeadImportSource = {
   last_successful_run_at: string | null;
   last_run_status: "idle" | "running" | "success" | "partial" | "failed";
   last_run_message: string | null;
+  filter_config: ImportFilterConfig;
 };
 
 type LeadImportRun = {
@@ -95,7 +105,7 @@ type ParsedSheetRow = {
 
 type ProcessedRowResult = {
   sourceRowNumber: number;
-  status: "imported" | "duplicate" | "failed";
+  status: "imported" | "duplicate" | "failed" | "filtered";
   companyId: number | null;
   importedAt: string | null;
 };
@@ -158,6 +168,122 @@ const SWEDISH_COUNTY_CODES: Record<string, string> = {
   norrbotten: "BD",
   norrbottens_lan: "BD",
 };
+
+function parseSwedishNumber(value: string | undefined): number | null {
+  if (!value) return null;
+  // Handle Swedish formatting: "1 234 567" or "1.234.567" or "1234567"
+  const cleaned = value
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/\./g, "")
+    .replace(/,/g, ".");
+  const parsed = parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+type FilterResult = { skip: true; reason: string } | { skip: false };
+
+function applyImportFilters(
+  row: Record<string, string>,
+  config: ImportFilterConfig,
+): FilterResult {
+  const orgForm = (
+    row.organisationsform ||
+    row.organisations_form ||
+    row.org_form ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const companyName = (
+    row.namn ||
+    row.name ||
+    row.foretagsnamn ||
+    ""
+  ).toLowerCase();
+
+  // Exclude holding companies by org form
+  if (config.exclude_holding && orgForm.includes("holding")) {
+    return { skip: true, reason: "holding organisationsform" };
+  }
+
+  // Exclude by org form list
+  if (config.exclude_org_forms?.length) {
+    const matched = config.exclude_org_forms.find((f) =>
+      orgForm.includes(f.toLowerCase()),
+    );
+    if (matched) return { skip: true, reason: `org form "${matched}"` };
+  }
+
+  // Exclude by name keywords
+  if (config.exclude_name_keywords?.length) {
+    const matched = config.exclude_name_keywords.find((kw) =>
+      companyName.includes(kw.toLowerCase()),
+    );
+    if (matched) return { skip: true, reason: `name keyword "${matched}"` };
+  }
+
+  // Revenue filter (sheet column in kkr)
+  if (config.min_revenue_kkr != null) {
+    const rawRevenue =
+      row.omsattning ||
+      row.omsättning ||
+      row.omsattning_tkr ||
+      row.omsattning_kkr ||
+      row.revenue ||
+      row.revenues ||
+      "";
+    const revenue = parseSwedishNumber(rawRevenue);
+    // If column exists but is blank, skip (no revenue data = unknown)
+    // If column doesn't exist in row at all, pass through
+    const hasRevenueColumn =
+      "omsattning" in row ||
+      "omsättning" in row ||
+      "omsattning_tkr" in row ||
+      "omsattning_kkr" in row ||
+      "revenue" in row ||
+      "revenues" in row;
+    if (
+      hasRevenueColumn &&
+      (revenue === null || revenue < config.min_revenue_kkr)
+    ) {
+      return {
+        skip: true,
+        reason: `revenue ${revenue ?? "unknown"} kkr < min ${config.min_revenue_kkr} kkr`,
+      };
+    }
+  }
+
+  // Employee count filters
+  const rawEmployees =
+    row.anstallda ||
+    row.antal_anstallda ||
+    row.employees ||
+    row.antal_medarbetare ||
+    "";
+  const employees = parseSwedishNumber(rawEmployees);
+
+  if (config.min_employees != null && employees !== null) {
+    if (employees < config.min_employees) {
+      return {
+        skip: true,
+        reason: `employees ${employees} < min ${config.min_employees}`,
+      };
+    }
+  }
+
+  if (config.max_employees != null && employees !== null) {
+    if (employees > config.max_employees) {
+      return {
+        skip: true,
+        reason: `employees ${employees} > max ${config.max_employees}`,
+      };
+    }
+  }
+
+  return { skip: false };
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -505,6 +631,7 @@ async function finalizeRun(
     rows_scanned: number;
     rows_inserted: number;
     rows_skipped_duplicates: number;
+    rows_skipped_filtered: number;
     rows_failed: number;
     actual_batch_size: number;
     imported_company_ids: number[];
@@ -541,6 +668,7 @@ async function finalizeRun(
       rows_scanned: payload.rows_scanned,
       rows_inserted: payload.rows_inserted,
       rows_skipped_duplicates: payload.rows_skipped_duplicates,
+      rows_skipped_filtered: payload.rows_skipped_filtered,
       rows_failed: payload.rows_failed,
       actual_batch_size: payload.actual_batch_size,
       imported_company_ids: payload.imported_company_ids,
@@ -997,6 +1125,7 @@ async function handleImportNext(
         rows_scanned: 0,
         rows_inserted: 0,
         rows_skipped_duplicates: 0,
+        rows_skipped_filtered: 0,
         rows_failed: 0,
         actual_batch_size: 0,
         imported_company_ids: [],
@@ -1012,6 +1141,7 @@ async function handleImportNext(
         rows_scanned: 0,
         rows_inserted: 0,
         rows_skipped_duplicates: 0,
+        rows_skipped_filtered: 0,
         rows_failed: 0,
         actual_batch_size: 0,
         imported_company_ids: [],
@@ -1031,8 +1161,10 @@ async function handleImportNext(
     const errors: string[] = [];
     let rowsInserted = 0;
     let rowsSkippedDuplicates = 0;
+    let rowsSkippedFiltered = 0;
     let rowsFailed = 0;
     let lastProcessedRow = claimedSource.last_imported_row;
+    const filterConfig: ImportFilterConfig = claimedSource.filter_config ?? {};
 
     for (const pendingRow of pendingRows) {
       lastProcessedRow = pendingRow.sourceRowNumber;
@@ -1051,6 +1183,21 @@ async function handleImportNext(
         processedRows.push({
           sourceRowNumber: pendingRow.sourceRowNumber,
           status: "failed",
+          companyId: null,
+          importedAt: null,
+        });
+        continue;
+      }
+
+      const filterResult = applyImportFilters(
+        pendingRow.rowRecord,
+        filterConfig,
+      );
+      if (filterResult.skip) {
+        rowsSkippedFiltered++;
+        processedRows.push({
+          sourceRowNumber: pendingRow.sourceRowNumber,
+          status: "filtered",
           companyId: null,
           importedAt: null,
         });
@@ -1164,6 +1311,7 @@ async function handleImportNext(
       rows_scanned: pendingRows.length,
       rows_inserted: rowsInserted,
       rows_skipped_duplicates: rowsSkippedDuplicates,
+      rows_skipped_filtered: rowsSkippedFiltered,
       rows_failed: rowsFailed,
       actual_batch_size: pendingRows.length,
       imported_company_ids: importedCompanyIds,
@@ -1182,6 +1330,7 @@ async function handleImportNext(
       rows_scanned: pendingRows.length,
       rows_inserted: rowsInserted,
       rows_skipped_duplicates: rowsSkippedDuplicates,
+      rows_skipped_filtered: rowsSkippedFiltered,
       rows_failed: rowsFailed,
       actual_batch_size: pendingRows.length,
       imported_company_ids: importedCompanyIds,
@@ -1209,6 +1358,7 @@ async function handleImportNext(
       rows_scanned: 0,
       rows_inserted: 0,
       rows_skipped_duplicates: 0,
+      rows_skipped_filtered: 0,
       rows_failed: 1,
       actual_batch_size: 0,
       imported_company_ids: [],

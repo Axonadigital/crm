@@ -156,6 +156,15 @@ export type Company = {
     | "disqualified";
 } & Pick<RaRecord, "id">;
 
+export type ImportFilterConfig = {
+  min_revenue_kkr?: number | null;
+  exclude_holding?: boolean;
+  exclude_name_keywords?: string[];
+  exclude_org_forms?: string[];
+  min_employees?: number | null;
+  max_employees?: number | null;
+};
+
 export type LeadImportSource = {
   name: string;
   source_type: "google_sheet_csv";
@@ -167,6 +176,7 @@ export type LeadImportSource = {
   last_successful_run_at?: string | null;
   last_run_status: "idle" | "running" | "success" | "partial" | "failed";
   last_run_message?: string | null;
+  filter_config?: ImportFilterConfig;
   created_at?: string;
   updated_at?: string;
 } & Pick<RaRecord, "id">;
@@ -181,6 +191,7 @@ export type LeadImportRun = {
   rows_scanned: number;
   rows_inserted: number;
   rows_skipped_duplicates: number;
+  rows_skipped_filtered: number;
   rows_failed: number;
   sheet_writeback_status: "not_attempted" | "success" | "partial" | "failed";
   sheet_rows_marked: number;

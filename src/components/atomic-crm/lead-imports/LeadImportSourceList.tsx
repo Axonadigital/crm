@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { TopToolbar } from "../layout/TopToolbar";
+import { LeadImportFilterSettings } from "./LeadImportFilterSettings";
 import type { LeadImportSource } from "../types";
 import type { CrmDataProvider } from "../providers/supabase/dataProvider";
 
@@ -53,7 +54,9 @@ const toRowRanges = (rowNumbers?: number[]) => {
     }
 
     ranges.push(
-      rangeStart === previous ? String(rangeStart) : `${rangeStart}-${previous}`,
+      rangeStart === previous
+        ? String(rangeStart)
+        : `${rangeStart}-${previous}`,
     );
     rangeStart = current;
     previous = current;
@@ -242,10 +245,14 @@ const TriggerImportButton = () => {
         result.sheet_writeback_status !== "not_attempted"
           ? ` Sheets: ${result.sheet_writeback_status}`
           : "";
+      const filteredPart =
+        (result.rows_skipped_filtered ?? 0) > 0
+          ? `, ${result.rows_skipped_filtered} filtrerade`
+          : "";
       const rowStatsMessage =
         formatRowStats(result.row_stats) ?? result.last_run_message ?? "";
       notify(
-        `Import klar${isRangeImport ? ` för rad ${parsedStartRow}-${derivedEndRow}` : ""}: begärde ${requestedBatchSize}, körde ${actualBatchSize}, ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter.${writebackStatus}${rowStatsMessage ? ` ${rowStatsMessage}` : ""}`,
+        `Import klar${isRangeImport ? ` för rad ${parsedStartRow}-${derivedEndRow}` : ""}: begärde ${requestedBatchSize}, körde ${actualBatchSize}, ${result.rows_inserted ?? 0} nya, ${result.rows_skipped_duplicates ?? 0} dubbletter${filteredPart}.${writebackStatus}${rowStatsMessage ? ` ${rowStatsMessage}` : ""}`,
         { type: "success" },
       );
       refresh();
@@ -339,6 +346,9 @@ export const LeadImportSourceList = () => {
           <LastSuccessfulRunField />
         </DataTable.Col>
         <DataTable.Col source="last_run_message" label="Meddelande" />
+        <DataTable.Col label="Filter">
+          <LeadImportFilterSettings />
+        </DataTable.Col>
         <DataTable.Col label="Kör nu">
           <TriggerImportButton />
         </DataTable.Col>
