@@ -666,6 +666,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/lead-imports/LeadImportFilterSettings.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/layout/mobileLayoutConstants.ts",
           "type": "registry:component"
         },
