@@ -147,12 +147,35 @@ export type UpsellOffer = {
   pitch: string;
 };
 
+/**
+ * En post i den handlingsdrivna åtgärdsplanen. Knyts till en `ReportFinding`
+ * via `key` så att rapporten kan koppla "vad vi ser" till rätt prioritering.
+ */
+export type ReportActionItem = {
+  /** Matchar ReportFinding.key (samma sträng som findings/upsell-katalogen). */
+  key: string;
+  /** "Vad vi ser" — observationen, gärna med siffran. */
+  what_we_see: string;
+  /** "Vad det betyder" — konsekvens för affären, i klartext. */
+  what_it_means: string;
+  /** "Så löser vi det" — konkret insats, namnger Axona-tjänsten. */
+  how_we_help: string;
+  /** "Nästa steg" — tydlig inbjudan, utan pris. */
+  next_step: string;
+};
+
 /** AI-genererat, kundvänt innehåll. Speglar monthlyReportContentSchema. */
 export type ReportAiContent = {
   greeting: string;
   summary: string;
   recommended_action: string;
   upsell_pitch: string;
+  /**
+   * Handlingsdriven åtgärdsplan (1–3 poster). Mejlet leder med post 0.
+   * Valfri på typnivå för bakåtkompatibilitet med äldre lagrade rapporter och
+   * manuella send-time-overrides — renderarna faller tillbaka snyggt om den saknas.
+   */
+  action_plan?: ReportActionItem[];
 };
 
 export type ReportStatus = "good" | "needs_attention" | "poor" | "missing";

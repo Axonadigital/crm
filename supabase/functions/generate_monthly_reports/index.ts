@@ -312,6 +312,7 @@ async function generateReportForCompany(
     periodLabel,
     metrics,
     upsell: upsells[0] ?? null,
+    recommendations: viewModel.recommendations,
     geoReadiness: geoReadiness(latest.seo_checks),
     hasSearchData,
   });
