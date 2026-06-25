@@ -20,7 +20,9 @@ import type { ReportAiContent } from "./types.ts";
 
 // Aktuell Sonnet (claude-sonnet-4-20250514 är utfasad → 404 not_found).
 const ANTHROPIC_MODEL = "claude-sonnet-4-6";
-const ANTHROPIC_MAX_TOKENS = 1500;
+// Höjt från 1500 → 2800 när den strukturerade action_plan (1–3 poster à 4 fält)
+// lades till; 1500 räckte inte alltid och svaret klipptes → JSON-parse-miss.
+const ANTHROPIC_MAX_TOKENS = 2800;
 const ANTHROPIC_API_VERSION = "2023-06-01";
 
 export interface GenerateReportContentInput {

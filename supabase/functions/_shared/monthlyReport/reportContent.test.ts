@@ -7,7 +7,7 @@ import {
 } from "./buildReportEmailHtml.ts";
 import { computeReportMetrics } from "./computeReportMetrics.ts";
 import { parseReportContent } from "./generateReportContent.ts";
-import type { ReportSnapshot } from "./types.ts";
+import type { ReportSnapshot, ReportViewModel } from "./types.ts";
 
 const snap: ReportSnapshot = {
   performance_score: 81,
@@ -29,8 +29,28 @@ describe("monthlyReportContentSchema", () => {
       summary: "Bra månad.",
       recommended_action: "Vi föreslår SEO.",
       upsell_pitch: "Det lyfter er.",
+      action_plan: [
+        {
+          key: "low_position",
+          what_we_see: "Snittposition 18.",
+          what_it_means: "Utanför första sidan.",
+          how_we_help: "Vi optimerar med SEO-optimering.",
+          next_step: "Hör av er så börjar vi.",
+        },
+      ],
     });
     expect(ok.success).toBe(true);
+  });
+
+  it("rejects a payload that is missing action_plan", () => {
+    expect(
+      monthlyReportContentSchema.safeParse({
+        greeting: "Hej Anna,",
+        summary: "Bra månad.",
+        recommended_action: "Vi föreslår SEO.",
+        upsell_pitch: "Det lyfter er.",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects missing fields and unknown keys", () => {
@@ -80,13 +100,26 @@ describe("buildMonthlyReportPrompts", () => {
         description: "Nära förstasidan.",
         pitch: "Ett kliv kvar.",
       },
+      recommendations: [
+        {
+          key: "low_position",
+          severity: "medium",
+          title: "Nära första sidan",
+          description: "Flera sökord ligger precis utanför topp 10.",
+          service: "SEO-optimering",
+        },
+      ],
       geoReadiness: "Strukturerad data finns.",
       hasSearchData: true,
     });
     expect(prompt).toContain("JVS Maskiner AB");
     expect(prompt).toContain("Klick från Google: 23");
     expect(prompt).toContain("SEO-optimering");
+    expect(prompt).toContain("key: low_position");
     expect(systemPrompt).toContain("Nämn ALDRIG pris");
+    expect(systemPrompt).toContain("Börja sammanfattningen");
+    expect(systemPrompt).toContain("action_plan");
+    expect(prompt).toContain("börja med det positiva");
   });
 
   it("tells the model to skip search metrics when there is no GSC data", () => {
@@ -97,6 +130,7 @@ describe("buildMonthlyReportPrompts", () => {
       periodLabel: "juni 2026",
       metrics,
       upsell: null,
+      recommendations: [],
       geoReadiness: "ok",
       hasSearchData: false,
     });
@@ -121,18 +155,56 @@ describe("buildReportEmailHtml", () => {
         top_queries: [],
       },
     });
+    const viewModel: ReportViewModel = {
+      version: 2,
+      companyName: "JVS Maskiner AB",
+      period: { start: "2026-06-01", end: "2026-06-30", label: "juni 2026" },
+      comparisonPeriod: null,
+      coverage: { available: 4, total: 4, ratio: 1, missingSources: [] },
+      metrics,
+      statuses: {
+        googleVisibility: "good",
+        pageExperience: "needs_attention",
+        localVisibility: "missing",
+        technicalFoundation: "good",
+      },
+      technicalChecks: [],
+      recommendations: [
+        {
+          key: "slow_lcp",
+          severity: "medium",
+          title: "Långsam laddtid",
+          description: "Sidan laddar långsamt för mobila besökare.",
+          service: "Prestandaoptimering",
+        },
+      ],
+      primaryRecommendation: {
+        key: "slow_lcp",
+        severity: "medium",
+        title: "Långsam laddtid",
+        description: "Sidan laddar långsamt för mobila besökare.",
+        service: "Prestandaoptimering",
+      },
+    };
     const html = buildReportEmailHtml({
       companyName: "JVS Maskiner AB",
       periodLabel: "juni 2026",
       aiContent,
       metrics,
+      viewModel,
       hasSearchData: true,
       replyToEmail: "hej@axonadigital.se",
     });
-    expect(html).toContain("Klick till er sajt");
+    expect(html).toContain("Klick från Google");
     expect(html).toContain("Vi föreslår en SEO-insats.");
     expect(html).toContain("Snittposition (lägre är bättre)");
     expect(html).toContain("jvs maskiner");
+    // Mailet leder med #1-åtgärden (fallback ur recommendations när AI saknar action_plan)
+    expect(html).toContain("Viktigast just nu");
+    expect(html).toContain("Långsam laddtid");
+    expect(html).toContain("Så löser vi det");
+    expect(html).toContain("Rekommenderad tilläggstjänst");
+    expect(html).toContain("Prestandaoptimering");
   });
 
   it("escapes HTML in customer-controlled values", () => {
@@ -160,7 +232,7 @@ describe("buildReportEmailHtml", () => {
       hasSearchData: false,
       replyToEmail: "hej@axonadigital.se",
     });
-    expect(html).not.toContain("Klick till er sajt");
+    expect(html).not.toContain("Klick från Google");
     expect(html).toContain("Laddtid");
   });
 

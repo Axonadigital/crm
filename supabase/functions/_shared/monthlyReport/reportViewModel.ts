@@ -178,15 +178,76 @@ function trendPhrase(value: number | null): string {
     : `${Math.abs(Math.round(value))} % lägre än månaden före`;
 }
 
+function positiveFallbackSignal(viewModel: ReportViewModel): string {
+  const metrics = viewModel.metrics;
+  if (metrics.clicks.deltaPct != null && metrics.clicks.deltaPct > 0) {
+    return `Det starkaste tecknet är att klicken från Google blev ${trendPhrase(metrics.clicks.deltaPct)}.`;
+  }
+  if (
+    metrics.impressions.deltaPct != null &&
+    metrics.impressions.deltaPct > 0
+  ) {
+    return `Det starkaste tecknet är att ni syntes ${trendPhrase(metrics.impressions.deltaPct)} i Google.`;
+  }
+  if (
+    metrics.position.deltaAbsolute != null &&
+    metrics.position.deltaAbsolute < 0
+  ) {
+    return `Snittpositionen förbättrades ${Math.abs(metrics.position.deltaAbsolute).toFixed(1)} steg, där lägre tal är bättre.`;
+  }
+  if (metrics.clicks.current != null) {
+    return `Google gav ${metrics.clicks.current.toLocaleString("sv-SE")} besök till er webbplats och utvecklingen var ${trendPhrase(metrics.clicks.deltaPct)}.`;
+  }
+  return `Rapporten visar sidans tekniska och lokala nuläge för ${viewModel.period.label}.`;
+}
+
+function improvementFallbackSignal(viewModel: ReportViewModel): string {
+  const metrics = viewModel.metrics;
+  if (metrics.lcp_ms.current != null && metrics.lcp_ms.current > 2500) {
+    return `Den tydligaste förbättringen är laddtiden på ${(metrics.lcp_ms.current / 1000).toFixed(1)} sekunder, där snabbare sida kan minska avhopp innan besökaren tar kontakt.`;
+  }
+  if (viewModel.primaryRecommendation) {
+    return `${viewModel.primaryRecommendation.title} är nästa tydliga möjlighet att stärka resultatet.`;
+  }
+  if (metrics.position.current != null && metrics.position.current > 10) {
+    return "Nästa möjlighet är att flytta fler sökord närmare första sidan i Google.";
+  }
+  return "Nästa steg är att fortsätta förstärka den synlighet som redan finns.";
+}
+
+/** Deterministisk åtgärdsplan (top 3 findings) när AI-texten saknas/underkänns. */
+function buildFallbackActionPlan(
+  viewModel: ReportViewModel,
+): ReportAiContent["action_plan"] {
+  const top = viewModel.recommendations.slice(0, 3);
+  if (top.length === 0) {
+    return [
+      {
+        key: "fortsatt_forbattring",
+        what_we_see:
+          "Inga tydliga kritiska brister hittades i månadens underlag.",
+        what_it_means:
+          "Grunden är på plats — nu handlar det om att fortsätta bygga synlighet steg för steg.",
+        how_we_help:
+          "Vi fortsätter med löpande innehålls- och synlighetsarbete så att utvecklingen håller i sig.",
+        next_step: "Hör av er så stämmer vi av nästa fokus tillsammans.",
+      },
+    ];
+  }
+  return top.map((rec) => ({
+    key: rec.key,
+    what_we_see: rec.title,
+    what_it_means: rec.description,
+    how_we_help: `Med ${rec.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
+    next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
+  }));
+}
+
 export function buildFallbackReportContent(
   viewModel: ReportViewModel,
   recipientName: string | null,
 ): ReportAiContent {
-  const metrics = viewModel.metrics;
-  const searchSummary =
-    metrics.clicks.current != null
-      ? `Under ${viewModel.period.label} gav Google ${metrics.clicks.current.toLocaleString("sv-SE")} besök till er webbplats, ${trendPhrase(metrics.clicks.deltaPct)}.`
-      : `Under ${viewModel.period.label} kunde vi inte läsa fullständig sökdata, men rapporten visar sidans tekniska och lokala nuläge.`;
+  const searchSummary = `${positiveFallbackSignal(viewModel)} ${improvementFallbackSignal(viewModel)}`;
   const recommendation = viewModel.primaryRecommendation;
   return {
     greeting: recipientName?.trim()
@@ -194,10 +255,11 @@ export function buildFallbackReportContent(
       : "Hej,",
     summary: searchSummary,
     recommended_action: recommendation
-      ? `Vi rekommenderar att börja med: ${recommendation.title.toLowerCase()}.`
+      ? `Vi rekommenderar att börja med ${recommendation.service.toLowerCase()}: ${recommendation.title.toLowerCase()}.`
       : "Vi rekommenderar att fortsätta följa utvecklingen och göra en riktad innehållsförbättring under nästa månad.",
     upsell_pitch: recommendation
-      ? `${recommendation.description} Det här hanterar vi inom ${recommendation.service}.`
+      ? `${recommendation.description} Med ${recommendation.service} kan vi arbeta praktiskt med just den delen och göra förbättringen mätbar över tid.`
       : "Sajten har inga tydliga kritiska brister i de källor som kunde analyseras.",
+    action_plan: buildFallbackActionPlan(viewModel),
   };
 }

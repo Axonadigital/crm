@@ -10,6 +10,17 @@
 
 import { z } from "npm:zod@4";
 
+/** En post i den handlingsdrivna åtgärdsplanen (knyts till finding via `key`). */
+export const reportActionItemSchema = z
+  .object({
+    key: z.string().min(1),
+    what_we_see: z.string().min(1),
+    what_it_means: z.string().min(1),
+    how_we_help: z.string().min(1),
+    next_step: z.string().min(1),
+  })
+  .strict();
+
 export const monthlyReportContentSchema = z
   .object({
     /** Hälsningsfras, t.ex. "Hej Anna," */
@@ -20,6 +31,11 @@ export const monthlyReportContentSchema = z
     recommended_action: z.string().min(1),
     /** Motivering för den föreslagna tjänsten (utan pris). */
     upsell_pitch: z.string().min(1),
+    /**
+     * Handlingsdriven åtgärdsplan, 1–3 poster (en per prioriterad finding).
+     * Mejlet och PDF:en leder med post 0.
+     */
+    action_plan: z.array(reportActionItemSchema).min(1).max(3),
   })
   .strict();
 
