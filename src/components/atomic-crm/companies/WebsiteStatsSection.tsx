@@ -359,10 +359,52 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
           const keyB = b.period_end ?? b.period_start ?? b.fetched_at ?? "";
           return keyB.localeCompare(keyA);
         });
-  const selected =
+  const periodSnapshot =
     visibleSnapshots.find(
       (snapshot) => String(snapshot.id) === selectedSnapshotId,
     ) ?? visibleSnapshots[0];
+  // Nuläges-källor (Google Business, prestanda, teknisk SEO) bor på senaste
+  // LIVE-analysen — inte på backfillade GSC-only-månader. Slå in dem i den valda
+  // perioden så recensioner/prestanda alltid visas, medan söktrafiken
+  // (search_console) speglar den valda kalendermånaden.
+  const liveSnapshot = [...(snapshots ?? [])]
+    .filter(
+      (snapshot) =>
+        !snapshot.data_coverage?.backfilled &&
+        (snapshot.business_profile != null ||
+          snapshot.pagespeed != null ||
+          snapshot.seo_checks != null),
+    )
+    .sort((a, b) => (b.fetched_at ?? "").localeCompare(a.fetched_at ?? ""))[0];
+  const usesLiveOverlay = Boolean(
+    periodSnapshot &&
+      liveSnapshot &&
+      liveSnapshot.id !== periodSnapshot.id &&
+      periodSnapshot.business_profile == null &&
+      periodSnapshot.pagespeed == null &&
+      periodSnapshot.seo_checks == null,
+  );
+  const selected =
+    usesLiveOverlay && periodSnapshot && liveSnapshot
+      ? {
+          ...periodSnapshot,
+          fetched_at: liveSnapshot.fetched_at,
+          business_profile: liveSnapshot.business_profile,
+          pagespeed: liveSnapshot.pagespeed,
+          field_data: liveSnapshot.field_data,
+          seo_checks: liveSnapshot.seo_checks,
+          performance_score: liveSnapshot.performance_score,
+          seo_score: liveSnapshot.seo_score,
+          competitors: liveSnapshot.competitors,
+          gbp_actions: liveSnapshot.gbp_actions,
+          local_rank: liveSnapshot.local_rank,
+          findings: liveSnapshot.findings ?? periodSnapshot.findings,
+          source_status: {
+            ...periodSnapshot.source_status,
+            ...liveSnapshot.source_status,
+          },
+        }
+      : periodSnapshot;
   const comparison = selected
     ? snapshots?.find(
         (snapshot) =>
@@ -518,11 +560,12 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
     !selectedIsPartial && gsc && previousGsc
       ? gsc.position - previousGsc.position
       : null;
-  const coverageAvailable =
-    selected.data_coverage?.available_sources ??
-    ["pagespeed", "seo_crawl", "business_profile", "search_console"].filter(
-      (key) => sourceStatus(selected, key) === "available",
-    ).length;
+  const coverageAvailable = [
+    "pagespeed",
+    "seo_crawl",
+    "business_profile",
+    "search_console",
+  ].filter((key) => sourceStatus(selected, key) === "available").length;
   const missingSources = [
     "pagespeed",
     "seo_crawl",
@@ -668,13 +711,25 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
             </p>
           </div>
         ) : null}
-        {selected.data_coverage?.backfilled ? (
+        {usesLiveOverlay ? (
+          <div className="mb-5 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+            <p className="font-medium">
+              Söktrafik från {formatDate(selected.period_start)} ·
+              nuläges-mätvärden
+            </p>
+            <p className="mt-1 text-xs">
+              Google Business, prestanda och teknisk SEO visar den senaste
+              mätningen (nuläge) — de kan inte hämtas bakåt i tiden. Söktrafiken
+              avser den valda månaden.
+            </p>
+          </div>
+        ) : selected.data_coverage?.backfilled ? (
           <div className="mb-5 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
             <p className="font-medium">Historisk månad</p>
             <p className="mt-1 text-xs">
               Endast söktrafik från Search Console — prestanda, teknisk SEO och
-              Google Business är ögonblicksmätningar och kan inte hämtas bakåt i
-              tiden.
+              Google Business saknas för historiska månader (ingen nuläges-
+              mätning gjord ännu).
             </p>
           </div>
         ) : missingSources.length > 0 ? (
