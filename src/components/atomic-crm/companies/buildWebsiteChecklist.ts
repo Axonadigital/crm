@@ -43,6 +43,11 @@ function fmtMs(n?: number | null): string | null {
   return `${Number(Math.round(n)).toLocaleString("sv-SE")} ms`;
 }
 
+function fmtKib(bytes?: number | null): string | null {
+  if (bytes == null || isNaN(bytes)) return null;
+  return `${Math.round(bytes / 1024).toLocaleString("sv-SE")} KiB`;
+}
+
 function fmtPct(ratio?: number | null): string | null {
   // CTR comes as a 0–1 ratio.
   if (ratio == null || isNaN(ratio)) return null;
@@ -100,12 +105,16 @@ function pagespeedSection(
     line("TTI", fmtMs(ps?.tti_ms)),
   ]);
 
+  const diagById = new Map((ps?.diagnostics ?? []).map((d) => [d.id, d]));
   const opps = ps?.opportunities?.length
     ? block(
         "#### Förbättringsmöjligheter (PageSpeed)",
-        ps.opportunities.map(
-          (o) => `- Spara ~${fmtMs(o.savings_ms) ?? "?"}: ${o.title}`,
-        ),
+        ps.opportunities.map((o) => {
+          const dv = diagById.get(o.id)?.display_value;
+          return `- Spara ~${fmtMs(o.savings_ms) ?? "?"}: ${o.title}${
+            dv ? ` (${dv})` : ""
+          }`;
+        }),
       )
     : null;
 
@@ -324,17 +333,57 @@ function localRankSection(s: WebsiteSnapshot): string | null {
 
 // --- Action sections -------------------------------------------------------
 
+/**
+ * Always-on performance fine-tuning actions from PageSpeed (lab, mobil).
+ * Surfaced even when the overall score is good enough that no slow_site/
+ * improvable_speed finding fires, so a concrete win (e.g. "trim 104 KiB unused
+ * JS", with the exact files) is never orphaned. Prefers the rich `diagnostics`
+ * (per-resource detail); falls back to the thin `opportunities` summary.
+ */
+function performanceActionsSection(s: WebsiteSnapshot): string | null {
+  const ps = s.pagespeed;
+  if (!ps) return null;
+  const diags = ps.diagnostics ?? [];
+  const lines: string[] = [];
+
+  if (diags.length) {
+    for (const d of diags) {
+      const savings = fmtMs(d.savings_ms);
+      const meta = [savings && `spara ~${savings}`, d.display_value]
+        .filter(Boolean)
+        .join(", ");
+      lines.push(`  - [ ] ${d.title}${meta ? ` (${meta})` : ""}`);
+      for (const item of d.items ?? []) {
+        const detail = [
+          fmtKib(item.wasted_bytes) && `${fmtKib(item.wasted_bytes)} oanvänt`,
+          fmtMs(item.wasted_ms) && `spara ${fmtMs(item.wasted_ms)}`,
+          fmtKib(item.total_bytes) && `av ${fmtKib(item.total_bytes)}`,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        lines.push(`    - ${item.url}${detail ? ` — ${detail}` : ""}`);
+      }
+    }
+  } else if (ps.opportunities?.length) {
+    for (const o of ps.opportunities) {
+      lines.push(`  - [ ] ${o.title} (spara ~${fmtMs(o.savings_ms) ?? "?"})`);
+    }
+  }
+
+  if (!lines.length) return null;
+  const score = s.performance_score ?? ps.performance_score;
+  return [
+    "### [ ] Prestanda-finjustering (PageSpeed)",
+    `Konkreta Lighthouse-åtgärder${
+      score != null ? ` (mobil prestanda ${score}/100)` : ""
+    } — åtgärda även om helhetspoängen redan är hög.`,
+    lines.join("\n"),
+  ].join("\n");
+}
+
 /** Data-driven sub-steps injected from the snapshot for a given finding. */
 function injectedSteps(finding: WebsiteFinding, s: WebsiteSnapshot): string[] {
   const out: string[] = [];
-  if (
-    (finding.key === "slow_site" || finding.key === "improvable_speed") &&
-    s.pagespeed?.opportunities?.length
-  ) {
-    for (const o of s.pagespeed.opportunities) {
-      out.push(`Spara ~${fmtMs(o.savings_ms) ?? "?"}: ${o.title}`);
-    }
-  }
   if (
     (finding.key === "no_clicks" ||
       finding.key === "low_position" ||
@@ -429,12 +478,19 @@ export function buildWebsiteChecklist(data: WebsiteChecklistData): string {
     .filter(Boolean)
     .join("\n\n");
 
-  const codeSection = [
-    "## Åtgärder Claude kan göra i koden",
-    codeFindings.length
-      ? codeFindings.map((f) => renderFinding(f, snapshot)).join("\n\n")
-      : "_Inga kod-åtgärder hittades._",
-  ].join("\n\n");
+  const perfActions = performanceActionsSection(snapshot);
+  const codeBody =
+    [
+      perfActions,
+      codeFindings.length
+        ? codeFindings.map((f) => renderFinding(f, snapshot)).join("\n\n")
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n") || "_Inga kod-åtgärder hittades._";
+  const codeSection = ["## Åtgärder Claude kan göra i koden", codeBody].join(
+    "\n\n",
+  );
 
   const manualSection = manualFindings.length
     ? [

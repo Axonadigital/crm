@@ -42,6 +42,22 @@ function makeSnapshot(): WebsiteSnapshot {
           savings_ms: 600,
         },
       ],
+      diagnostics: [
+        {
+          id: "uses-webp",
+          title: "Servera bilder i WebP",
+          kind: "opportunity",
+          display_value: "Est savings of 104 KiB",
+          savings_ms: 1200,
+          items: [
+            {
+              url: "https://kund.se/hero.png",
+              wasted_bytes: 106496,
+              total_bytes: 122880,
+            },
+          ],
+        },
+      ],
       desktop: {
         performance_score: 78,
         seo_score: 80,
@@ -200,10 +216,34 @@ describe("buildWebsiteChecklist", () => {
   it("includes catalog steps and injects snapshot-driven sub-steps", () => {
     // catalog step for schema.org
     expect(md).toContain("Lägg JSON-LD");
-    // injected pagespeed opportunity
-    expect(md).toMatch(/Spara ~1\s200 ms: Servera bilder i WebP/);
     // injected search console opportunity
     expect(md).toContain('Måltavla [position_4_10]: "takläggare östersund"');
+  });
+
+  it("surfaces PageSpeed diagnostics detail in an always-on perf action section", () => {
+    expect(md).toContain("### [ ] Prestanda-finjustering (PageSpeed)");
+    // diagnostic title with savings + display_value
+    expect(md).toContain("Est savings of 104 KiB");
+    // per-file detail (url + wasted KiB)
+    expect(md).toContain("https://kund.se/hero.png");
+    expect(md).toMatch(/104 KiB oanvänt/);
+    // and the opportunity summary line in stats is enriched with display_value
+    expect(md).toContain("Servera bilder i WebP (Est savings of 104 KiB)");
+  });
+
+  it("renders perf actions even when no perf finding fires (orphan opportunity)", () => {
+    const snap = makeSnapshot();
+    snap.performance_score = 95;
+    snap.pagespeed = { ...snap.pagespeed!, performance_score: 95 };
+    snap.findings = snap.findings.filter(
+      (f) => f.key !== "slow_site" && f.key !== "improvable_speed",
+    );
+    const out = buildWebsiteChecklist({
+      companyName: "Kund AB",
+      snapshot: snap,
+    });
+    expect(out).toContain("### [ ] Prestanda-finjustering (PageSpeed)");
+    expect(out).toContain("https://kund.se/hero.png");
   });
 
   it("puts Google Business findings under manual actions", () => {
