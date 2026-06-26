@@ -15,6 +15,8 @@ import type {
   CompetitorSnapshot,
   CoreWebVitalsFieldData,
   GbpActions,
+  PageSpeedDiagnostic,
+  PageSpeedDiagnosticItem,
   PageSpeedMetrics,
   PageSpeedSummary,
   SearchConsoleSummary,
@@ -95,16 +97,94 @@ async function fetchWithTimeout(
 
 // Plockar ut hela labb-uppsättningen (inte bara LCP/CLS/TBT) ur ett
 // Lighthouse-svar — samma parsing oavsett mobil/desktop-strategi.
+type LighthouseAuditItem = {
+  url?: unknown;
+  wastedBytes?: unknown;
+  wastedMs?: unknown;
+  totalBytes?: unknown;
+};
+
+type LighthouseAudit = {
+  score?: unknown;
+  numericValue?: number;
+  title?: string;
+  displayValue?: string;
+  details?: {
+    type?: string;
+    overallSavingsMs?: number;
+    items?: LighthouseAuditItem[];
+  };
+};
+
+// Diagnostik-granskningar (utan mätbar tidsbesparing) som ändå är värdefullt
+// åtgärdsunderlag. Tas bara med när de inte är godkända (score < 0,9).
+const DIAGNOSTIC_AUDIT_IDS = new Set([
+  "server-response-time",
+  "total-byte-weight",
+  "dom-size",
+  "mainthread-work-breakdown",
+  "bootup-time",
+  "uses-long-cache-ttl",
+  "third-party-summary",
+]);
+
+const num = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+// Plockar ut topp-5 konkreta resurser (bild/skript/css) bakom en granskning.
+function parseAuditItems(
+  items: LighthouseAuditItem[] | undefined,
+): PageSpeedDiagnosticItem[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((item) => typeof item?.url === "string" && item.url.length > 0)
+    .slice(0, 5)
+    .map((item) => ({
+      url: item.url as string,
+      wasted_bytes: num(item.wastedBytes),
+      wasted_ms: num(item.wastedMs),
+      total_bytes: num(item.totalBytes),
+    }));
+}
+
+// Behåller hela den actionable diagnostiken (max 10) som annars kastas: alla
+// opportunities med >100 ms besparing + utvalda diagnostik-audits. Underlag för
+// att faktiskt uppdatera kundens sajt — inte bara visa en poäng.
+function parseDiagnostics(
+  audits: Record<string, LighthouseAudit>,
+): PageSpeedDiagnostic[] {
+  const out: PageSpeedDiagnostic[] = [];
+  for (const [id, audit] of Object.entries(audits)) {
+    const savingsMs = num(audit?.details?.overallSavingsMs);
+    const score = num(audit?.score);
+    const isOpportunity =
+      audit?.details?.type === "opportunity" && (savingsMs ?? 0) > 100;
+    const isDiagnostic =
+      DIAGNOSTIC_AUDIT_IDS.has(id) && score != null && score < 0.9;
+    if (!isOpportunity && !isDiagnostic) continue;
+    out.push({
+      id,
+      title: audit.title ?? id,
+      kind: isOpportunity ? "opportunity" : "diagnostic",
+      display_value: audit.displayValue ?? null,
+      savings_ms: isOpportunity ? Math.round(savingsMs ?? 0) : null,
+      items: parseAuditItems(audit.details?.items),
+    });
+  }
+  // Opportunities först (störst besparing överst), sedan diagnostik.
+  return out
+    .sort((a, b) => {
+      if ((a.kind === "opportunity") !== (b.kind === "opportunity")) {
+        return a.kind === "opportunity" ? -1 : 1;
+      }
+      return (b.savings_ms ?? 0) - (a.savings_ms ?? 0);
+    })
+    .slice(0, 10);
+}
+
 function parseLighthouseMetrics(lighthouse: {
   categories?: { performance?: { score?: unknown }; seo?: { score?: unknown } };
-  audits?: Record<
-    string,
-    {
-      numericValue?: number;
-      title?: string;
-      details?: { type?: string; overallSavingsMs?: number };
-    }
-  >;
+  audits?: Record<string, LighthouseAudit>;
 }): PageSpeedMetrics {
   const toScore = (value: unknown): number | null =>
     typeof value === "number" ? Math.round(value * 100) : null;
@@ -144,6 +224,7 @@ function parseLighthouseMetrics(lighthouse: {
     speed_index_ms: numeric("speed-index"),
     tti_ms: numeric("interactive"),
     opportunities,
+    diagnostics: parseDiagnostics(audits),
   };
 }
 
@@ -1249,7 +1330,12 @@ async function analyzeCompany(
         speed_index_ms: pagespeed.speed_index_ms,
         tti_ms: pagespeed.tti_ms,
         opportunities: pagespeed.opportunities,
-        desktop: pagespeed.desktop ?? null,
+        diagnostics: pagespeed.diagnostics,
+        // Desktop-diagnostiken stripas — sajterna är mobile-first och vi vill
+        // hålla jsonb-storleken nere (mobil-diagnostiken är underlaget som räknas).
+        desktop: pagespeed.desktop
+          ? { ...pagespeed.desktop, diagnostics: [] }
+          : null,
       }
     : null;
   const sourceStatus = {

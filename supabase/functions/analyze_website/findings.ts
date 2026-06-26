@@ -11,6 +11,33 @@
  * Labb-mätvärden (Lighthouse, syntetiskt) för EN strategi (mobil eller desktop).
  * Full uppsättning så vi maximerar insamlad data — inte bara LCP/CLS/TBT.
  */
+/** En konkret resurs (bild/skript/css) inom en Lighthouse-granskning. */
+export type PageSpeedDiagnosticItem = {
+  url: string;
+  /** Sparade bytes (bild-/JS-/CSS-audits). */
+  wasted_bytes?: number | null;
+  /** Sparad tid i ms (t.ex. render-blocking). */
+  wasted_ms?: number | null;
+  /** Total överföringsstorlek i bytes (t.ex. total-byte-weight). */
+  total_bytes?: number | null;
+};
+
+/**
+ * En actionable Lighthouse-granskning — underlag för att uppdatera kundens
+ * sajt. "opportunity" = mätbar besparing, "diagnostic" = info (t.ex. DOM-storlek).
+ */
+export type PageSpeedDiagnostic = {
+  id: string;
+  title: string;
+  kind: "opportunity" | "diagnostic";
+  /** Lighthouse mänskliga sammanfattning, t.ex. "1 354 KiB" eller "873 element". */
+  display_value: string | null;
+  /** Övergripande tidsbesparing (ms) — sorteringsnyckel för opportunities. */
+  savings_ms?: number | null;
+  /** Topp-resurser (max 5) bakom granskningen. */
+  items: PageSpeedDiagnosticItem[];
+};
+
 export type PageSpeedMetrics = {
   performance_score: number | null;
   seo_score: number | null;
@@ -21,6 +48,8 @@ export type PageSpeedMetrics = {
   speed_index_ms: number | null;
   tti_ms: number | null;
   opportunities: Array<{ id: string; title: string; savings_ms: number }>;
+  /** Detaljerad åtgärdslista (bilder, render-blocking, oanvänd kod, DOM, TTFB). */
+  diagnostics: PageSpeedDiagnostic[];
 };
 
 export type PageSpeedSummary = PageSpeedMetrics & {

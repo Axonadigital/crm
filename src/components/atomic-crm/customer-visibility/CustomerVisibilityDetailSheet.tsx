@@ -9,6 +9,7 @@ import {
   RefreshCw,
   SearchCheck,
   Settings2,
+  Wrench,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/sheet";
 import { Link } from "react-router";
 
-import type { CustomerVisibilityRow } from "../types";
+import type { CustomerVisibilityRow, PageSpeedDiagnosticItem } from "../types";
 import {
   CATEGORY_LABELS,
   categoryBadgeClass,
@@ -52,6 +53,9 @@ export function CustomerVisibilityDetailSheet({
 }) {
   const snapshot = row?.currentSnapshot;
   const metrics = row?.viewModel?.metrics;
+  const psiUrl = snapshot?.url
+    ? `https://pagespeed.web.dev/analysis?url=${encodeURIComponent(snapshot.url)}&form_factor=mobile`
+    : null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -78,7 +82,9 @@ export function CustomerVisibilityDetailSheet({
 
             <div className="space-y-6 px-4 pb-6">
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold">Varför denna kategori?</h3>
+                <h3 className="text-sm font-semibold">
+                  Varför denna kategori?
+                </h3>
                 {row.reasons.map((reason) => (
                   <div
                     key={reason.label}
@@ -265,6 +271,79 @@ export function CustomerVisibilityDetailSheet({
               </div>
 
               <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold">
+                    <Wrench className="size-4" />
+                    Förbättringar (Lighthouse)
+                  </h3>
+                  {psiUrl ? (
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto px-2 py-1 text-xs"
+                    >
+                      <a
+                        href={psiUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="size-3.5" />
+                        Öppna i PageSpeed Insights
+                      </a>
+                    </Button>
+                  ) : null}
+                </div>
+                {snapshot?.pagespeed?.diagnostics?.length ? (
+                  <div className="space-y-2">
+                    {snapshot.pagespeed.diagnostics.map((diagnostic) => (
+                      <div
+                        key={diagnostic.id}
+                        className="rounded-lg border px-3 py-2 text-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="font-medium">
+                            {diagnostic.title}
+                          </span>
+                          {diagnostic.display_value ? (
+                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {diagnostic.display_value}
+                            </span>
+                          ) : diagnostic.savings_ms ? (
+                            <span className="shrink-0 text-xs tabular-nums text-amber-700">
+                              −{Math.round(diagnostic.savings_ms)} ms
+                            </span>
+                          ) : null}
+                        </div>
+                        {diagnostic.items?.length ? (
+                          <ul className="mt-1.5 space-y-1">
+                            {diagnostic.items.map((item) => (
+                              <li
+                                key={item.url}
+                                className="flex items-center justify-between gap-3 text-xs text-muted-foreground"
+                              >
+                                <span className="truncate">
+                                  {shortenResourceUrl(item.url)}
+                                </span>
+                                <span className="shrink-0 tabular-nums">
+                                  {formatItemSize(item)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                    Ingen detaljerad diagnostik sparad ännu. Kör ”Hämta om vald
+                    månad” för att fylla i den från nästa analys.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-3">
                 <h3 className="text-sm font-semibold">Sidupplevelse</h3>
                 {snapshot?.field_data ? (
                   <div className="grid grid-cols-3 gap-2 text-center text-sm">
@@ -412,7 +491,9 @@ export function CustomerVisibilityDetailSheet({
 
               {snapshot?.competitors?.length ? (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-semibold">Konkurrentjämförelse</h3>
+                  <h3 className="text-sm font-semibold">
+                    Konkurrentjämförelse
+                  </h3>
                   <div className="space-y-2">
                     {snapshot.competitors.slice(0, 4).map((competitor) => (
                       <div
@@ -552,6 +633,33 @@ function CoreWebVital({
       </p>
     </div>
   );
+}
+
+function formatKiB(bytes?: number | null): string | null {
+  if (bytes == null || bytes <= 0) return null;
+  return `${Math.round(bytes / 1024).toLocaleString("sv-SE")} KiB`;
+}
+
+/** Storlek/besparing för en diagnostik-resurs: bytes → KiB, annars ms. */
+function formatItemSize(item: PageSpeedDiagnosticItem): string {
+  const bytes = formatKiB(item.wasted_bytes) ?? formatKiB(item.total_bytes);
+  if (bytes) return bytes;
+  if (item.wasted_ms != null && item.wasted_ms > 0) {
+    return `${Math.round(item.wasted_ms)} ms`;
+  }
+  return "";
+}
+
+/** Kortar ned en resurs-URL till värd + sökväg (utan query) för läsbarhet. */
+function shortenResourceUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.length > 1
+      ? `${parsed.hostname}${parsed.pathname}`
+      : parsed.hostname;
+  } catch {
+    return url;
+  }
 }
 
 function LabMetric({ label, value }: { label: string; value: string }) {
