@@ -37,6 +37,7 @@ import type {
   WebsiteFinding,
   WebsiteSnapshot,
 } from "../types";
+import { CopyWebsiteChecklistButton } from "./CopyWebsiteChecklistButton";
 import { MonthlyReportModal } from "./MonthlyReportModal";
 import { VisibilityMetricCard } from "./visibility/VisibilityMetricCard";
 import { VisibilityStatusCard } from "./visibility/VisibilityStatusCard";
@@ -702,6 +703,12 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
               )}
               {analyzing ? "Analyserar…" : "Uppdatera (denna månad)"}
             </Button>
+            <CopyWebsiteChecklistButton
+              companyName={company.name}
+              websiteUrl={selected?.url ?? company.website}
+              snapshot={selected}
+              previousSnapshot={comparison}
+            />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">

@@ -1098,6 +1098,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/companies/remediationCatalog.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/companies/normalizeCompanyWebsite.ts",
           "type": "registry:component"
         },
@@ -1115,6 +1119,10 @@
         },
         {
           "path": "src/components/atomic-crm/companies/followupUtils.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/companies/buildWebsiteChecklist.ts",
           "type": "registry:component"
         },
         {
@@ -1143,6 +1151,10 @@
         },
         {
           "path": "src/components/atomic-crm/companies/CustomerDetailsTab.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/companies/CopyWebsiteChecklistButton.tsx",
           "type": "registry:component"
         },
         {
