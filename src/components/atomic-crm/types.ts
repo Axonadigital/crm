@@ -691,6 +691,22 @@ export type CustomerDetails = {
 
 // Labb-mätvärden (Lighthouse, syntetiskt). `desktop` är en valfri parallell
 // körning; toppnivån är mobil (Google är mobile-first).
+export type PageSpeedDiagnosticItem = {
+  url: string;
+  wasted_bytes?: number | null;
+  wasted_ms?: number | null;
+  total_bytes?: number | null;
+};
+
+export type PageSpeedDiagnostic = {
+  id: string;
+  title: string;
+  kind: "opportunity" | "diagnostic";
+  display_value?: string | null;
+  savings_ms?: number | null;
+  items?: PageSpeedDiagnosticItem[];
+};
+
 export type PageSpeedLabMetrics = {
   performance_score?: number | null;
   seo_score?: number | null;
@@ -701,6 +717,8 @@ export type PageSpeedLabMetrics = {
   speed_index_ms?: number | null;
   tti_ms?: number | null;
   opportunities?: Array<{ id: string; title: string; savings_ms: number }>;
+  /** Detaljerad Lighthouse-åtgärdslista (bilder, render-blocking, oanvänd kod). */
+  diagnostics?: PageSpeedDiagnostic[];
   desktop?: PageSpeedLabMetrics | null;
 };
 
