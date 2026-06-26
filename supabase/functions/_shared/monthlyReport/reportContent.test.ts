@@ -243,8 +243,16 @@ describe("buildReportEmailHtml", () => {
     expect(html).toContain("Vi föreslår en SEO-insats.");
     expect(html).toContain("Snittposition (lägre är bättre)");
     expect(html).toContain("jvs maskiner");
+    // Dark mode: color-scheme deklareras så Apple/iOS Mail inte tvångsinverterar.
+    expect(html).toContain('name="color-scheme"');
     // Mailet leder med #1-åtgärden (fallback ur recommendations när AI saknar action_plan)
     expect(html).toContain("Viktigast just nu");
+    // "Viktigast just nu" ligger UNDER statistiken (datatäckning + KPI + sökord).
+    const idxCoverage = html.indexOf("DATATÄCKNING");
+    const idxQueries = html.indexOf("Vanligaste sökorden");
+    const idxLead = html.indexOf("Viktigast just nu");
+    expect(idxQueries).toBeGreaterThan(idxCoverage);
+    expect(idxLead).toBeGreaterThan(idxQueries);
     expect(html).toContain("Långsam laddtid");
     expect(html).toContain("Så löser vi det");
     expect(html).toContain("Rekommenderad tilläggstjänst");

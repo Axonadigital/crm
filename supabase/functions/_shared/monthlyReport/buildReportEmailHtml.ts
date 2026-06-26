@@ -296,16 +296,36 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
 
   return `<!DOCTYPE html>
 <html lang="sv">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta http-equiv="X-UA-Compatible" content="IE=edge"></head>
-<body style="margin:0;padding:0;background:${c.slateTint};font-family:${FONT};-webkit-text-size-adjust:100%;">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<style>
+  /* Säger till Apple/iOS Mail att mejlet är dark mode-medvetet → ingen
+     tvångsinvertering (annars blir det mörka hero-bandet ljust och den vita
+     loggan försvinner). */
+  :root { color-scheme: light dark; supported-color-schemes: light dark; }
+  /* Gmail dark mode (data-ogsc/ogsb): tvinga hero-bandet att förbli mörkt så
+     den vita loggan alltid syns. */
+  u + .body .axona-hero,
+  [data-ogsc] .axona-hero { background:${c.hero} !important; }
+</style>
+</head>
+<body class="body" style="margin:0;padding:0;background:${c.slateTint};font-family:${FONT};-webkit-text-size-adjust:100%;">
   <div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:${c.slateTint};">${escapeHtml(aiContent.summary).slice(0, 120)}</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${c.slateTint};">
     <tr><td align="center" style="padding:24px 12px;">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:${c.white};border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(10,10,10,0.08);">
 
         <!-- Header (near-black, logo) -->
-        <tr><td style="background:${c.hero};padding:30px 36px 28px;">
-          <img src="${reportLogoUrl}" width="150" alt="Axona Digital" style="display:block;border:0;outline:none;height:auto;width:150px;">
+        <tr><td class="axona-hero" bgcolor="${c.hero}" style="background:${c.hero};padding:30px 36px 28px;">
+          <!--[if !mso]><!-- -->
+          <span style="display:inline-block;background:${c.hero};border-radius:6px;line-height:0;">
+            <img src="${reportLogoUrl}" width="150" alt="Axona Digital" style="display:block;border:0;outline:none;height:auto;width:150px;">
+          </span>
+          <!--<![endif]-->
           <p style="margin:20px 0 0;font-size:12px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:${c.heroAccent};">Synlighetsrapport · ${safePeriod}</p>
           <h1 style="margin:8px 0 4px;font-size:26px;line-height:1.2;font-weight:800;color:${c.onHero};">Er synlighet just nu</h1>
           <p style="margin:0;font-size:14px;font-weight:500;line-height:1.5;color:${c.onHeroMuted};">${safeCompany}</p>
@@ -317,9 +337,6 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
           `<p style="margin:0 0 12px;font-size:16px;font-weight:700;line-height:1.4;color:${c.ink};">${escapeHtml(aiContent.greeting)}</p>
            <p style="margin:0;font-size:16px;font-weight:500;line-height:1.6;color:${c.slate};">${escapeHtml(aiContent.summary)}</p>`,
         )}
-
-        <!-- Lead action (#1) -->
-        ${leadItem ? section("22px 36px 6px", leadActionCard(leadItem)) : ""}
 
         <!-- Coverage caption -->
         ${
@@ -362,6 +379,9 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
               )
             : ""
         }
+
+        <!-- Lead action (#1) — placeras under statistiken -->
+        ${leadItem ? section("22px 36px 6px", leadActionCard(leadItem)) : ""}
 
         <!-- Resterande prioriteringar -->
         ${
