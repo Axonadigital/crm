@@ -1,4 +1,3 @@
-import { useTranslate } from "ra-core";
 import { CreateButton } from "@/components/admin/create-button";
 import { DataTable } from "@/components/admin/data-table";
 import { List } from "@/components/admin/list";
@@ -6,6 +5,11 @@ import { SearchInput } from "@/components/admin/search-input";
 import { Badge } from "@/components/ui/badge";
 
 import { TopToolbar } from "../layout/TopToolbar";
+import {
+  sequenceStatusColors as statusColors,
+  sequenceStatusLabels as statusLabels,
+  sequenceTriggerLabels as triggerLabels,
+} from "./sequenceConstants";
 
 const SequenceListActions = () => (
   <TopToolbar>
@@ -15,27 +19,7 @@ const SequenceListActions = () => (
 
 const filters = [<SearchInput source="q" alwaysOn key="q" />];
 
-const statusColors: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-  active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  paused:
-    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-};
-
-const statusLabels: Record<string, string> = {
-  draft: "Utkast",
-  active: "Aktiv",
-  paused: "Pausad",
-};
-
-const triggerLabels: Record<string, string> = {
-  manual: "Manuell",
-  new_lead: "Ny lead",
-  segment_change: "Segmentändring",
-};
-
 export const SequenceList = () => {
-  const translate = useTranslate();
   return (
     <List
       actions={<SequenceListActions />}

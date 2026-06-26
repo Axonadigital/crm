@@ -8,10 +8,15 @@ import {
 } from "ra-core";
 
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 import MobileHeader from "../layout/MobileHeader";
 import { MobileContent } from "../layout/MobileContent";
 import { InfinitePagination } from "../misc/InfinitePagination";
+import {
+  emailTemplateCategoryColors,
+  emailTemplateCategoryLabels as categoryLabels,
+} from "./emailTemplateConstants";
 
 type EmailTemplate = {
   id: string | number;
@@ -19,14 +24,6 @@ type EmailTemplate = {
   subject: string;
   category: string;
   updated_at?: string;
-};
-
-const categoryLabels: Record<string, string> = {
-  outreach: "Outreach",
-  followup: "Uppföljning",
-  meeting_request: "Mötesförfrågan",
-  proposal: "Offert",
-  thank_you: "Tack",
 };
 
 /**
@@ -101,15 +98,17 @@ const EmailTemplatesListItem = ({ template }: { template: EmailTemplate }) => {
     : "";
 
   return (
-    <div className="flex flex-col gap-1 p-3 rounded-lg">
+    <div className="flex flex-col gap-1 rounded-lg border bg-card p-3 shadow-[var(--shadow-card)]">
       <div className="flex items-start gap-2 justify-between">
         <div className="font-medium text-sm truncate flex-1">
           {template.name}
         </div>
         {template.category && (
           <Badge
-            variant="secondary"
-            className="text-[10px] px-1.5 py-0 shrink-0"
+            className={cn(
+              emailTemplateCategoryColors[template.category],
+              "px-1.5 py-0 shrink-0",
+            )}
           >
             {categoryLabels[template.category] ?? template.category}
           </Badge>
@@ -121,7 +120,7 @@ const EmailTemplatesListItem = ({ template }: { template: EmailTemplate }) => {
         </div>
       )}
       {updatedLabel && (
-        <div className="text-[11px] text-muted-foreground">{updatedLabel}</div>
+        <div className="text-xs text-muted-foreground">{updatedLabel}</div>
       )}
     </div>
   );

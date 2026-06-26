@@ -8,10 +8,16 @@ import {
 } from "ra-core";
 
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 import MobileHeader from "../layout/MobileHeader";
 import { MobileContent } from "../layout/MobileContent";
 import { InfinitePagination } from "../misc/InfinitePagination";
+import {
+  sequenceStatusColors,
+  sequenceStatusLabels as statusLabels,
+  sequenceTriggerLabels as triggerLabels,
+} from "./sequenceConstants";
 
 type Sequence = {
   id: string | number;
@@ -19,27 +25,6 @@ type Sequence = {
   status: string;
   trigger_type: string;
   updated_at?: string;
-};
-
-const statusVariants: Record<
-  string,
-  "secondary" | "default" | "outline" | "destructive"
-> = {
-  draft: "secondary",
-  active: "default",
-  paused: "outline",
-};
-
-const statusLabels: Record<string, string> = {
-  draft: "Utkast",
-  active: "Aktiv",
-  paused: "Pausad",
-};
-
-const triggerLabels: Record<string, string> = {
-  manual: "Manuell",
-  new_lead: "Ny lead",
-  segment_change: "Segmentändring",
 };
 
 /**
@@ -114,14 +99,16 @@ const SequencesListItem = ({ sequence }: { sequence: Sequence }) => {
     : "";
 
   return (
-    <div className="flex flex-col gap-1 p-3 rounded-lg">
+    <div className="flex flex-col gap-1 rounded-lg border bg-card p-3 shadow-[var(--shadow-card)]">
       <div className="flex items-start gap-2 justify-between">
         <div className="font-medium text-sm truncate flex-1">
           {sequence.name}
         </div>
         <Badge
-          variant={statusVariants[sequence.status] ?? "secondary"}
-          className="text-[10px] px-1.5 py-0 shrink-0"
+          className={cn(
+            sequenceStatusColors[sequence.status],
+            "px-1.5 py-0 shrink-0",
+          )}
         >
           {statusLabels[sequence.status] ?? sequence.status}
         </Badge>

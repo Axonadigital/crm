@@ -369,6 +369,7 @@ const MobileAdmin = (props: CoreAdminProps) => {
         />
         <Resource name="deals" list={MobileDealsList} show={DealShow} />
         <Resource name="quotes" list={MobileQuotesList} show={QuoteShow} />
+        <Resource name="contact_notes" />
         <Resource name="deal_notes" />
         <Resource name="call_logs" />
         <Resource name="quote_line_items" />

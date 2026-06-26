@@ -6,6 +6,10 @@ import { SearchInput } from "@/components/admin/search-input";
 import { Badge } from "@/components/ui/badge";
 
 import { TopToolbar } from "../layout/TopToolbar";
+import {
+  emailTemplateCategoryColors as categoryColors,
+  emailTemplateCategoryLabels as categoryLabels,
+} from "./emailTemplateConstants";
 
 const EmailTemplateListActions = () => (
   <TopToolbar>
@@ -14,24 +18,6 @@ const EmailTemplateListActions = () => (
 );
 
 const filters = [<SearchInput source="q" alwaysOn key="q" />];
-
-const categoryColors: Record<string, string> = {
-  outreach: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  followup:
-    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  meeting_request:
-    "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  proposal: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  thank_you: "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200",
-};
-
-const categoryLabels: Record<string, string> = {
-  outreach: "Outreach",
-  followup: "Uppföljning",
-  meeting_request: "Mötesförfrågan",
-  proposal: "Offert",
-  thank_you: "Tack",
-};
 
 export const EmailTemplateList = () => {
   const translate = useTranslate();
