@@ -6,6 +6,7 @@ import { memo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { SalesEntry } from "../types";
@@ -25,6 +26,17 @@ export const SalesTrackingWidget = memo(() => {
 
   const { periods, totalManual, totalDeals, isPending } =
     useSalesTracking(periodType);
+  const isMobile = useIsMobile();
+
+  // Thin out x-axis labels so they never collide: day view has ~31 buckets and
+  // month view has ~13 wide "MMM yyyy" labels, which overlap on narrow screens.
+  // Show at most N evenly-spaced ticks, always anchored to the latest period.
+  const maxTicks = isMobile ? 6 : 12;
+  const tickStep = Math.max(1, Math.ceil(periods.length / maxTicks));
+  const visibleTicks = periods
+    .map((p) => p.periodLabel)
+    .filter((_, i) => (periods.length - 1 - i) % tickStep === 0);
+  const rotateLabels = isMobile || periodType === "day";
 
   const { data: recentEntries } = useGetList<SalesEntry>("sales_entries", {
     pagination: { perPage: 10, page: 1 },
@@ -95,7 +107,12 @@ export const SalesTrackingWidget = memo(() => {
           keys={[manualLabel, dealLabel]}
           colors={["var(--color-chart-1)", "var(--color-chart-2)"]}
           borderRadius={3}
-          margin={{ top: 20, right: 16, bottom: 40, left: 0 }}
+          margin={{
+            top: 20,
+            right: 16,
+            bottom: rotateLabels ? 60 : 40,
+            left: 0,
+          }}
           padding={0.35}
           groupMode="stacked"
           valueScale={{ type: "linear" }}
@@ -120,7 +137,8 @@ export const SalesTrackingWidget = memo(() => {
           axisBottom={{
             tickSize: 0,
             tickPadding: 8,
-            tickRotation: periodType === "day" ? -45 : 0,
+            tickRotation: rotateLabels ? -40 : 0,
+            tickValues: visibleTicks,
           }}
           axisLeft={null}
           axisRight={{
@@ -133,7 +151,7 @@ export const SalesTrackingWidget = memo(() => {
               anchor: "top-left",
               direction: "row",
               translateY: -20,
-              itemWidth: 150,
+              itemWidth: isMobile ? 118 : 150,
               itemHeight: 16,
               symbolSize: 12,
               symbolShape: "circle",

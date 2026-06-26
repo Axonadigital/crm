@@ -130,7 +130,7 @@ const ContactShowContentMobile = () => {
         </div>
 
         <Tabs defaultValue="notes" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 h-10">
+          <TabsList className="grid w-full grid-cols-4 h-10 [&>*]:min-w-0 [&>*]:truncate [&>*]:px-1 sm:[&>*]:px-2 [&>*]:text-xs sm:[&>*]:text-sm">
             <TabsTrigger value="notes">
               {translate("resources.notes.name", { smart_count: 2 })}
             </TabsTrigger>

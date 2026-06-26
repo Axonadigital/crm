@@ -39,7 +39,7 @@ export const NoteAttachments = ({ note }: { note: ContactNote | DealNote }) => {
                 <img
                   src={attachment.src}
                   alt={attachment.title}
-                  className="w-[200px] h-[100px] object-cover cursor-pointer object-left border border-border"
+                  className="w-full max-w-[200px] h-[100px] object-cover cursor-pointer object-left border border-border"
                 />
               </a>
             </div>

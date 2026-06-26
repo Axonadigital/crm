@@ -368,7 +368,7 @@ const InlineEditRow = ({
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={handleSave}
             onKeyDown={handleKeyDown}
-            className="bg-transparent text-right !text-base outline-none w-48"
+            className="bg-transparent text-right !text-base outline-none w-36 sm:w-48"
           />
         </ItemActions>
       </Item>

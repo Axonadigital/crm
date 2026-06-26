@@ -110,6 +110,7 @@ function diffPresentation(
  */
 
 const PERIOD_PRESETS: Array<{ value: string; label: string }> = [
+  { value: "this_month", label: "Denna månad (hittills)" },
   { value: "last_month", label: "Förra månaden" },
   { value: "last_2", label: "Senaste 2 månaderna" },
   { value: "quarter", label: "Senaste kvartalet (3 mån)" },
@@ -268,12 +269,20 @@ export const MonthlyReportModal = ({
     }
     setIsGenerating(true);
     try {
-      // Färska bara den senaste månaden när rapporten gäller just den (default).
-      // Övriga perioder aggregerar befintlig månadshistorik (kör "Hämta
-      // historik" om månader saknas).
+      // Färska enmånadsrapporter med en ny analys av just den månaden. Förra
+      // månaden använder edge-funktionens default (= föregående hela månad);
+      // denna månad (hittills) kräver explicita datum för den pågående månaden,
+      // precis som "Uppdatera (denna månad)" i Samlad synlighetsvy. Övriga
+      // perioder aggregerar befintlig månadshistorik ("Hämta historik").
       if (periodPreset === "last_month") {
         await dataProvider.analyzeWebsite(company.id, {
           window_kind: "calendar_month",
+        });
+      } else if (periodPreset === "this_month") {
+        await dataProvider.analyzeWebsite(company.id, {
+          window_kind: "calendar_month",
+          start_date: period.period_start,
+          end_date: period.period_end,
         });
       }
       const result = await dataProvider.generateMonthlyReport(

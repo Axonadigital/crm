@@ -136,7 +136,7 @@ const CompanyShowContentMobile = () => {
           className="w-full"
         >
           <TabsList
-            className={`grid w-full ${isCustomer ? "grid-cols-4" : "grid-cols-3"} h-10`}
+            className={`grid w-full ${isCustomer ? "grid-cols-4" : "grid-cols-3"} h-10 [&>*]:min-w-0 [&>*]:truncate [&>*]:px-1 sm:[&>*]:px-2 [&>*]:text-xs sm:[&>*]:text-sm`}
           >
             <TabsTrigger value="activity">
               {translate("crm.common.activity")}
