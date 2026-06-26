@@ -11,7 +11,9 @@ import type {
   ContactNote,
   Deal,
   DealNote,
+  PresentationPolicy,
   RAFile,
+  ReportAiContent,
   Sale,
   SalesFormData,
   SignUpData,
@@ -902,12 +904,8 @@ const dataProviderWithCustomMethods = {
     overrides?: {
       recipient_email?: string;
       recipient_name?: string;
-      ai_content?: {
-        greeting: string;
-        summary: string;
-        recommended_action: string;
-        upsell_pitch: string;
-      };
+      ai_content?: ReportAiContent;
+      presentation?: Partial<PresentationPolicy>;
     },
   ): Promise<{
     success: true;
@@ -924,6 +922,27 @@ const dataProviderWithCustomMethods = {
     );
     if (error || !data) {
       throw new Error("Failed to send monthly report");
+    }
+    return data;
+  },
+  async previewMonthlyReport(
+    reportId: Identifier,
+    overrides?: {
+      recipient_email?: string;
+      recipient_name?: string;
+      ai_content?: ReportAiContent;
+      presentation?: Partial<PresentationPolicy>;
+    },
+  ): Promise<{ success: true; report_id: number; status: string }> {
+    const { data, error } = await supabase.functions.invoke(
+      "send_monthly_report",
+      {
+        method: "POST",
+        body: { report_id: reportId, overrides, preview: true },
+      },
+    );
+    if (error || !data) {
+      throw new Error("Failed to preview monthly report");
     }
     return data;
   },

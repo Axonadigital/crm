@@ -7,7 +7,13 @@
  * inte naket tal, exakt en åtgärd, inga tekniska termer, inga priser.
  */
 
-import type { ReportFinding, ReportMetrics, UpsellOffer } from "./types.ts";
+import type {
+  PresentationPolicy,
+  ReportFinding,
+  ReportMetrics,
+  ReportTone,
+  UpsellOffer,
+} from "./types.ts";
 
 export type BuildReportPromptInput = {
   companyName: string;
@@ -26,6 +32,11 @@ export type BuildReportPromptInput = {
   geoReadiness: string;
   /** Har kunden GSC-data alls denna period? Styr om sökstatistik nämns. */
   hasSearchData: boolean;
+  /**
+   * Presentations-policy: styr vilka råa siffror AI:n överhuvudtaget får se, så
+   * den inte kan skriva ut svaga, Axona-ägda tal (t.ex. "45/100", "6,1 s").
+   */
+  presentation: PresentationPolicy;
 };
 
 function fmtNum(value: number | null): string {
@@ -45,16 +56,23 @@ function fmtDelta(deltaPct: number | null): string {
 function buildMetricsBlock(
   metrics: ReportMetrics,
   hasSearchData: boolean,
+  pres: PresentationPolicy,
 ): string {
   const lines: string[] = [];
   if (hasSearchData) {
-    lines.push(
-      `- Klick från Google: ${fmtNum(metrics.clicks.current)} ${fmtDelta(metrics.clicks.deltaPct)}`,
-    );
-    lines.push(
-      `- Visningar i Google: ${fmtNum(metrics.impressions.current)} ${fmtDelta(metrics.impressions.deltaPct)}`,
-    );
-    if (metrics.position.current != null) {
+    // Klick/visningar matas bara in när de inte är en tydlig nedgång — annars
+    // ska AI:n inte ens kunna nämna det negativa talet.
+    if (pres.showClicks) {
+      lines.push(
+        `- Klick från Google: ${fmtNum(metrics.clicks.current)} ${fmtDelta(metrics.clicks.deltaPct)}`,
+      );
+    }
+    if (pres.showImpressions) {
+      lines.push(
+        `- Visningar i Google: ${fmtNum(metrics.impressions.current)} ${fmtDelta(metrics.impressions.deltaPct)}`,
+      );
+    }
+    if (pres.showPositionAbsolute && metrics.position.current != null) {
       const posDelta =
         metrics.position.deltaAbsolute == null
           ? "(ingen jämförelse ännu)"
@@ -66,10 +84,22 @@ function buildMetricsBlock(
       lines.push(
         `- Snittposition i Google: ${metrics.position.current.toFixed(1)} ${posDelta}`,
       );
-    }
-    if (metrics.topQueries.length > 0) {
+    } else if (
+      pres.showPositionTrend &&
+      metrics.position.deltaAbsolute != null &&
+      metrics.position.deltaAbsolute < 0
+    ) {
+      // Lyft den positiva trenden men ge INTE det exakta (svaga) positionstalet.
       lines.push(
-        `- Sökord som gav flest klick: ${metrics.topQueries.map((q) => q.query).join(", ")}`,
+        `- Snittposition: förbättrades ${Math.abs(metrics.position.deltaAbsolute).toFixed(1)} platser (lägre är bättre) — nämn som positiv trend, ange INTE det exakta positionstalet.`,
+      );
+    }
+    const queries = pres.filterZeroClickQueries
+      ? metrics.topQueries.filter((q) => q.clicks > 0)
+      : metrics.topQueries;
+    if (queries.length > 0) {
+      lines.push(
+        `- Sökord som gav flest klick: ${queries.map((q) => q.query).join(", ")}`,
       );
     }
   } else {
@@ -77,14 +107,20 @@ function buildMetricsBlock(
       "- Sökdata (Google Search Console) saknas för den här kunden — nämn inte klick/visningar/position.",
     );
   }
+  // Prestanda/laddtid är Axona-ägda. Råtalet matas in BARA när det är bra;
+  // annars en sifferlös möjlighets-rad så AI:n aldrig skriver ut svaga tal.
   if (metrics.performance_score.current != null) {
     lines.push(
-      `- Hastighetspoäng (mobil, 0–100): ${metrics.performance_score.current} ${fmtDelta(metrics.performance_score.deltaPct)}`,
+      pres.showPerformanceScore
+        ? `- Hastighetspoäng (mobil, 0–100): ${metrics.performance_score.current} ${fmtDelta(metrics.performance_score.deltaPct)}`
+        : "- Prestanda: utvecklingsmöjlighet — nämn som framåtblickande möjlighet kopplad till Prestandaoptimering. Ange ALDRIG exakt poäng.",
     );
   }
   if (metrics.lcp_ms.current != null) {
     lines.push(
-      `- Laddtid (sekunder): ${(metrics.lcp_ms.current / 1000).toFixed(1)} (bör vara under 2,5)`,
+      pres.showLcp
+        ? `- Laddtid (sekunder): ${(metrics.lcp_ms.current / 1000).toFixed(1)} (bör vara under 2,5)`
+        : "- Laddtid: utvecklingsmöjlighet — nämn som framåtblickande möjlighet kopplad till Prestandaoptimering. Ange ALDRIG exakt sekundtal.",
     );
   }
   if (metrics.reviews_count.current != null) {
@@ -94,6 +130,15 @@ function buildMetricsBlock(
   }
   return lines.join("\n");
 }
+
+const TONE_GUIDANCE: Record<ReportTone, string> = {
+  celebrate:
+    "TON: Fira månaden. Kunden presterar tydligt bra — lyft framgångarna med självförtroende (utan att överdriva) och rama nästa steg som att bygga vidare på ett styrkeläge.",
+  balanced:
+    "TON: Uppmuntrande och balanserad. Led med det som fungerar och rama förbättringen som en naturlig nästa möjlighet.",
+  reassure:
+    "TON: Trygg och framåtblickande. Underlaget är tunt på tydliga vinster — undvik att dröja vid svaga tal, lyft det stabila/positiva som finns och fokusera på vägen framåt. Måla ALDRIG upp månaden som ett misslyckande.",
+};
 
 const SYSTEM_PROMPT = `Du skriver ett kort, månatligt statusmail från webbyrån Axona Digital till en kund om hur kundens hemsida presterar.
 
@@ -107,6 +152,9 @@ Ton och regler (följ exakt):
 - Föreslå EXAKT EN konkret åtgärd, kopplad till den föreslagna tjänsten. Nämn ALDRIG pris.
 - Var ärlig: om en siffra gått ner, formulera det sakligt och lösningsorienterat.
 - Om en svag siffra nämns: förklara varför den går att förbättra genom tjänsten, inte som ett löst problem.
+- Led ALLTID med det positiva. Nämn svagheter bara som framåtblickande möjligheter kopplade till den föreslagna tjänsten — aldrig som ett konstaterat misslyckande.
+- Axona har byggt kundens sajt. Presentera ALDRIG en siffra Axona ansvarar för (laddtid, prestandapoäng, teknisk grund) som dålig, och skriv ALDRIG ut ett exakt svagt sådant tal (t.ex. "45 av 100" eller "6,1 sekunder"). Står det "utvecklingsmöjlighet" i underlaget: behåll det sifferlöst och framåtblickande.
+- Hitta ALDRIG på siffror, trender eller status. Använd enbart det som faktiskt står i månadens underlag nedan — allt du skriver måste vara sant.
 - Inga emojis i texten (mailmallen lägger till sina egna ikoner).
 
 Åtgärdsplanen (action_plan):
@@ -160,8 +208,10 @@ export function buildMonthlyReportPrompts(input: BuildReportPromptInput): {
 Kontaktperson: ${greetingName ?? "okänd (använd 'Hej,')"}
 Period: ${input.periodLabel}
 
+${TONE_GUIDANCE[input.presentation.tone]}
+
 Månadens siffror:
-${buildMetricsBlock(input.metrics, input.hasSearchData)}
+${buildMetricsBlock(input.metrics, input.hasSearchData, input.presentation)}
 
 Synlighet i AI-sök (beredskap): ${input.geoReadiness}
 
@@ -169,7 +219,7 @@ ${upsellBlock}
 
 ${prioritiesBlock}
 
-Skriv mailinnehållet enligt systeminstruktionen. Kom ihåg: börja med det positiva, trend inte naket tal, exakt en åtgärd i texten, en action_plan-post per prioritering med samma key, inga priser, inga tekniska förkortningar.`;
+Skriv mailinnehållet enligt systeminstruktionen. Kom ihåg: börja med det positiva, trend inte naket tal, exakt en åtgärd i texten, en action_plan-post per prioritering med samma key, inga priser, inga tekniska förkortningar, och aldrig ett exakt svagt Axona-ägt tal.`;
 
   return { prompt, systemPrompt: SYSTEM_PROMPT };
 }

@@ -7,10 +7,12 @@ import {
   type PDFPage,
 } from "npm:pdf-lib@1.17.1";
 import type {
+  PresentationPolicy,
   ReportActionItem,
   ReportAiContent,
   ReportViewModel,
 } from "./types.ts";
+import { buildPresentationPolicy } from "./reportPresentation.ts";
 import { hexToRgb01, reportColors } from "./reportTheme.ts";
 import {
   AXONA_REPORT_LOGO_ASPECT,
@@ -113,10 +115,16 @@ function strongestSignal(viewModel: ReportViewModel): string {
   );
 }
 
-function improvementFocus(viewModel: ReportViewModel): string {
+function improvementFocus(
+  viewModel: ReportViewModel,
+  presentation: PresentationPolicy,
+): string {
   const m = viewModel.metrics;
   if (m.lcp_ms.current != null && m.lcp_ms.current > 2500) {
-    return `Laddtiden är ${(m.lcp_ms.current / 1000).toFixed(1)} sekunder, vilket gör prestanda till den tydligaste möjligheten.`;
+    // Dölj det råa sekundtalet när policyn säger så (Axona-ägd siffra).
+    return presentation.showLcp
+      ? `Laddtiden är ${(m.lcp_ms.current / 1000).toFixed(1)} sekunder, vilket gör prestanda till den tydligaste möjligheten.`
+      : "Sidans laddtid är nästa tydliga möjlighet att stärka resultatet.";
   }
   if (viewModel.primaryRecommendation) {
     return `${viewModel.primaryRecommendation.title} är den viktigaste förbättringen i underlaget.`;
@@ -147,7 +155,13 @@ function resolveActionItems(
 export async function buildReportPdf(input: {
   viewModel: ReportViewModel;
   aiContent: ReportAiContent;
+  /** Resolverad presentations-policy. Fallback: view_model.presentation, annars beräknad. */
+  presentation?: PresentationPolicy;
 }): Promise<Uint8Array> {
+  const pres =
+    input.presentation ??
+    input.viewModel.presentation ??
+    buildPresentationPolicy(input.viewModel);
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -541,7 +555,7 @@ export async function buildReportPdf(input: {
     bg: col.greenTint,
     titleColor: col.green,
   });
-  insightBox("NÄSTA MÖJLIGHET", improvementFocus(input.viewModel), {
+  insightBox("NÄSTA MÖJLIGHET", improvementFocus(input.viewModel, pres), {
     x: MARGIN + halfW + 16,
     width: halfW,
     bg: col.amberTint,
@@ -559,16 +573,22 @@ export async function buildReportPdf(input: {
   );
 
   const m = input.viewModel.metrics;
-  const hasSearch = m.clicks.current != null || m.impressions.current != null;
 
-  if (hasSearch) {
-    heading("Google-synlighet");
-    const cardW = (CONTENT_WIDTH - 24) / 3;
-    const cardTop = y;
-    metricCard("KLICK", m.clicks.current?.toLocaleString("sv-SE") ?? "–", {
-      x: MARGIN,
-      yTop: cardTop,
-      width: cardW,
+  // Policy-gatade KPI-kort: bara presentabla mått tas med, layouten
+  // omberäknas så inga luckor uppstår.
+  type CardDesc = {
+    label: string;
+    value: string;
+    prev: number | null;
+    now: number | null;
+    note?: string;
+    pill?: { text: string; tone: "good" | "bad" | "flat" };
+  };
+  const cardDescs: CardDesc[] = [];
+  if (pres.showClicks && m.clicks.current != null) {
+    cardDescs.push({
+      label: "KLICK",
+      value: m.clicks.current.toLocaleString("sv-SE"),
       prev: m.clicks.previous,
       now: m.clicks.current,
       pill:
@@ -579,101 +599,139 @@ export async function buildReportPdf(input: {
             }
           : undefined,
     });
-    metricCard(
-      "VISNINGAR",
-      m.impressions.current?.toLocaleString("sv-SE") ?? "–",
-      {
-        x: MARGIN + cardW + 12,
-        yTop: cardTop,
-        width: cardW,
-        prev: m.impressions.previous,
-        now: m.impressions.current,
-        pill:
-          m.impressions.deltaPct != null
-            ? {
-                text: pctText(m.impressions.deltaPct),
-                tone: m.impressions.deltaPct >= 0 ? "good" : "bad",
-              }
-            : undefined,
-      },
-    );
-    metricCard(
-      "POSITION",
-      m.position.current?.toLocaleString("sv-SE", {
+  }
+  if (pres.showImpressions && m.impressions.current != null) {
+    cardDescs.push({
+      label: "VISNINGAR",
+      value: m.impressions.current.toLocaleString("sv-SE"),
+      prev: m.impressions.previous,
+      now: m.impressions.current,
+      pill:
+        m.impressions.deltaPct != null
+          ? {
+              text: pctText(m.impressions.deltaPct),
+              tone: m.impressions.deltaPct >= 0 ? "good" : "bad",
+            }
+          : undefined,
+    });
+  }
+  if (pres.showPositionAbsolute && m.position.current != null) {
+    cardDescs.push({
+      label: "POSITION",
+      value: m.position.current.toLocaleString("sv-SE", {
         maximumFractionDigits: 1,
-      }) ?? "–",
-      {
-        x: MARGIN + (cardW + 12) * 2,
-        yTop: cardTop,
-        width: cardW,
-        prev: null,
-        now: null,
-        note: "lägre är bättre",
-        pill:
-          m.position.deltaAbsolute != null
-            ? {
-                text: `${m.position.deltaAbsolute < 0 ? "-" : "+"}${Math.abs(m.position.deltaAbsolute).toFixed(1)}`,
-                tone: m.position.deltaAbsolute < 0 ? "good" : "bad",
-              }
-            : undefined,
-      },
-    );
-    y = cardTop - 104 - 22;
-
-    metricRow(
-      "Klick från Google",
-      m.clicks.current?.toLocaleString("sv-SE") ?? "Data saknas",
-      m.clicks.deltaPct != null
-        ? {
-            kind: "pill",
-            text: pctText(m.clicks.deltaPct),
-            tone: m.clicks.deltaPct >= 0 ? "good" : "bad",
-          }
-        : undefined,
-    );
-    metricRow(
-      "Visningar i sökresultat",
-      m.impressions.current?.toLocaleString("sv-SE") ?? "Data saknas",
-      m.impressions.deltaPct != null
-        ? {
-            kind: "pill",
-            text: pctText(m.impressions.deltaPct),
-            tone: m.impressions.deltaPct >= 0 ? "good" : "bad",
-          }
-        : undefined,
-    );
-    metricRow(
-      "Klickfrekvens",
-      m.ctr.current == null
-        ? "Data saknas"
-        : `${m.ctr.current.toLocaleString("sv-SE", { maximumFractionDigits: 1 })} %`,
-      m.ctr.deltaPct != null
-        ? {
-            kind: "pill",
-            text: pctText(m.ctr.deltaPct),
-            tone: m.ctr.deltaPct >= 0 ? "good" : "bad",
-          }
-        : undefined,
-    );
-    metricRow(
-      "Genomsnittlig position",
-      m.position.current?.toLocaleString("sv-SE", {
-        maximumFractionDigits: 1,
-      }) ?? "Data saknas",
-      m.position.deltaAbsolute != null
-        ? {
-            kind: "pill",
-            text: `${m.position.deltaAbsolute < 0 ? "förbättring" : "försämring"} ${Math.abs(m.position.deltaAbsolute).toFixed(1)}`,
-            tone: m.position.deltaAbsolute < 0 ? "good" : "bad",
-          }
-        : undefined,
-    );
+      }),
+      prev: null,
+      now: null,
+      note: "lägre är bättre",
+      pill:
+        m.position.deltaAbsolute != null
+          ? {
+              text: `${m.position.deltaAbsolute < 0 ? "-" : "+"}${Math.abs(m.position.deltaAbsolute).toFixed(1)}`,
+              tone: m.position.deltaAbsolute < 0 ? "good" : "bad",
+            }
+          : undefined,
+    });
   }
 
-  if (m.topQueries.length) {
+  // Detaljrader (gatade var för sig). Position-raden döljs när råtalet döljs.
+  type RowDesc = {
+    label: string;
+    value: string;
+    change?:
+      | { kind: "pill"; text: string; tone: "good" | "bad" | "flat" }
+      | { kind: "note"; text: string };
+  };
+  const rowDescs: RowDesc[] = [];
+  if (pres.showClicks && m.clicks.current != null) {
+    rowDescs.push({
+      label: "Klick från Google",
+      value: m.clicks.current.toLocaleString("sv-SE"),
+      change:
+        m.clicks.deltaPct != null
+          ? {
+              kind: "pill",
+              text: pctText(m.clicks.deltaPct),
+              tone: m.clicks.deltaPct >= 0 ? "good" : "bad",
+            }
+          : undefined,
+    });
+  }
+  if (pres.showImpressions && m.impressions.current != null) {
+    rowDescs.push({
+      label: "Visningar i sökresultat",
+      value: m.impressions.current.toLocaleString("sv-SE"),
+      change:
+        m.impressions.deltaPct != null
+          ? {
+              kind: "pill",
+              text: pctText(m.impressions.deltaPct),
+              tone: m.impressions.deltaPct >= 0 ? "good" : "bad",
+            }
+          : undefined,
+    });
+  }
+  if (pres.showCtr && m.ctr.current != null) {
+    rowDescs.push({
+      label: "Klickfrekvens",
+      value: `${m.ctr.current.toLocaleString("sv-SE", { maximumFractionDigits: 1 })} %`,
+      change:
+        m.ctr.deltaPct != null
+          ? {
+              kind: "pill",
+              text: pctText(m.ctr.deltaPct),
+              tone: m.ctr.deltaPct >= 0 ? "good" : "bad",
+            }
+          : undefined,
+    });
+  }
+  if (pres.showPositionAbsolute && m.position.current != null) {
+    rowDescs.push({
+      label: "Genomsnittlig position",
+      value: m.position.current.toLocaleString("sv-SE", {
+        maximumFractionDigits: 1,
+      }),
+      change:
+        m.position.deltaAbsolute != null
+          ? {
+              kind: "pill",
+              text: `${m.position.deltaAbsolute < 0 ? "förbättring" : "försämring"} ${Math.abs(m.position.deltaAbsolute).toFixed(1)}`,
+              tone: m.position.deltaAbsolute < 0 ? "good" : "bad",
+            }
+          : undefined,
+    });
+  }
+
+  if (cardDescs.length || rowDescs.length) {
+    heading("Google-synlighet");
+    if (cardDescs.length) {
+      const gap = 12;
+      const cardW =
+        (CONTENT_WIDTH - gap * (cardDescs.length - 1)) / cardDescs.length;
+      const cardTop = y;
+      cardDescs.forEach((card, i) => {
+        metricCard(card.label, card.value, {
+          x: MARGIN + i * (cardW + gap),
+          yTop: cardTop,
+          width: cardW,
+          prev: card.prev,
+          now: card.now,
+          note: card.note,
+          pill: card.pill,
+        });
+      });
+      y = cardTop - 104 - 22;
+    }
+    rowDescs.forEach((row) => metricRow(row.label, row.value, row.change));
+  }
+
+  const topQueries = pres.filterZeroClickQueries
+    ? m.topQueries.filter((q) => q.clicks > 0)
+    : m.topQueries;
+  if (topQueries.length) {
     y -= 8;
     heading("Sökord som driver trafik", 13);
-    m.topQueries.slice(0, 5).forEach((q) =>
+    topQueries.slice(0, 5).forEach((q) =>
       metricRow(q.query, `${q.clicks.toLocaleString("sv-SE")} klick`, {
         kind: "note",
         text: `position ${q.position.toFixed(1)}`,
@@ -703,74 +761,84 @@ export async function buildReportPdf(input: {
     });
   }
 
-  y -= 8;
-  heading("Fyra delar av synligheten");
-  const statusRows = [
-    ["Google-synlighet", input.viewModel.statuses.googleVisibility],
-    ["Sidupplevelse", input.viewModel.statuses.pageExperience],
-    ["Lokal synlighet", input.viewModel.statuses.localVisibility],
-    ["Teknisk grund", input.viewModel.statuses.technicalFoundation],
-  ] as const;
-  statusRows.forEach(([label, status]) => {
-    ensure(28);
-    const baseline = y - 16;
-    page.drawText(label, {
-      x: MARGIN,
-      y: baseline,
-      size: 11,
-      font: bold,
-      color: col.ink,
+  // "Fyra delar av synligheten" (röd scorecard) — borttagen som standard
+  // (pres.showFourParts = false). Behålls bakom flaggan för manuell override.
+  if (pres.showFourParts) {
+    y -= 8;
+    heading("Fyra delar av synligheten");
+    const statusRows = [
+      ["Google-synlighet", input.viewModel.statuses.googleVisibility],
+      ["Sidupplevelse", input.viewModel.statuses.pageExperience],
+      ["Lokal synlighet", input.viewModel.statuses.localVisibility],
+      ["Teknisk grund", input.viewModel.statuses.technicalFoundation],
+    ] as const;
+    statusRows.forEach(([label, status]) => {
+      ensure(28);
+      const baseline = y - 16;
+      page.drawText(label, {
+        x: MARGIN,
+        y: baseline,
+        size: 11,
+        font: bold,
+        color: col.ink,
+      });
+      const tone =
+        status === "good"
+          ? { bg: col.greenTint, fg: col.green }
+          : status === "poor"
+            ? { bg: col.redTint, fg: col.red }
+            : status === "missing"
+              ? { bg: col.slateTint, fg: col.slate }
+              : { bg: col.amberTint, fg: col.amber };
+      const text = statusLabel(status);
+      const w = bold.widthOfTextAtSize(text, 9) + 16;
+      drawPill(text, PAGE_WIDTH - MARGIN - w, y - 4, tone.bg, tone.fg, 9);
+      y -= 26;
+      page.drawLine({
+        start: { x: MARGIN, y: y + 3 },
+        end: { x: PAGE_WIDTH - MARGIN, y: y + 3 },
+        thickness: 0.5,
+        color: col.line,
+      });
     });
-    const tone =
-      status === "good"
-        ? { bg: col.greenTint, fg: col.green }
-        : status === "poor"
-          ? { bg: col.redTint, fg: col.red }
-          : status === "missing"
-            ? { bg: col.slateTint, fg: col.slate }
-            : { bg: col.amberTint, fg: col.amber };
-    const text = statusLabel(status);
-    const w = bold.widthOfTextAtSize(text, 9) + 16;
-    drawPill(text, PAGE_WIDTH - MARGIN - w, y - 4, tone.bg, tone.fg, 9);
-    y -= 26;
-    page.drawLine({
-      start: { x: MARGIN, y: y + 3 },
-      end: { x: PAGE_WIDTH - MARGIN, y: y + 3 },
-      thickness: 0.5,
-      color: col.line,
-    });
-  });
+  }
 
-  y -= 10;
-  heading("Sidupplevelse");
-  const realLcp = m.field_lcp_ms.current;
-  metricRow(
-    "Verklig laddtid (LCP)",
-    realLcp == null ? "Fältdata saknas" : `${(realLcp / 1000).toFixed(1)} s`,
-    {
-      kind: "note",
-      text: realLcp == null ? "Lighthouse visas separat" : "mål: under 2,5 s",
-    },
-  );
-  metricRow(
-    "Verklig svarstid (INP)",
-    m.field_inp_ms.current == null
-      ? "Fältdata saknas"
-      : `${Math.round(m.field_inp_ms.current)} ms`,
-    { kind: "note", text: "mål: under 200 ms" },
-  );
-  metricRow(
-    "Layoutstabilitet (CLS)",
-    m.field_cls.current == null
-      ? "Fältdata saknas"
-      : m.field_cls.current.toFixed(2),
-    { kind: "note", text: "mål: under 0,10" },
-  );
-  metricRow(
-    "Lighthouse prestandapoäng",
-    m.performance_score.current?.toFixed(0) ?? "Data saknas",
-    { kind: "note", text: "syntetiskt mobiltest" },
-  );
+  // "Sidupplevelse" (rå LCP/INP/CLS/Lighthouse) visas bara när sidupplevelsen
+  // faktiskt är bra — annars skulle den bara lista svaga, Axona-ägda tal.
+  if (pres.showPageExperience) {
+    y -= 10;
+    heading("Sidupplevelse");
+    const realLcp = m.field_lcp_ms.current;
+    metricRow(
+      "Verklig laddtid (LCP)",
+      realLcp == null ? "Fältdata saknas" : `${(realLcp / 1000).toFixed(1)} s`,
+      {
+        kind: "note",
+        text: realLcp == null ? "Lighthouse visas separat" : "mål: under 2,5 s",
+      },
+    );
+    metricRow(
+      "Verklig svarstid (INP)",
+      m.field_inp_ms.current == null
+        ? "Fältdata saknas"
+        : `${Math.round(m.field_inp_ms.current)} ms`,
+      { kind: "note", text: "mål: under 200 ms" },
+    );
+    metricRow(
+      "Layoutstabilitet (CLS)",
+      m.field_cls.current == null
+        ? "Fältdata saknas"
+        : m.field_cls.current.toFixed(2),
+      { kind: "note", text: "mål: under 0,10" },
+    );
+    if (pres.showPerformanceScore) {
+      metricRow(
+        "Lighthouse prestandapoäng",
+        m.performance_score.current?.toFixed(0) ?? "Data saknas",
+        { kind: "note", text: "syntetiskt mobiltest" },
+      );
+    }
+  }
 
   y -= 10;
   heading("Teknisk grund");
@@ -918,52 +986,56 @@ export async function buildReportPdf(input: {
   });
   paragraph(input.aiContent.upsell_pitch, { size: 10, color: col.slate });
 
-  // ---------- Sida 3: metod ----------
-  newPage();
-  heading("Så ska rapporten läsas");
-  const method: Array<[string, string]> = [
-    [
-      "Search Console — faktisk organisk synlighet",
-      "Visar hur ni faktiskt syns och presterar i Googles sökresultat under perioden: hur många som ser er, klickar och vilken position ni har. Riktiga siffror från riktiga sökningar.",
-    ],
-    [
-      "Core Web Vitals — besökarnas verkliga upplevelse",
-      'Mäter hur snabbt och stabilt sidan upplevs av era faktiska besökare. Kräver tillräckligt med trafik — när underlaget är för litet visas "Fältdata saknas".',
-    ],
-    [
-      "Lighthouse — kontrollerat labbtest",
-      "Ett syntetiskt prestandatest under standardiserade förhållanden (poäng 0–100). Fungerar som stabilt komplement när fältdata saknas, men speglar inte alltid varje besökares upplevelse.",
-    ],
-  ];
-  method.forEach(([title, body]) => {
-    const bodyLines = wrapText(body, regular, 10.5, CONTENT_WIDTH - 32);
-    const boxH = 28 + bodyLines.length * 15 + 16;
-    ensure(boxH + 12);
-    roundedRect(MARGIN, y + 12, CONTENT_WIDTH, boxH, 12, {
-      color: col.white,
-      borderColor: col.line,
-      borderWidth: 0.8,
-    });
-    page.drawText(title, {
-      x: MARGIN + 18,
-      y: y - 8,
-      size: 12,
-      font: bold,
-      color: col.ink,
-    });
-    let ly = y - 28;
-    for (const line of bodyLines) {
-      page.drawText(line, {
-        x: MARGIN + 18,
-        y: ly,
-        size: 10.5,
-        font: regular,
-        color: col.muted,
+  // ---------- Sida 3: metod ("Så ska rapporten läsas") ----------
+  // Gatad: finns mest för att bortförklara "Fältdata saknas"/labbtest — onödig
+  // när de sektionerna döljs (pres.showMethodology = false som standard).
+  if (pres.showMethodology) {
+    newPage();
+    heading("Så ska rapporten läsas");
+    const method: Array<[string, string]> = [
+      [
+        "Search Console — faktisk organisk synlighet",
+        "Visar hur ni faktiskt syns och presterar i Googles sökresultat under perioden: hur många som ser er, klickar och vilken position ni har. Riktiga siffror från riktiga sökningar.",
+      ],
+      [
+        "Core Web Vitals — besökarnas verkliga upplevelse",
+        'Mäter hur snabbt och stabilt sidan upplevs av era faktiska besökare. Kräver tillräckligt med trafik — när underlaget är för litet visas "Fältdata saknas".',
+      ],
+      [
+        "Lighthouse — kontrollerat labbtest",
+        "Ett syntetiskt prestandatest under standardiserade förhållanden (poäng 0–100). Fungerar som stabilt komplement när fältdata saknas, men speglar inte alltid varje besökares upplevelse.",
+      ],
+    ];
+    method.forEach(([title, body]) => {
+      const bodyLines = wrapText(body, regular, 10.5, CONTENT_WIDTH - 32);
+      const boxH = 28 + bodyLines.length * 15 + 16;
+      ensure(boxH + 12);
+      roundedRect(MARGIN, y + 12, CONTENT_WIDTH, boxH, 12, {
+        color: col.white,
+        borderColor: col.line,
+        borderWidth: 0.8,
       });
-      ly -= 15;
-    }
-    y -= boxH + 16;
-  });
+      page.drawText(title, {
+        x: MARGIN + 18,
+        y: y - 8,
+        size: 12,
+        font: bold,
+        color: col.ink,
+      });
+      let ly = y - 28;
+      for (const line of bodyLines) {
+        page.drawText(line, {
+          x: MARGIN + 18,
+          y: ly,
+          size: 10.5,
+          font: regular,
+          color: col.muted,
+        });
+        ly -= 15;
+      }
+      y -= boxH + 16;
+    });
+  }
 
   // Sidfötter
   const pages = pdf.getPages();

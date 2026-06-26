@@ -865,6 +865,27 @@ export type ReportAiContent = {
 
 export type ReportStatus = "good" | "needs_attention" | "poor" | "missing";
 
+export type ReportTone = "celebrate" | "balanced" | "reassure";
+
+/**
+ * Presentations-policy: vilka kundvända sektioner/siffror som visas + ton.
+ * Speglar PresentationPolicy i supabase/functions/_shared/monthlyReport.
+ */
+export type PresentationPolicy = {
+  tone: ReportTone;
+  showClicks: boolean;
+  showImpressions: boolean;
+  showCtr: boolean;
+  showPositionAbsolute: boolean;
+  showPositionTrend: boolean;
+  showPerformanceScore: boolean;
+  showLcp: boolean;
+  showPageExperience: boolean;
+  showFourParts: boolean;
+  showMethodology: boolean;
+  filterZeroClickQueries: boolean;
+};
+
 export type ReportViewModel = {
   version: 2;
   companyName: string;
@@ -903,6 +924,7 @@ export type ReportViewModel = {
   }>;
   recommendations: WebsiteFinding[];
   primaryRecommendation: WebsiteFinding | null;
+  presentation?: PresentationPolicy;
 };
 
 /** En månatlig kundrapport (draft → godkänd → skickad). Tabell: monthly_reports. */
@@ -925,6 +947,7 @@ export type MonthlyReport = {
   pdf_storage_path?: string | null;
   pdf_generated_at?: string | null;
   view_model?: ReportViewModel | null;
+  presentation_overrides?: Partial<PresentationPolicy> | null;
   approval_token: string;
   email_send_id?: number | null;
   error?: string | null;

@@ -7,6 +7,7 @@ import {
 } from "./buildReportEmailHtml.ts";
 import { computeReportMetrics } from "./computeReportMetrics.ts";
 import { parseReportContent } from "./generateReportContent.ts";
+import { DEFAULT_PRESENTATION } from "./reportPresentation.ts";
 import type { ReportSnapshot, ReportViewModel } from "./types.ts";
 
 const snap: ReportSnapshot = {
@@ -111,6 +112,7 @@ describe("buildMonthlyReportPrompts", () => {
       ],
       geoReadiness: "Strukturerad data finns.",
       hasSearchData: true,
+      presentation: DEFAULT_PRESENTATION,
     });
     expect(prompt).toContain("JVS Maskiner AB");
     expect(prompt).toContain("Klick från Google: 23");
@@ -133,8 +135,50 @@ describe("buildMonthlyReportPrompts", () => {
       recommendations: [],
       geoReadiness: "ok",
       hasSearchData: false,
+      presentation: DEFAULT_PRESENTATION,
     });
     expect(prompt).toContain("Sökdata (Google Search Console) saknas");
+  });
+
+  it("hides raw Axona-owned numbers and feeds opportunity lines when policy suppresses them", () => {
+    // Svag kund: prestanda 45, laddtid 6,1 s. Policy ska dölja råtalen.
+    const weakSnap: ReportSnapshot = {
+      performance_score: 45,
+      pagespeed: { lcp_ms: 6100, cls: 0 },
+      search_console: {
+        clicks: 5,
+        impressions: 300,
+        position: 34.7,
+        top_queries: [],
+      },
+    };
+    const metrics = computeReportMetrics(weakSnap, null);
+    const weakPresentation = {
+      ...DEFAULT_PRESENTATION,
+      tone: "reassure" as const,
+      showPerformanceScore: false,
+      showLcp: false,
+      showPositionAbsolute: false,
+    };
+    const { prompt } = buildMonthlyReportPrompts({
+      companyName: "Svag Kund AB",
+      contactName: null,
+      periodLabel: "maj 2026",
+      metrics,
+      upsell: null,
+      recommendations: [],
+      geoReadiness: "ok",
+      hasSearchData: true,
+      presentation: weakPresentation,
+    });
+    // Inga råa, svaga Axona-ägda tal i prompten.
+    expect(prompt).not.toContain("Hastighetspoäng (mobil, 0–100): 45");
+    expect(prompt).not.toContain("6.1");
+    expect(prompt).not.toContain("34.7");
+    // Istället sifferlösa möjlighets-rader + ton.
+    expect(prompt).toContain("Prestanda: utvecklingsmöjlighet");
+    expect(prompt).toContain("Laddtid: utvecklingsmöjlighet");
+    expect(prompt).toContain("TON:");
   });
 });
 
@@ -234,6 +278,58 @@ describe("buildReportEmailHtml", () => {
     });
     expect(html).not.toContain("Klick från Google");
     expect(html).toContain("Laddtid");
+  });
+
+  it("hides the laddtid and position cards when the policy suppresses them", () => {
+    const weakSnap: ReportSnapshot = {
+      performance_score: 45,
+      pagespeed: { lcp_ms: 6100, cls: 0 },
+      search_console: {
+        clicks: 12,
+        impressions: 334,
+        position: 34.7,
+        top_queries: [],
+      },
+    };
+    const metrics = computeReportMetrics(weakSnap, null);
+    const viewModel: ReportViewModel = {
+      version: 2,
+      companyName: "Svag Kund AB",
+      period: { start: "2026-05-01", end: "2026-05-31", label: "maj 2026" },
+      comparisonPeriod: null,
+      coverage: { available: 4, total: 4, ratio: 1, missingSources: [] },
+      metrics,
+      statuses: {
+        googleVisibility: "poor",
+        pageExperience: "poor",
+        localVisibility: "missing",
+        technicalFoundation: "good",
+      },
+      technicalChecks: [],
+      recommendations: [],
+      primaryRecommendation: null,
+      presentation: {
+        ...DEFAULT_PRESENTATION,
+        tone: "reassure",
+        showLcp: false,
+        showPerformanceScore: false,
+        showPositionAbsolute: false,
+        showPageExperience: false,
+        showFourParts: false,
+      },
+    };
+    const html = buildReportEmailHtml({
+      companyName: "Svag Kund AB",
+      periodLabel: "maj 2026",
+      aiContent,
+      metrics,
+      viewModel,
+      hasSearchData: true,
+      replyToEmail: "hej@axonadigital.se",
+    });
+    expect(html).not.toContain("Laddtid");
+    expect(html).not.toContain("Snittposition");
+    expect(html).not.toContain("34,7");
   });
 
   it("exposes the hidden-finding key list", () => {
