@@ -32,7 +32,7 @@ export function CustomerPerformanceMap({
         </p>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 xl:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {CATEGORY_ORDER.map((category) => (
             <CategoryColumn
               key={category}
@@ -62,7 +62,9 @@ function CategoryColumn({
         <Badge className={categoryBadgeClass(category)}>
           {CATEGORY_LABELS[category]}
         </Badge>
-        <span className="text-sm font-semibold tabular-nums">{rows.length}</span>
+        <span className="text-sm font-semibold tabular-nums">
+          {rows.length}
+        </span>
       </div>
       <div className="space-y-2">
         {rows.length ? (

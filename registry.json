@@ -46,6 +46,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/templates/emailTemplateConstants.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/templates/SendEmailDialog.tsx",
           "type": "registry:component"
         },
@@ -183,6 +187,10 @@
         },
         {
           "path": "src/components/atomic-crm/settings/MobileCrmConfigPage.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/sequences/sequenceConstants.ts",
           "type": "registry:component"
         },
         {

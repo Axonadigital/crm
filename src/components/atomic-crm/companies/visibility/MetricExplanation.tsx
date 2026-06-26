@@ -34,7 +34,10 @@ export function MetricExplanation({
           <CircleHelp className="size-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 space-y-3 text-sm">
+      <PopoverContent
+        align="start"
+        className="w-80 max-w-[calc(100vw-2rem)] space-y-3 text-sm"
+      >
         <div>
           <p className="font-semibold">{label}</p>
           <p className="text-muted-foreground">{content.meaning}</p>

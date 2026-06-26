@@ -5,11 +5,10 @@ import type { Contact, ContactNote } from "../types";
 import { CallStatsWidget } from "./CallStatsWidget";
 import { DashboardActivityLog } from "./DashboardActivityLog";
 import { DashboardStepper } from "./DashboardStepper";
-import { DealStageFunnel } from "./DealStageFunnel";
-import { DealsChart } from "./DealsChart";
 import { FollowUpsDueToday } from "./FollowUpsDueToday";
 import { KpiSummaryRow } from "./KpiSummaryRow";
 import { LeadsMissingNextStep } from "./LeadsMissingNextStep";
+import { PipelineDonut } from "./PipelineDonut";
 import { RevenueGoalsTracker } from "./RevenueGoalsTracker";
 import { RevenueTrendChart } from "./RevenueTrendChart";
 import { SalesTrackingWidget } from "./SalesTrackingWidget";
@@ -99,7 +98,7 @@ export const MobileDashboard = () => {
 
   return (
     <Wrapper>
-      <div className="flex flex-col gap-4 mt-1">
+      <div className="flex flex-col gap-6 mt-1">
         {import.meta.env.VITE_IS_DEMO === "true" ? <Welcome /> : null}
         {totalDeal ? (
           <WidgetErrorBoundary>
@@ -112,10 +111,7 @@ export const MobileDashboard = () => {
               <RevenueTrendChart />
             </WidgetErrorBoundary>
             <WidgetErrorBoundary>
-              <DealsChart />
-            </WidgetErrorBoundary>
-            <WidgetErrorBoundary>
-              <DealStageFunnel />
+              <PipelineDonut />
             </WidgetErrorBoundary>
           </>
         ) : null}

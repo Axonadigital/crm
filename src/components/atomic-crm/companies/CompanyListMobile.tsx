@@ -96,7 +96,7 @@ const CompanyListItem = ({ company }: { company: Company }) => {
   return (
     <Link
       to={`/companies/${company.id}/show`}
-      className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors no-underline"
+      className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-[var(--shadow-card)] transition-colors hover:bg-muted no-underline"
     >
       <CompanyAvatar width={40} height={40} />
       <div className="flex-1 min-w-0">
@@ -118,7 +118,7 @@ const CompanyListItem = ({ company }: { company: Company }) => {
         {company.lead_status && (
           <Badge
             variant={getLeadStatusBadgeVariant(company.lead_status)}
-            className="mt-1 text-[10px] px-1.5 py-0"
+            className="mt-1 px-1.5 py-0"
           >
             {translate(
               `resources.companies.lead_status.${company.lead_status}`,

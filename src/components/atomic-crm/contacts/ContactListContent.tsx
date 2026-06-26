@@ -248,47 +248,58 @@ export const ContactListContentMobile = () => {
 
 const ContactItemContentMobile = ({ contact }: { contact: Contact }) => {
   const translate = useTranslate();
+  const [locale = "en"] = useLocaleState();
+  const lastActivity = contact.last_seen
+    ? formatRelativeDate(contact.last_seen, locale)
+    : null;
+
   return (
     <Link
       to={`/contacts/${contact.id}/show`}
       className="flex flex-row gap-4 items-center py-2 hover:bg-muted transition-colors"
     >
       <Avatar />
-      <div className="flex flex-col grow justify-between">
-        <div className="flex-1 min-w-0">
-          <div className="flex justify-between">
-            <div className="font-medium">
-              <RecordRepresentation />
-            </div>
-            <Status status={contact.status} />
+      <div className="flex min-w-0 grow flex-col gap-1">
+        <div className="flex justify-between gap-2">
+          <div className="truncate font-medium">
+            <RecordRepresentation />
           </div>
-          <div className="text-sm text-muted-foreground">
-            <div className="flex flex-col gap-1">
-              <span>
-                {contact.title && contact.company_id != null
-                  ? `${translate("resources.contacts.position_at", {
-                      title: contact.title,
-                    })} `
-                  : contact.title}
-                {contact.company_id != null && (
-                  <ReferenceField
-                    source="company_id"
-                    reference="companies"
-                    link={false}
-                  >
-                    <TextField source="name" />
-                  </ReferenceField>
-                )}
-              </span>
-              {contact.nb_tasks ? (
-                <span>
-                  {translate("crm.common.task_count", {
-                    smart_count: contact.nb_tasks,
-                  })}
-                </span>
-              ) : null}
-            </div>
-          </div>
+          <Status status={contact.status} />
+        </div>
+        <div className="text-sm text-muted-foreground">
+          {contact.title && contact.company_id != null
+            ? `${translate("resources.contacts.position_at", {
+                title: contact.title,
+              })} `
+            : contact.title}
+          {contact.company_id != null && (
+            <ReferenceField
+              source="company_id"
+              reference="companies"
+              link={false}
+            >
+              <TextField source="name" />
+            </ReferenceField>
+          )}
+        </div>
+        <TagsList />
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          {contact.nb_tasks ? (
+            <span>
+              {translate("crm.common.task_count", {
+                smart_count: contact.nb_tasks,
+              })}
+            </span>
+          ) : (
+            <span />
+          )}
+          {lastActivity ? (
+            <span title={contact.last_seen}>
+              {translate("crm.common.last_activity_with_date", {
+                date: lastActivity,
+              })}
+            </span>
+          ) : null}
         </div>
       </div>
     </Link>

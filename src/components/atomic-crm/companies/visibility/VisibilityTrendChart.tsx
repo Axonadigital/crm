@@ -44,7 +44,7 @@ export function VisibilityTrendChart({
     <div className="overflow-x-auto">
       <svg
         viewBox={`0 0 ${width} ${height + 28}`}
-        className="min-w-[560px] w-full"
+        className="min-w-[320px] w-full"
         role="img"
         aria-label={`${label} över tid`}
       >

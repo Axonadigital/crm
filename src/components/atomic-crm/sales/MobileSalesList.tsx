@@ -58,7 +58,7 @@ const SalesListLayoutMobile = () => {
       </MobileHeader>
       <MobileContent onRefresh={refresh}>
         {data?.length ? (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             {data.map((sale) => (
               <RecordContextProvider key={sale.id} value={sale}>
                 <SalesListItem sale={sale} />
@@ -87,7 +87,7 @@ const SalesListItem = ({ sale }: { sale: Sale }) => {
   const initials = `${sale.first_name?.[0] ?? ""}${sale.last_name?.[0] ?? ""}`;
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg">
+    <div className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-[var(--shadow-card)]">
       <Avatar className="size-10">
         <AvatarImage src={sale.avatar?.src} alt={sale.first_name} />
         <AvatarFallback>{initials || "?"}</AvatarFallback>
@@ -104,14 +104,20 @@ const SalesListItem = ({ sale }: { sale: Sale }) => {
       </div>
       <div className="flex flex-col items-end gap-1">
         {sale.administrator && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          <Badge
+            variant="outline"
+            className="border-blue-300 px-1.5 py-0 dark:border-blue-700"
+          >
             {translate("resources.sales.fields.administrator", {
               _: "Admin",
             })}
           </Badge>
         )}
         {sale.disabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          <Badge
+            variant="outline"
+            className="border-orange-300 px-1.5 py-0 dark:border-orange-700"
+          >
             {translate("resources.sales.fields.disabled", {
               _: "Inaktiverad",
             })}
