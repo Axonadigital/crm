@@ -243,8 +243,10 @@ describe("buildReportEmailHtml", () => {
     expect(html).toContain("Vi föreslår en SEO-insats.");
     expect(html).toContain("Snittposition (lägre är bättre)");
     expect(html).toContain("jvs maskiner");
-    // Dark mode: color-scheme deklareras så Apple/iOS Mail inte tvångsinverterar.
+    // Dark mode: color-scheme deklareras så Apple/iOS Mail inte tvångsinverterar,
+    // och loggan är den opaka badge-varianten (klarar Gmail-app-invertering).
     expect(html).toContain('name="color-scheme"');
+    expect(html).toContain("axona-logo-report-badge.png");
     // Mailet leder med #1-åtgärden (fallback ur recommendations när AI saknar action_plan)
     expect(html).toContain("Viktigast just nu");
     // "Viktigast just nu" ligger UNDER statistiken (datatäckning + KPI + sökord).

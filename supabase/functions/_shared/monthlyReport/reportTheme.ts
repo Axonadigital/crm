@@ -52,9 +52,12 @@ export const reportColors = {
 
 export type ReportColorKey = keyof typeof reportColors;
 
-/** Hostad transparent vit wordmark för mejlets header (alt-text bär varumärket vid blockerad bild). */
+// Opak badge: vit wordmark med inbakad near-black-platta (#0A0A0A). Gmail dark
+// mode inverterar bakgrundsFÄRGER men INTE bildpixlar → loggan syns i alla
+// klienter och lägen (den transparenta varianten försvann när Gmail inverterade
+// hero-bandet till vitt). Alt-text bär varumärket vid blockerad bild.
 export const reportLogoUrl =
-  "https://crm.axonadigital.se/logos/axona-logo-report.png";
+  "https://crm.axonadigital.se/logos/axona-logo-report-badge.png";
 
 /** Wordmarkens bildförhållande (bredd/höjd) — samma asset i mejl och PDF. */
 export const reportLogoAspect = 600 / 62;
