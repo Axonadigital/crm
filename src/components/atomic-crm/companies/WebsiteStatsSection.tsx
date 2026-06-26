@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BarChart3,
   Download,
+  ExternalLink,
   FileText,
   Gauge,
   Globe2,
@@ -23,6 +24,7 @@ import {
   Settings2,
   Smartphone,
   TrendingUp,
+  Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useDataProvider, useGetList, useNotify } from "ra-core";
@@ -31,6 +33,7 @@ import { useSearchParams } from "react-router";
 import type {
   Company,
   MonthlyReport,
+  PageSpeedDiagnosticItem,
   WebsiteFinding,
   WebsiteSnapshot,
 } from "../types";
@@ -39,6 +42,33 @@ import { VisibilityMetricCard } from "./visibility/VisibilityMetricCard";
 import { VisibilityStatusCard } from "./visibility/VisibilityStatusCard";
 import { VisibilityTrendChart } from "./visibility/VisibilityTrendChart";
 import type { VisibilityDataProvider } from "./visibility/types";
+
+function formatKiB(bytes?: number | null): string | null {
+  if (bytes == null || bytes <= 0) return null;
+  return `${Math.round(bytes / 1024).toLocaleString("sv-SE")} KiB`;
+}
+
+/** Storlek/besparing för en diagnostik-resurs: bytes → KiB, annars ms. */
+function formatItemSize(item: PageSpeedDiagnosticItem): string {
+  const bytes = formatKiB(item.wasted_bytes) ?? formatKiB(item.total_bytes);
+  if (bytes) return bytes;
+  if (item.wasted_ms != null && item.wasted_ms > 0) {
+    return `${Math.round(item.wasted_ms)} ms`;
+  }
+  return "";
+}
+
+/** Kortar ned en resurs-URL till värd + sökväg (utan query) för läsbarhet. */
+function shortenResourceUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.length > 1
+      ? `${parsed.hostname}${parsed.pathname}`
+      : parsed.hostname;
+  } catch {
+    return url;
+  }
+}
 
 const REPORT_STATUS_STYLES: Record<MonthlyReport["status"], string> = {
   draft: "bg-sky-100 text-sky-800 border-sky-200",
@@ -1293,10 +1323,24 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
           <TabsContent value="quality" className="mt-5 space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Gauge className="size-4" />
-                  Sidupplevelse
-                </CardTitle>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Gauge className="size-4" />
+                    Sidupplevelse
+                  </CardTitle>
+                  {selected.url ? (
+                    <Button asChild variant="outline" size="sm">
+                      <a
+                        href={`https://pagespeed.web.dev/analysis?url=${encodeURIComponent(selected.url)}&form_factor=mobile`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="size-4" />
+                        Öppna i PageSpeed Insights
+                      </a>
+                    </Button>
+                  ) : null}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
@@ -1440,6 +1484,64 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                     }}
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Wrench className="size-4" />
+                  Förbättringar (Lighthouse)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {selected.pagespeed?.diagnostics?.length ? (
+                  <div className="space-y-2">
+                    {selected.pagespeed.diagnostics.map((diagnostic) => (
+                      <div
+                        key={diagnostic.id}
+                        className="rounded-lg border px-3 py-2 text-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="font-medium">
+                            {diagnostic.title}
+                          </span>
+                          {diagnostic.display_value ? (
+                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {diagnostic.display_value}
+                            </span>
+                          ) : diagnostic.savings_ms ? (
+                            <span className="shrink-0 text-xs tabular-nums text-amber-700">
+                              −{Math.round(diagnostic.savings_ms)} ms
+                            </span>
+                          ) : null}
+                        </div>
+                        {diagnostic.items?.length ? (
+                          <ul className="mt-1.5 space-y-1">
+                            {diagnostic.items.map((item) => (
+                              <li
+                                key={item.url}
+                                className="flex items-center justify-between gap-3 text-xs text-muted-foreground"
+                              >
+                                <span className="truncate">
+                                  {shortenResourceUrl(item.url)}
+                                </span>
+                                <span className="shrink-0 tabular-nums">
+                                  {formatItemSize(item)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                    Ingen detaljerad diagnostik sparad ännu. Kör en ny analys
+                    för att fylla i den från PageSpeed.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
