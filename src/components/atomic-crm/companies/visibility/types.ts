@@ -1,6 +1,7 @@
 import type { DataProvider, Identifier } from "ra-core";
 import type {
   CustomerVisibilityDashboardResponse,
+  PresentationPolicy,
   ReportAiContent,
 } from "../../types";
 
@@ -30,6 +31,7 @@ export type VisibilityDataProvider = DataProvider & {
       recipient_email?: string;
       recipient_name?: string;
       ai_content?: ReportAiContent;
+      presentation?: Partial<PresentationPolicy>;
     },
   ): Promise<{
     success: true;
@@ -37,6 +39,16 @@ export type VisibilityDataProvider = DataProvider & {
     status: string;
     email_send_id: number | null;
   }>;
+  /** Bygg om HTML/PDF med aktuella inställningar utan att skicka (förhandsvisning). */
+  previewMonthlyReport(
+    reportId: Identifier,
+    overrides?: {
+      recipient_email?: string;
+      recipient_name?: string;
+      ai_content?: ReportAiContent;
+      presentation?: Partial<PresentationPolicy>;
+    },
+  ): Promise<{ success: true; report_id: number; status: string }>;
   getMonthlyReportPdf(
     reportId: Identifier,
   ): Promise<{ success: true; signed_url: string; expires_in: number }>;

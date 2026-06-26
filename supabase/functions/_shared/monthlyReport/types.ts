@@ -180,6 +180,29 @@ export type ReportAiContent = {
 
 export type ReportStatus = "good" | "needs_attention" | "poor" | "missing";
 
+export type ReportTone = "celebrate" | "balanced" | "reassure";
+
+/**
+ * Presentations-policy: vilka kundvända sektioner/siffror som visas + ton.
+ * Beräknas ur view_model (reportPresentation.ts) och lagras INUTI view_model så
+ * den följer med till både generate och send. Valfri på typnivå för
+ * bakåtkompatibilitet med äldre lagrade rapporter.
+ */
+export type PresentationPolicy = {
+  tone: ReportTone;
+  showClicks: boolean;
+  showImpressions: boolean;
+  showCtr: boolean;
+  showPositionAbsolute: boolean;
+  showPositionTrend: boolean;
+  showPerformanceScore: boolean;
+  showLcp: boolean;
+  showPageExperience: boolean;
+  showFourParts: boolean;
+  showMethodology: boolean;
+  filterZeroClickQueries: boolean;
+};
+
 export type ReportViewModel = {
   version: 2;
   companyName: string;
@@ -206,4 +229,6 @@ export type ReportViewModel = {
   }>;
   recommendations: ReportFinding[];
   primaryRecommendation: ReportFinding | null;
+  /** Auto-beräknad presentations-policy (reportPresentation.ts). */
+  presentation?: PresentationPolicy;
 };

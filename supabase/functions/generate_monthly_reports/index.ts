@@ -28,6 +28,7 @@ import {
   buildFallbackReportContent,
   buildReportViewModel,
 } from "../_shared/monthlyReport/reportViewModel.ts";
+import { buildPresentationPolicy } from "../_shared/monthlyReport/reportPresentation.ts";
 import { buildReportPdf } from "../_shared/monthlyReport/buildReportPdf.ts";
 import { previousCalendarMonth } from "../_shared/visibilityPeriods.ts";
 import { aggregateSearchConsole } from "../_shared/monthlyReport/aggregateSnapshots.ts";
@@ -297,6 +298,10 @@ async function generateReportForCompany(
     latest,
     previous,
   });
+  // Auto-policy: vad som är presentabelt + ton. Lagras inuti view_model så den
+  // följer med till send (single source of truth för rendering).
+  const presentation = buildPresentationPolicy(viewModel);
+  viewModel.presentation = presentation;
   const metrics = viewModel.metrics;
   const catalog = await loadUpsellCatalog();
   const upsells = selectUpsells(
@@ -315,6 +320,7 @@ async function generateReportForCompany(
     recommendations: viewModel.recommendations,
     geoReadiness: geoReadiness(latest.seo_checks),
     hasSearchData,
+    presentation,
   });
 
   let content = buildFallbackReportContent(viewModel, recipient.name);
@@ -357,9 +363,14 @@ async function generateReportForCompany(
     metrics,
     viewModel,
     hasSearchData,
+    presentation,
     replyToEmail: Deno.env.get("RESEND_FROM_EMAIL") || "hej@axonadigital.se",
   });
-  const pdfBytes = await buildReportPdf({ viewModel, aiContent: content });
+  const pdfBytes = await buildReportPdf({
+    viewModel,
+    aiContent: content,
+    presentation,
+  });
   const pdfPath = `${companyId}/${reportPeriod.startDate}_${reportPeriod.endDate}/synlighetsrapport-v2.pdf`;
   const { error: pdfUploadError } = await supabaseAdmin.storage
     .from("monthly-reports")

@@ -20,10 +20,88 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, Loader2, Mail, Sparkles } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Download, Eye, Loader2, Mail, Sparkles } from "lucide-react";
 
-import type { Company, MonthlyReport, ReportAiContent } from "../types";
+import type {
+  Company,
+  MonthlyReport,
+  PresentationPolicy,
+  ReportAiContent,
+} from "../types";
 import type { VisibilityDataProvider } from "./visibility/types";
+
+/** Kundvända visningsreglage i granskningsvyn (label + förklaring). */
+const PRESENTATION_TOGGLES: Array<{
+  key: keyof PresentationPolicy;
+  label: string;
+  hint: string;
+}> = [
+  { key: "showClicks", label: "Klick", hint: "KPI-kort för klick från Google" },
+  {
+    key: "showImpressions",
+    label: "Visningar",
+    hint: "KPI-kort för visningar i sök",
+  },
+  {
+    key: "showCtr",
+    label: "Klickfrekvens",
+    hint: "KPI-kort för andel som klickade",
+  },
+  {
+    key: "showPositionAbsolute",
+    label: "Snittposition (råtal)",
+    hint: "Det exakta positionstalet, t.ex. 34,7",
+  },
+  {
+    key: "showPerformanceScore",
+    label: "Prestandapoäng",
+    hint: "Rå Lighthouse-poäng (0–100)",
+  },
+  { key: "showLcp", label: "Laddtid", hint: "Rå laddtid i sekunder" },
+  {
+    key: "showPageExperience",
+    label: "Sidupplevelse-tabell",
+    hint: "LCP/INP/CLS/Lighthouse-tabellen i PDF:en",
+  },
+  {
+    key: "showFourParts",
+    label: "'Fyra delar'-översikt",
+    hint: "Status-scorecard (röd 'Behöver åtgärdas')",
+  },
+  {
+    key: "showMethodology",
+    label: "Metodavsnitt",
+    hint: "'Så ska rapporten läsas'-sidan",
+  },
+];
+
+const TONE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "auto", label: "Auto (rekommenderas)" },
+  { value: "celebrate", label: "Fira (skryt lite)" },
+  { value: "balanced", label: "Balanserad" },
+  { value: "reassure", label: "Trygg/försiktig" },
+];
+
+/** Skillnaden mellan editerad policy och auto-basen → minimal override-payload. */
+function diffPresentation(
+  base: PresentationPolicy,
+  edited: PresentationPolicy,
+): Partial<PresentationPolicy> {
+  const out: Partial<PresentationPolicy> = {};
+  (Object.keys(edited) as Array<keyof PresentationPolicy>).forEach((key) => {
+    if (edited[key] !== base[key]) {
+      (out as Record<string, unknown>)[key] = edited[key];
+    }
+  });
+  return out;
+}
 
 /**
  * Månadsrapport-modal: generera draft → granska/redigera → skicka till kund.
@@ -105,6 +183,7 @@ export const MonthlyReportModal = ({
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const [periodPreset, setPeriodPreset] = useState("last_month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -117,6 +196,21 @@ export const MonthlyReportModal = ({
     recommended_action: "",
     upsell_pitch: "",
   });
+  // Auto-policyn (basen) + den editerbara effektiva policyn (bas ⊕ sparade val).
+  const [presBase, setPresBase] = useState<PresentationPolicy | null>(null);
+  const [presPolicy, setPresPolicy] = useState<PresentationPolicy | null>(null);
+
+  // Initiera visningsreglagen när rapporten (om)laddas.
+  useEffect(() => {
+    const base = report?.view_model?.presentation ?? null;
+    if (!base) {
+      setPresBase(null);
+      setPresPolicy(null);
+      return;
+    }
+    setPresBase(base);
+    setPresPolicy({ ...base, ...(report?.presentation_overrides ?? {}) });
+  }, [report]);
 
   useEffect(() => {
     if (!open) return;
@@ -226,6 +320,31 @@ export const MonthlyReportModal = ({
     }
   };
 
+  // Minimal override-payload (bara fält som avviker från auto-policyn).
+  const presentationOverride =
+    presBase && presPolicy ? diffPresentation(presBase, presPolicy) : undefined;
+
+  const handlePreview = async () => {
+    if (!report) return;
+    setIsPreviewing(true);
+    try {
+      await dataProvider.previewMonthlyReport(report.id, {
+        recipient_email: recipientEmail || undefined,
+        ai_content: ai,
+        presentation: presentationOverride,
+      });
+      await loadReport(report.id);
+      notify("Förhandsvisning uppdaterad", { type: "info" });
+    } catch (error) {
+      notify(
+        `Fel: ${error instanceof Error ? error.message : "Kunde inte uppdatera förhandsvisningen"}`,
+        { type: "error" },
+      );
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!report) return;
     if (!recipientEmail) {
@@ -237,6 +356,7 @@ export const MonthlyReportModal = ({
       await dataProvider.sendMonthlyReport(report.id, {
         recipient_email: recipientEmail,
         ai_content: ai,
+        presentation: presentationOverride,
       });
       notify(`Rapporten skickad till ${recipientEmail}`, { type: "success" });
       onSent?.();
@@ -252,6 +372,28 @@ export const MonthlyReportModal = ({
     }
   };
 
+  const toneSelectValue =
+    presPolicy && presBase && presPolicy.tone === presBase.tone
+      ? "auto"
+      : (presPolicy?.tone ?? "auto");
+
+  const setToggle = (key: keyof PresentationPolicy, value: boolean) =>
+    setPresPolicy((current) =>
+      current ? { ...current, [key]: value } : current,
+    );
+
+  const setTone = (value: string) =>
+    setPresPolicy((current) => {
+      if (!current || !presBase) return current;
+      return {
+        ...current,
+        tone:
+          value === "auto"
+            ? presBase.tone
+            : (value as PresentationPolicy["tone"]),
+      };
+    });
+
   const upsell =
     report?.selected_upsells.find(
       (offer) => offer.service === selectedUpsellService,
@@ -260,7 +402,7 @@ export const MonthlyReportModal = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[640px] max-h-[90vh] grid-rows-[auto_1fr_auto] overflow-hidden">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[640px] max-h-[90vh] grid-rows-[auto_1fr_auto] overflow-hidden">
         <DialogHeader>
           <DialogTitle>Månadsrapport — {company.name}</DialogTitle>
           <DialogDescription>
@@ -286,7 +428,7 @@ export const MonthlyReportModal = ({
                   </SelectContent>
                 </Select>
                 {periodPreset === "custom" ? (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <div className="grid gap-1">
                       <Label htmlFor="period-from" className="text-xs">
                         Från månad
@@ -450,17 +592,96 @@ export const MonthlyReportModal = ({
                 </div>
               </div>
 
+              {presPolicy && presBase ? (
+                <Accordion type="single" collapsible className="border-t pt-2">
+                  <AccordionItem value="visningsregler" className="border-0">
+                    <AccordionTrigger className="text-sm font-medium">
+                      Visningsregler (avancerat)
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="grid gap-4 pt-1">
+                        <p className="text-xs text-muted-foreground">
+                          Reglerna är förinställda automatiskt — svaga,
+                          Axona-ägda siffror döljs och rapporten leder med det
+                          positiva. Justera vid behov och klicka "Uppdatera
+                          förhandsvisning".
+                        </p>
+                        <div className="grid gap-2">
+                          <Label htmlFor="report-tone">Ton</Label>
+                          <Select
+                            value={toneSelectValue}
+                            onValueChange={setTone}
+                          >
+                            <SelectTrigger id="report-tone">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {TONE_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {PRESENTATION_TOGGLES.map((toggle) => (
+                            <div
+                              key={toggle.key}
+                              className="flex items-start justify-between gap-3 rounded-md border p-3"
+                            >
+                              <div className="grid gap-0.5">
+                                <span className="text-sm font-medium">
+                                  {toggle.label}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {toggle.hint}
+                                </span>
+                              </div>
+                              <Switch
+                                checked={Boolean(presPolicy[toggle.key])}
+                                onCheckedChange={(value) =>
+                                  setToggle(toggle.key, value)
+                                }
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              ) : null}
+
               {report.generated_html && (
                 <div className="grid gap-2 border-t pt-4">
-                  <Label>Förhandsvisning (draft)</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Förhandsvisning (draft)</Label>
+                    {canSend ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePreview}
+                        disabled={isPreviewing}
+                      >
+                        {isPreviewing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                        Uppdatera förhandsvisning
+                      </Button>
+                    ) : null}
+                  </div>
                   <iframe
                     title="Förhandsvisning av rapportmail"
                     srcDoc={report.generated_html}
-                    className="w-full h-80 rounded-md border bg-white"
+                    className="w-full h-64 sm:h-80 rounded-md border bg-white"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Förhandsvisningen visar den genererade draften. Dina
-                    textändringar ovan tillämpas när du skickar.
+                    Text- och visningsändringar tillämpas i förhandsvisningen
+                    när du klickar "Uppdatera förhandsvisning", och alltid vid
+                    utskick.
                   </p>
                 </div>
               )}

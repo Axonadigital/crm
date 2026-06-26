@@ -11,7 +11,12 @@
  */
 
 import { reportColors, reportLogoUrl } from "./reportTheme.ts";
+import {
+  buildPresentationPolicy,
+  DEFAULT_PRESENTATION,
+} from "./reportPresentation.ts";
 import type {
+  PresentationPolicy,
   ReportActionItem,
   ReportAiContent,
   ReportMetrics,
@@ -191,16 +196,24 @@ export type BuildReportEmailInput = {
   metrics: ReportMetrics;
   viewModel?: ReportViewModel;
   hasSearchData: boolean;
+  /** Resolverad presentations-policy. Fallback: view_model.presentation, annars beräknad. */
+  presentation?: PresentationPolicy;
   /** From-adress för en "svara på mejlet"-CTA. */
   replyToEmail: string;
 };
 
 export function buildReportEmailHtml(input: BuildReportEmailInput): string {
   const { metrics, aiContent } = input;
+  const pres =
+    input.presentation ??
+    input.viewModel?.presentation ??
+    (input.viewModel
+      ? buildPresentationPolicy(input.viewModel)
+      : DEFAULT_PRESENTATION);
   const cards: string[] = [];
 
   if (input.hasSearchData) {
-    if (metrics.clicks.current != null) {
+    if (pres.showClicks && metrics.clicks.current != null) {
       cards.push(
         kpiCard(
           "Klick från Google",
@@ -210,7 +223,7 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
         ),
       );
     }
-    if (metrics.impressions.current != null) {
+    if (pres.showImpressions && metrics.impressions.current != null) {
       cards.push(
         kpiCard(
           "Visningar i sök",
@@ -220,7 +233,7 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
         ),
       );
     }
-    if (metrics.ctr.current != null) {
+    if (pres.showCtr && metrics.ctr.current != null) {
       cards.push(
         kpiCard(
           "Andel som klickade",
@@ -230,7 +243,7 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
         ),
       );
     }
-    if (metrics.position.current != null) {
+    if (pres.showPositionAbsolute && metrics.position.current != null) {
       cards.push(
         kpiCard(
           "Snittposition (lägre är bättre)",
@@ -241,18 +254,14 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
       );
     }
   }
-  if (metrics.lcp_ms.current != null) {
+  // Laddtidskortet visas bara när laddtiden faktiskt är bra (Axona-ägd siffra).
+  if (pres.showLcp && metrics.lcp_ms.current != null) {
     const seconds = (metrics.lcp_ms.current / 1000).toFixed(1);
-    const ok = metrics.lcp_ms.current <= 2500;
     cards.push(
       kpiCard(
         "Laddtid (mobil)",
         `${seconds} s`,
-        pillHtml(
-          ok ? c.greenTint : c.amberTint,
-          ok ? c.green : c.amber,
-          ok ? "Snabb nog" : "Kan förbättras",
-        ),
+        pillHtml(c.greenTint, c.green, "Snabb nog"),
         "",
       ),
     );
@@ -277,9 +286,12 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
       }`
     : null;
 
+  const topQueriesSource = pres.filterZeroClickQueries
+    ? metrics.topQueries.filter((q) => q.clicks > 0)
+    : metrics.topQueries;
   const topQueries =
-    input.hasSearchData && metrics.topQueries.length > 0
-      ? metrics.topQueries.slice(0, 3)
+    input.hasSearchData && topQueriesSource.length > 0
+      ? topQueriesSource.slice(0, 3)
       : [];
 
   return `<!DOCTYPE html>

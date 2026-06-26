@@ -203,8 +203,12 @@ function positiveFallbackSignal(viewModel: ReportViewModel): string {
 
 function improvementFallbackSignal(viewModel: ReportViewModel): string {
   const metrics = viewModel.metrics;
+  // Visa inte det råa sekundtalet när policyn döljer det (Axona-ägd siffra).
+  const showLcp = viewModel.presentation?.showLcp ?? true;
   if (metrics.lcp_ms.current != null && metrics.lcp_ms.current > 2500) {
-    return `Den tydligaste förbättringen är laddtiden på ${(metrics.lcp_ms.current / 1000).toFixed(1)} sekunder, där snabbare sida kan minska avhopp innan besökaren tar kontakt.`;
+    return showLcp
+      ? `Den tydligaste förbättringen är laddtiden på ${(metrics.lcp_ms.current / 1000).toFixed(1)} sekunder, där snabbare sida kan minska avhopp innan besökaren tar kontakt.`
+      : "Den tydligaste möjligheten framåt är en snabbare sida, vilket kan minska avhopp innan besökaren tar kontakt.";
   }
   if (viewModel.primaryRecommendation) {
     return `${viewModel.primaryRecommendation.title} är nästa tydliga möjlighet att stärka resultatet.`;
