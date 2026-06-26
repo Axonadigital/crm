@@ -296,11 +296,11 @@ const CallQueueItem = ({ company }: { company: Company }) => {
 
         <CardContent className="grid gap-3">
           {company.phone_number && (
-            <div className="flex items-center gap-2">
-              <Phone className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center gap-2 min-w-0">
+              <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
               <a
                 href={`tel:${company.phone_number}`}
-                className="text-blue-600 hover:underline"
+                className="text-blue-600 hover:underline truncate"
               >
                 {company.phone_number}
               </a>
@@ -308,33 +308,35 @@ const CallQueueItem = ({ company }: { company: Company }) => {
           )}
 
           {company.website && (
-            <div className="flex items-center gap-2">
-              <Globe className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center gap-2 min-w-0">
+              <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
               <a
                 href={company.website}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:underline flex items-center gap-1"
+                className="text-blue-600 hover:underline flex items-center gap-1 min-w-0"
               >
-                {company.website.replace(/^https?:\/\//, "")}
-                <ExternalLink className="h-3 w-3" />
+                <span className="truncate">
+                  {company.website.replace(/^https?:\/\//, "")}
+                </span>
+                <ExternalLink className="h-3 w-3 shrink-0" />
               </a>
             </div>
           )}
 
           {(company.city || company.address) && (
-            <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 min-w-0">
+              <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-sm text-muted-foreground truncate">
                 {[company.address, company.city].filter(Boolean).join(", ")}
               </span>
             </div>
           )}
 
           {company.next_followup_date && (
-            <div className="flex items-center gap-2 text-orange-600">
-              <Calendar className="h-4 w-4" />
-              <span className="text-sm font-medium">
+            <div className="flex items-center gap-2 text-orange-600 min-w-0">
+              <Calendar className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium truncate">
                 Följ upp:{" "}
                 {new Date(company.next_followup_date).toLocaleDateString(
                   "sv-SE",

@@ -284,7 +284,7 @@ const TriggerImportButton = () => {
           </Button>
         ))}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           type="number"
           min={1}
@@ -302,7 +302,7 @@ const TriggerImportButton = () => {
           {isRunning ? "Importerar..." : "Importera nästa batch"}
         </Button>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           type="number"
           min={2}

@@ -106,14 +106,14 @@ export const RevenueGoalsTracker = memo(() => {
     >
       {goalProgress.map((goal, index) => (
         <div key={index} className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-sm">{goal.label}</span>
-              <Badge variant="outline" className="text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-medium text-sm truncate">{goal.label}</span>
+              <Badge variant="outline" className="text-xs shrink-0">
                 {goal.periodLabel}
               </Badge>
             </div>
-            <span className="text-sm font-semibold">
+            <span className="text-sm font-semibold shrink-0">
               {goal.percentage.toFixed(0)}%
             </span>
           </div>
