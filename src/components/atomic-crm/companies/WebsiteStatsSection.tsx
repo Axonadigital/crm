@@ -272,6 +272,50 @@ function monthToDateRange(now = new Date()): {
   };
 }
 
+// Månadsval för den manuella uppdateringen: innevarande månad (hittills) plus de
+// senaste 12 avslutade kalendermånaderna. Speglar periodväljaren i kundrapporten,
+// men begränsat till EN månad — analysen skapar en snapshot per kalendermånad.
+function analyzeMonthOptions(
+  now = new Date(),
+): Array<{ value: string; label: string }> {
+  const options = [{ value: "this_month", label: "Denna månad (hittills)" }];
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  for (let back = 1; back <= 12; back++) {
+    const d = new Date(Date.UTC(y, m - back, 1));
+    const label = d.toLocaleDateString("sv-SE", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    options.push({
+      value: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`,
+      label: label.charAt(0).toUpperCase() + label.slice(1),
+    });
+  }
+  return options;
+}
+
+// Full kalendermånad (UTC) för ett valt månadsvärde; "this_month" → månad hittills.
+function analyzeMonthRange(
+  value: string,
+  now = new Date(),
+): { start_date: string; end_date: string } {
+  if (value === "this_month") return monthToDateRange(now);
+  const [yearStr, monthStr] = value.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr) - 1;
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    return monthToDateRange(now);
+  }
+  const start = new Date(Date.UTC(year, month, 1));
+  const end = new Date(Date.UTC(year, month + 1, 0));
+  return {
+    start_date: start.toISOString().slice(0, 10),
+    end_date: end.toISOString().slice(0, 10),
+  };
+}
+
 function periodLabel(snapshot: WebsiteSnapshot): string {
   if (snapshot.window_kind === "calendar_month" && snapshot.period_start) {
     const month = formatDate(snapshot.period_start);
@@ -327,6 +371,7 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
   const dataProvider = useDataProvider<VisibilityDataProvider>();
   const notify = useNotify();
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeMonth, setAnalyzeMonth] = useState("this_month");
   const [backfilling, setBackfilling] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>();
@@ -475,11 +520,11 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
     try {
       const result = await dataProvider.analyzeWebsite(company.id, {
         window_kind: "calendar_month",
-        ...monthToDateRange(),
+        ...analyzeMonthRange(analyzeMonth),
       });
       await refetch();
       setSelectedSnapshotId(String(result.snapshot_id));
-      notify("Den här månadens analys är uppdaterad", {
+      notify("Analysen för vald månad är uppdaterad", {
         type: "success",
       });
     } catch (error) {
@@ -691,18 +736,36 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
               )}
               {backfilling ? "Hämtar historik…" : "Hämta historik (12 mån)"}
             </Button>
-            <Button
-              variant="outline"
-              onClick={handleAnalyze}
-              disabled={analyzing}
-            >
-              {analyzing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <RefreshCw className="size-4" />
-              )}
-              {analyzing ? "Analyserar…" : "Uppdatera (denna månad)"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Select value={analyzeMonth} onValueChange={setAnalyzeMonth}>
+                <SelectTrigger
+                  className="w-[200px]"
+                  aria-label="Välj månad att analysera"
+                  title="Välj vilken månad analysen ska köras på"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {analyzeMonthOptions().map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                onClick={handleAnalyze}
+                disabled={analyzing}
+              >
+                {analyzing ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+                {analyzing ? "Analyserar…" : "Uppdatera"}
+              </Button>
+            </div>
             <CopyWebsiteChecklistButton
               companyName={company.name}
               websiteUrl={selected?.url ?? company.website}
