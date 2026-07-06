@@ -1418,7 +1418,10 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                   underlag. Saknas den faller LCP och CLS tillbaka på
                   labbtestets värde, tydligt märkt "(labbtest)". INP kan aldrig
                   mätas i labb — bara på verkliga besök. TBT visas aldrig som om
-                  det vore INP.
+                  det vore INP. Obs: labbtestets mobilvärde simulerar långsam 4G
+                  + nedbromsad CPU (Googles standard, pessimistiskt) — verkliga
+                  svenska uppkopplingar på 5G/wifi är snabbare, se
+                  desktop-värdet.
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <VisibilityMetricCard
@@ -1437,7 +1440,11 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                     trend={
                       selected.field_data?.lcp_ms != null
                         ? "75:e percentilen av verkliga besök"
-                        : "Labbtest — verklig fältdata saknas ännu"
+                        : selected.pagespeed?.desktop?.lcp_ms != null
+                          ? `Mobil (simulerad långsam 4G) · Desktop ${(
+                              selected.pagespeed.desktop.lcp_ms / 1000
+                            ).toFixed(1)} s`
+                          : "Labbtest, mobil (simulerad långsam 4G) — verklig fältdata saknas"
                     }
                     explanation={{
                       meaning:
@@ -1452,7 +1459,7 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                             ? "Laddningen är bra."
                             : "Laddningen bör förbättras."
                           : selected.pagespeed?.lcp_ms != null
-                            ? "Ingen verklig fältdata (för låg trafik) — visar labbtestets värde i stället."
+                            ? "Ingen verklig fältdata (för låg trafik) — visar labbtestets MOBILvärde, som simulerar långsam 4G + 4× nedbromsad CPU (Googles standard, medvetet pessimistiskt). Verkliga besökare på 5G/wifi och moderna telefoner är snabbare — jämför desktop-värdet."
                             : "Varken fältdata eller labbtest kunde hämtas.",
                       action:
                         "Optimera största bilden, typsnitt och kritiska resurser.",
