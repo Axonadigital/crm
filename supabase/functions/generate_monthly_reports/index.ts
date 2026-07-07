@@ -38,8 +38,12 @@ import { aggregateSearchConsole } from "../_shared/monthlyReport/aggregateSnapsh
  * grind: mailet skickas av send_monthly_report först efter godkännande).
  *
  * Lägen (samma dubbla auth som analyze_website):
- *   { cron: true }   — alla kunder med delivered_website_url (x-cron-secret),
- *                      körs i bakgrunden, svarar 202
+ *   { cron: true }   — [LEGACY, ej längre schemalagd] alla kunder i en enda
+ *                      körning. Bytt ut mot tick-läget nedan.
+ *   { tick: true }   — plocka upp ett litet antal `pending`-rader ur
+ *                      report_pipeline_queue (stage='report', dvs vars
+ *                      snapshot redan är klar) och generera draft. Anropas
+ *                      var 5:e minut av pg_cron (run_pipeline_tick('report')).
  *   { company_id }   — en kund (knappen på Kund-fliken, user-JWT)
  */
 
@@ -474,6 +478,71 @@ async function runCronSweep(): Promise<void> {
   console.warn("generate_monthly_reports cron: sweep complete");
 }
 
+// --- Tick-läge: plocka N rader ur report_pipeline_queue (stage='report') ---
+
+type PipelineQueueRow = {
+  id: number;
+  company_id: number;
+  period_start: string;
+  period_end: string;
+  claimed_at: string;
+};
+
+async function runQueueTick(batchSize: number): Promise<void> {
+  const { data: claimed, error } = await supabaseAdmin.rpc(
+    "claim_pipeline_queue_batch",
+    { p_stage: "report", p_batch_size: batchSize },
+  );
+  if (error) {
+    console.error(
+      "generate_monthly_reports tick: could not claim queue batch",
+      error,
+    );
+    return;
+  }
+  const rows = (claimed ?? []) as PipelineQueueRow[];
+  if (rows.length === 0) return;
+
+  console.warn(
+    `generate_monthly_reports tick: processing ${rows.length} customers`,
+  );
+  await Promise.all(
+    rows.map(async (row) => {
+      try {
+        const result = await generateReportForCompany(row.company_id, "cron", {
+          startDate: row.period_start,
+          endDate: row.period_end,
+        });
+        // Kön skapar bara report-rader efter att snapshot-steget lyckats, så
+        // "no snapshot" här är en anomali (inte det förväntade race-condition-
+        // fallet från den gamla designen) — flagga den som ett fel att titta på.
+        const ok =
+          result.status === "draft_cron" ||
+          result.status === "draft" ||
+          result.status === "skipped_already_finalized";
+        await supabaseAdmin.rpc("complete_pipeline_queue_item", {
+          p_id: row.id,
+          p_success: ok,
+          p_error: ok ? null : `Oväntat resultat: ${result.status}`,
+          p_claimed_at: row.claimed_at,
+        });
+      } catch (err) {
+        console.error(
+          `generate_monthly_reports tick: company ${row.company_id} failed:`,
+          err,
+        );
+        await supabaseAdmin.rpc("complete_pipeline_queue_item", {
+          p_id: row.id,
+          p_success: false,
+          p_error: err instanceof Error ? err.message : String(err),
+          p_claimed_at: row.claimed_at,
+        });
+      }
+    }),
+  );
+  console.warn("generate_monthly_reports tick: batch complete");
+}
+
 // --- Main handler (samma dubbla auth-läge som analyze_website) ---
 
 const isCronAuthorized = (req: Request) => {
@@ -497,6 +566,24 @@ Deno.serve(async (req: Request) =>
       }
       try {
         const body = await parseRequiredJsonBody(req);
+        const tick = getOptionalBooleanField(body, "tick");
+        if (tick) {
+          const batchSize =
+            getPositiveIntegerField(body, "batch_size", { required: false }) ??
+            CRON_BATCH_SIZE;
+          const job = runQueueTick(batchSize as number);
+          if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+            EdgeRuntime.waitUntil(
+              job.catch((err) =>
+                console.error("generate_monthly_reports tick failed:", err),
+              ),
+            );
+          } else {
+            await job;
+          }
+          return createJsonResponse({ accepted: true }, { status: 202 });
+        }
+
         const cron = getOptionalBooleanField(body, "cron");
 
         if (cron) {
