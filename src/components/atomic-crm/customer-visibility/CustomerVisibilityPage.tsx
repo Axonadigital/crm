@@ -48,6 +48,7 @@ import type { VisibilityDataProvider } from "../companies/visibility/types";
 import { CustomerPerformanceMap } from "./CustomerPerformanceMap";
 import { CustomerPortfolioTrendChart } from "./CustomerPortfolioTrendChart";
 import { CustomerVisibilityDetailSheet } from "./CustomerVisibilityDetailSheet";
+import { PipelineFailuresCard } from "./PipelineFailuresCard";
 import {
   CustomerVisibilityTable,
   type CustomerTableSort,
@@ -76,9 +77,7 @@ function periodOptions() {
   const start = new Date(`${DEFAULT_PERIOD}T00:00:00Z`);
   for (let index = 0; index < 12; index += 1) {
     result.push(
-      new Date(
-        Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - index, 1),
-      )
+      new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - index, 1))
         .toISOString()
         .slice(0, 10),
     );
@@ -100,8 +99,9 @@ export function CustomerVisibilityPage() {
     CustomerReportDeliveryStatus | "all"
   >("all");
   const [sort, setSort] = useState<CustomerTableSort>("category");
-  const [selectedRow, setSelectedRow] =
-    useState<CustomerVisibilityRow | null>(null);
+  const [selectedRow, setSelectedRow] = useState<CustomerVisibilityRow | null>(
+    null,
+  );
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const dashboardQuery = useQuery({
@@ -310,9 +310,7 @@ function CustomerVisibilityContent({
   onPeriodChange: (period: string) => void;
   onSearchChange: (search: string) => void;
   onCategoryChange: (category: CustomerPerformanceCategory | "all") => void;
-  onReportStatusChange: (
-    status: CustomerReportDeliveryStatus | "all",
-  ) => void;
+  onReportStatusChange: (status: CustomerReportDeliveryStatus | "all") => void;
   onSort: (sort: CustomerTableSort) => void;
   onSelect: (row: CustomerVisibilityRow) => void;
   onRetry: () => void;
@@ -344,13 +342,11 @@ function CustomerVisibilityContent({
         <div>
           <div className="hidden items-center gap-2 md:flex">
             <BarChart3 className="size-5 text-primary" />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Kundradar
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Kundradar</h1>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Samma verifierade webbstatistik som i kundbilden och
-            kundrapporten, samlad för hela portföljen.
+            Samma verifierade webbstatistik som i kundbilden och kundrapporten,
+            samlad för hela portföljen.
           </p>
         </div>
         <Select value={period} onValueChange={onPeriodChange}>
@@ -371,6 +367,8 @@ function CustomerVisibilityContent({
         </Select>
       </header>
 
+      <PipelineFailuresCard />
+
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-7">
         <SummaryCard
           icon={Users}
@@ -381,9 +379,7 @@ function CustomerVisibilityContent({
         <SummaryCard
           icon={Globe2}
           label="Google-klick"
-          value={
-            model.metrics.clicks?.toLocaleString("sv-SE") ?? "Data saknas"
-          }
+          value={model.metrics.clicks?.toLocaleString("sv-SE") ?? "Data saknas"}
           helper={`${model.metrics.searchCustomers} kunder ingår`}
         />
         <SummaryCard

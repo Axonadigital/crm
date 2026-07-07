@@ -39,8 +39,15 @@ import { findLocalPosition, type LocalRankResult } from "./localRank.ts";
  *
  * Lägen:
  *   { company_id }  — analysera ETT företag (knappen på Kund-fliken, user-JWT)
- *   { cron: true }  — analysera ALLA kunder med delivered_website_url
- *                     (pg_cron via x-cron-secret; körs i bakgrunden, svarar 202)
+ *   { cron: true }  — [LEGACY, ej längre schemalagd] analysera ALLA kunder i
+ *                     en enda körning. Bytt ut mot tick-läget nedan eftersom
+ *                     ett helt svep över alla kunder riskerade edge-funktionens
+ *                     wall-clock-gräns (~150s) innan alla hann bearbetas.
+ *   { tick: true }  — plocka upp ett litet antal `pending`-rader ur
+ *                     report_pipeline_queue (stage='snapshot') och analysera
+ *                     dem. Anropas var 5:e minut av pg_cron
+ *                     (run_pipeline_tick('snapshot')) tills kön är tom —
+ *                     skalar till valfritt antal kunder utan kodändring.
  *
  * Källor (varje källa är oberoende — ett källfel fäller aldrig analysen):
  *   a) PageSpeed Insights  (GOOGLE_PAGESPEED_API_KEY)
@@ -1585,6 +1592,62 @@ async function runCronSweep(period: VisibilityPeriod): Promise<void> {
   console.warn("analyze_website cron: sweep complete");
 }
 
+// --- Tick-läge: plocka N rader ur report_pipeline_queue och analysera ---
+
+type PipelineQueueRow = {
+  id: number;
+  company_id: number;
+  period_start: string;
+  period_end: string;
+  claimed_at: string;
+};
+
+async function runQueueTick(batchSize: number): Promise<void> {
+  const { data: claimed, error } = await supabaseAdmin.rpc(
+    "claim_pipeline_queue_batch",
+    { p_stage: "snapshot", p_batch_size: batchSize },
+  );
+  if (error) {
+    console.error("analyze_website tick: could not claim queue batch", error);
+    return;
+  }
+  const rows = (claimed ?? []) as PipelineQueueRow[];
+  if (rows.length === 0) return;
+
+  console.warn(`analyze_website tick: analyzing ${rows.length} customers`);
+  await Promise.all(
+    rows.map(async (row) => {
+      try {
+        await analyzeCompany(row.company_id, "cron", {
+          kind: "calendar_month",
+          startDate: row.period_start,
+          endDate: row.period_end,
+        });
+        // p_claimed_at = fencing token — se complete_pipeline_queue_item.
+        // Om raden hunnit bli omclaimad (>15 min) blir detta ett no-op i
+        // stället för att skriva över ett nyare resultat.
+        await supabaseAdmin.rpc("complete_pipeline_queue_item", {
+          p_id: row.id,
+          p_success: true,
+          p_claimed_at: row.claimed_at,
+        });
+      } catch (err) {
+        console.error(
+          `analyze_website tick: company ${row.company_id} failed:`,
+          err,
+        );
+        await supabaseAdmin.rpc("complete_pipeline_queue_item", {
+          p_id: row.id,
+          p_success: false,
+          p_error: err instanceof Error ? err.message : String(err),
+          p_claimed_at: row.claimed_at,
+        });
+      }
+    }),
+  );
+  console.warn("analyze_website tick: batch complete");
+}
+
 // --- Main handler (samma dubbla auth-läge som enrich_company) ---
 
 const isCronAuthorized = (req: Request) => {
@@ -1609,6 +1672,24 @@ Deno.serve(async (req: Request) =>
 
       try {
         const body = await parseRequiredJsonBody(req);
+        const tick = getOptionalBooleanField(body, "tick");
+        if (tick) {
+          const batchSize =
+            getPositiveIntegerField(body, "batch_size", { required: false }) ??
+            CRON_BATCH_SIZE;
+          const job = runQueueTick(batchSize as number);
+          if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+            EdgeRuntime.waitUntil(
+              job.catch((err) =>
+                console.error("analyze_website tick failed:", err),
+              ),
+            );
+          } else {
+            await job;
+          }
+          return createJsonResponse({ accepted: true }, { status: 202 });
+        }
+
         const cron = getOptionalBooleanField(body, "cron");
 
         if (cron) {

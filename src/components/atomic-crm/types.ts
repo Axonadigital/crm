@@ -974,6 +974,19 @@ export type MonthlyReport = {
   created_at: string;
 } & Pick<RaRecord, "id">;
 
+export type ReportPipelineQueueItem = {
+  company_id: Identifier;
+  period_start: string;
+  period_end: string;
+  stage: "snapshot" | "report";
+  status: "pending" | "processing" | "done" | "failed";
+  attempts: number;
+  error?: string | null;
+  claimed_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+} & Pick<RaRecord, "id">;
+
 export type CustomerPerformanceCategory =
   | "very_good"
   | "good"
