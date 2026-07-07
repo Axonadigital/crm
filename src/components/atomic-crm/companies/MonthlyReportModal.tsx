@@ -234,7 +234,11 @@ export const MonthlyReportModal = ({
         if (!active) return;
         setReport(data);
         setRecipientEmail(data.recipient_email ?? "");
-        setSelectedUpsellService(data.selected_upsells[0]?.service ?? "");
+        setSelectedUpsellService(
+          data.ai_content?.recommended_service ??
+            data.selected_upsells[0]?.service ??
+            "",
+        );
         if (data.ai_content) setAi(data.ai_content);
       })
       .catch((error) => {
@@ -266,7 +270,11 @@ export const MonthlyReportModal = ({
     );
     setReport(data);
     setRecipientEmail(data.recipient_email ?? "");
-    setSelectedUpsellService(data.selected_upsells[0]?.service ?? "");
+    setSelectedUpsellService(
+      data.ai_content?.recommended_service ??
+        data.selected_upsells[0]?.service ??
+        "",
+    );
     if (data.ai_content) setAi(data.ai_content);
     return data;
   };
@@ -277,7 +285,8 @@ export const MonthlyReportModal = ({
     // INNAN omgenereringen, så att det inte tyst försvinner när man tvingas
     // klicka "Generera om" för att låsa upp Skicka-knappen på en redan
     // skickad rapport.
-    const priorRecommendedService = ai.recommended_service;
+    const priorRecommendedService =
+      selectedUpsellService || ai.recommended_service;
     const reapplyPriorRecommendation = (data: MonthlyReport) => {
       if (!priorRecommendedService) return;
       const stillOffered = data.selected_upsells.find(
@@ -334,6 +343,9 @@ export const MonthlyReportModal = ({
       const result = await dataProvider.generateMonthlyReport(company.id, {
         ...period,
         ...(opts?.force ? { force: true } : {}),
+        ...(priorRecommendedService
+          ? { recommended_service: priorRecommendedService }
+          : {}),
       });
       if (result.status === "skipped_already_finalized" && result.report_id) {
         // Perioden är redan skickad — öppna den befintliga rapporten istället

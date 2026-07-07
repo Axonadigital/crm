@@ -144,6 +144,17 @@ function buildBrandDiscoveryBlock(metrics: ReportMetrics): string[] {
   ];
 }
 
+function orderRecommendationsForService(
+  recommendations: ReportFinding[],
+  service: string | undefined,
+): ReportFinding[] {
+  if (!service) return recommendations;
+  return [
+    ...recommendations.filter((r) => r.service === service),
+    ...recommendations.filter((r) => r.service !== service),
+  ];
+}
+
 function buildMetricsBlock(
   metrics: ReportMetrics,
   hasSearchData: boolean,
@@ -294,7 +305,10 @@ export function buildMonthlyReportPrompts(input: BuildReportPromptInput): {
       ? buildKeywordMovementBlock(input.metrics)
       : "";
 
-  const priorities = input.recommendations.slice(0, 3);
+  const priorities = orderRecommendationsForService(
+    input.recommendations,
+    input.upsell?.service,
+  ).slice(0, 3);
   const prioritiesBlock = priorities.length
     ? `Prioriteringar (skapa en action_plan-post per rad, samma key):\n${priorities
         .map(

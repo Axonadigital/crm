@@ -28,6 +28,8 @@ export type VisibilityDataProvider = DataProvider & {
       period_end: string;
       /** Kör om en period som redan har status sent/approved. Manuellt, aldrig från cron. */
       force?: boolean;
+      /** Manuellt vald huvudåtgärd som ska styra AI-text och åtgärdsplan. */
+      recommended_service?: string;
     },
   ): Promise<{ success: true; report_id: number | null; status: string }>;
   sendMonthlyReport(

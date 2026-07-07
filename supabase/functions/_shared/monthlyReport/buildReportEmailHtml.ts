@@ -152,6 +152,32 @@ function reorderForRecommendedService(
   return [picked, ...copy];
 }
 
+function actionItemFromRecommendation(
+  r: NonNullable<ReportViewModel["recommendations"]>[number],
+): ReportActionItem {
+  return {
+    key: r.key,
+    what_we_see: r.title,
+    what_it_means: r.description,
+    how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
+    next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
+  };
+}
+
+function fallbackActionItems(
+  viewModel: ReportViewModel | undefined,
+  recommendedService: string | undefined,
+): ReportActionItem[] {
+  const recs = viewModel?.recommendations ?? [];
+  const ordered = recommendedService
+    ? [
+        ...recs.filter((r) => r.service === recommendedService),
+        ...recs.filter((r) => r.service !== recommendedService),
+      ]
+    : recs;
+  return ordered.slice(0, 3).map(actionItemFromRecommendation);
+}
+
 /** action_plan från AI:n, annars deterministisk fallback ur findings. */
 function resolveActionItems(
   aiContent: ReportAiContent,
@@ -161,19 +187,15 @@ function resolveActionItems(
     (r) => r.service === aiContent.recommended_service,
   )?.key;
   if (aiContent.action_plan && aiContent.action_plan.length > 0) {
+    if (
+      recommendedKey &&
+      !aiContent.action_plan.some((item) => item.key === recommendedKey)
+    ) {
+      return fallbackActionItems(viewModel, aiContent.recommended_service);
+    }
     return reorderForRecommendedService(aiContent.action_plan, recommendedKey);
   }
-  const recs = (viewModel?.recommendations ?? []).slice(0, 3);
-  return reorderForRecommendedService(
-    recs.map((r) => ({
-      key: r.key,
-      what_we_see: r.title,
-      what_it_means: r.description,
-      how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
-      next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
-    })),
-    recommendedKey,
-  );
+  return fallbackActionItems(viewModel, aiContent.recommended_service);
 }
 
 /** Prominent "viktigast just nu"-kort — mailet leder med detta. */

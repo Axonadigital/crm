@@ -150,6 +150,47 @@ describe("buildMonthlyReportPrompts", () => {
     expect(prompt).toContain("börja med det positiva");
   });
 
+  it("orders priorities by the explicitly selected upsell service", () => {
+    const metrics = computeReportMetrics(snap, null);
+    const { prompt } = buildMonthlyReportPrompts({
+      companyName: "Axona Digital AB",
+      contactName: null,
+      periodLabel: "juni 2026",
+      metrics,
+      upsell: {
+        service: "SEO-optimering",
+        label: "SEO-optimering",
+        description: "Ni börjar synas på Google.",
+        pitch: "Vi lyfter viktiga sökord.",
+      },
+      recommendations: [
+        {
+          key: "missing_business_profile",
+          severity: "high",
+          title: "Google Business saknas",
+          description: "Ni syns inte i lokala kartresultat.",
+          service: "Google Business-paket",
+        },
+        {
+          key: "low_position",
+          severity: "medium",
+          title: "Nära första sidan",
+          description: "Flera sökord ligger precis utanför topp 10.",
+          service: "SEO-optimering",
+        },
+      ],
+      geoReadiness: "Strukturerad data finns.",
+      hasSearchData: true,
+      presentation: DEFAULT_PRESENTATION,
+    });
+
+    expect(prompt).toContain("Föreslagen tjänst att rekommendera");
+    expect(prompt).toContain("Tjänst: SEO-optimering");
+    expect(prompt.indexOf("key: low_position")).toBeLessThan(
+      prompt.indexOf("key: missing_business_profile"),
+    );
+  });
+
   it("tells the model to skip search metrics when there is no GSC data", () => {
     const metrics = computeReportMetrics({ performance_score: 80 }, null);
     const { prompt } = buildMonthlyReportPrompts({
@@ -463,6 +504,77 @@ describe("buildReportEmailHtml", () => {
     const idxLcpTitle = html.indexOf("Långsam laddtid");
     expect(idxSeoTitle).toBeGreaterThan(idxLeadLabel);
     expect(idxSeoTitle).toBeLessThan(idxLcpTitle);
+  });
+
+  it("does not let an old Google Business action_plan lead when SEO is selected", () => {
+    const metrics = computeReportMetrics(snap, null);
+    const viewModel: ReportViewModel = {
+      version: 2,
+      companyName: "Axona Digital AB",
+      period: { start: "2026-06-01", end: "2026-06-30", label: "juni 2026" },
+      comparisonPeriod: null,
+      coverage: { available: 4, total: 4, ratio: 1, missingSources: [] },
+      metrics,
+      statuses: {
+        googleVisibility: "good",
+        pageExperience: "needs_attention",
+        localVisibility: "missing",
+        technicalFoundation: "good",
+      },
+      technicalChecks: [],
+      recommendations: [
+        {
+          key: "missing_business_profile",
+          severity: "high",
+          title: "Google Business saknas",
+          description: "Ni syns inte i lokala kartresultat.",
+          service: "Google Business-paket",
+        },
+        {
+          key: "low_position",
+          severity: "medium",
+          title: "Nära första sidan",
+          description: "Flera sökord ligger precis utanför topp 10.",
+          service: "SEO-optimering",
+        },
+      ],
+      primaryRecommendation: {
+        key: "missing_business_profile",
+        severity: "high",
+        title: "Google Business saknas",
+        description: "Ni syns inte i lokala kartresultat.",
+        service: "Google Business-paket",
+      },
+    };
+
+    const html = buildReportEmailHtml({
+      companyName: "Axona Digital AB",
+      periodLabel: "juni 2026",
+      aiContent: {
+        ...aiContent,
+        recommended_service: "SEO-optimering",
+        action_plan: [
+          {
+            key: "missing_business_profile",
+            what_we_see: "Google Business-profilen saknas.",
+            what_it_means: "Lokala kunder hittar er inte lika enkelt.",
+            how_we_help: "Vi sätter upp Google Business-paketet.",
+            next_step: "Hör av er så startar vi.",
+          },
+        ],
+      },
+      metrics,
+      viewModel,
+      hasSearchData: true,
+      replyToEmail: "hej@axonadigital.se",
+    });
+
+    expect(html).toContain("Rekommenderat nästa steg · SEO-optimering");
+    const idxLeadLabel = html.indexOf("Viktigast just nu");
+    const idxSeoTitle = html.indexOf("Nära första sidan");
+    const idxGoogleTitle = html.indexOf("Google Business saknas");
+    expect(idxSeoTitle).toBeGreaterThan(idxLeadLabel);
+    expect(idxSeoTitle).toBeLessThan(idxGoogleTitle);
   });
 
   it("shows Sökordsrörelser only when the resolved recommendation is SEO-optimering", () => {
