@@ -886,6 +886,8 @@ export type ReportAiContent = {
   summary: string;
   recommended_action: string;
   upsell_pitch: string;
+  /** Manuellt vald "Rekommenderad huvudåtgärd" (matchar UpsellOffer.service). */
+  recommended_service?: string;
 };
 
 export type ReportStatus = "good" | "needs_attention" | "poor" | "missing";

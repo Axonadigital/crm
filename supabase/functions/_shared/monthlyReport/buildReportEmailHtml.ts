@@ -136,22 +136,44 @@ function metricRows(cards: string[]): string {
   return rows.join("\n");
 }
 
+/**
+ * Flyttar posten som matchar den manuellt valda huvudåtgärden längst fram,
+ * utan att generera om text — ren omsortering av redan genererat innehåll.
+ */
+function reorderForRecommendedService(
+  items: ReportActionItem[],
+  recommendedKey: string | undefined,
+): ReportActionItem[] {
+  if (!recommendedKey) return items;
+  const idx = items.findIndex((item) => item.key === recommendedKey);
+  if (idx <= 0) return items;
+  const copy = [...items];
+  const [picked] = copy.splice(idx, 1);
+  return [picked, ...copy];
+}
+
 /** action_plan från AI:n, annars deterministisk fallback ur findings. */
 function resolveActionItems(
   aiContent: ReportAiContent,
   viewModel?: ReportViewModel,
 ): ReportActionItem[] {
+  const recommendedKey = viewModel?.recommendations?.find(
+    (r) => r.service === aiContent.recommended_service,
+  )?.key;
   if (aiContent.action_plan && aiContent.action_plan.length > 0) {
-    return aiContent.action_plan;
+    return reorderForRecommendedService(aiContent.action_plan, recommendedKey);
   }
   const recs = (viewModel?.recommendations ?? []).slice(0, 3);
-  return recs.map((r) => ({
-    key: r.key,
-    what_we_see: r.title,
-    what_it_means: r.description,
-    how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
-    next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
-  }));
+  return reorderForRecommendedService(
+    recs.map((r) => ({
+      key: r.key,
+      what_we_see: r.title,
+      what_it_means: r.description,
+      how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
+      next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
+    })),
+    recommendedKey,
+  );
 }
 
 /** Prominent "viktigast just nu"-kort — mailet leder med detta. */
@@ -183,6 +205,18 @@ function actionRow(item: ReportActionItem, index: number): string {
       </td>
     </tr></table>
   </td></tr>`;
+}
+
+/** Rad i "Sökordsrörelser"-tabellen (endast vid SEO-optimering). */
+function keywordMoverRow(
+  m: { query: string; current: number; previous: number; delta: number },
+  improved: boolean,
+): string {
+  const color = improved ? c.green : c.amber;
+  return `<tr>
+    <td style="font-size:13px;font-weight:600;color:${c.ink};padding:6px 0;border-top:1px solid ${c.hairline};">${escapeHtml(m.query)}</td>
+    <td align="right" style="font-size:12px;color:${color};padding:6px 0;white-space:nowrap;border-top:1px solid ${c.hairline};">${triangle(improved, color)}${Math.abs(m.delta).toFixed(1)}&nbsp;platser (→ pos&nbsp;${m.current.toFixed(1)})</td>
+  </tr>`;
 }
 
 function section(padding: string, inner: string): string {
@@ -279,6 +313,7 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
   const bookingMailto = `mailto:${encodeURIComponent(input.replyToEmail)}?subject=${encodeURIComponent("Genomgång av synlighetsrapport")}`;
   const primaryCtaUrl = input.bookingUrl || bookingMailto;
   const service =
+    aiContent.recommended_service ??
     input.viewModel?.primaryRecommendation?.service ??
     "nästa prioriterade insats";
 
@@ -301,6 +336,12 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
     input.hasSearchData && topQueriesSource.length > 0
       ? topQueriesSource.slice(0, 3)
       : [];
+
+  const keywordMovers = metrics.keywordMovers;
+  const showKeywordMovers =
+    service === "SEO-optimering" &&
+    !!keywordMovers &&
+    (keywordMovers.improved.length > 0 || keywordMovers.declined.length > 0);
 
   return `<!DOCTYPE html>
 <html lang="sv">
@@ -379,6 +420,23 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
                         </tr></table>`,
                     )
                     .join("")}
+                </td></tr></table>`,
+              )
+            : ""
+        }
+
+        <!-- Sökordsrörelser (endast vid SEO-optimering som huvudåtgärd) -->
+        ${
+          showKeywordMovers
+            ? section(
+                "20px 36px 6px",
+                `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid ${c.hairline};border-radius:14px;"><tr><td style="padding:18px 20px;font-family:${FONT};">
+                  ${sectionLabel("Sökordsrörelser")}
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    ${keywordMovers!.improved.map((m) => keywordMoverRow(m, true)).join("")}
+                    ${keywordMovers!.declined.map((m) => keywordMoverRow(m, false)).join("")}
+                  </table>
+                  <p style="margin:10px 0 0;font-size:11px;color:${c.faint};line-height:1.5;">Positionsförändringar mot förra månaden — lägre position är bättre.</p>
                 </td></tr></table>`,
               )
             : ""

@@ -270,8 +270,17 @@ export const MonthlyReportModal = ({
     if (data.ai_content) setAi(data.ai_content);
   };
 
-  const handleGenerate = async () => {
-    const period = computeReportPeriod(periodPreset, customFrom, customTo);
+  const handleGenerate = async (opts?: { force?: boolean }) => {
+    // Vid omgenerering av en redan öppen rapport (t.ex. en redan skickad
+    // period) används rapportens EGEN period — aldrig periodPreset-state,
+    // som kan vara kvar från ett tidigare "ny rapport"-läge i samma modal.
+    const period =
+      opts?.force && report?.data_period_start && report?.data_period_end
+        ? {
+            period_start: report.data_period_start,
+            period_end: report.data_period_end,
+          }
+        : computeReportPeriod(periodPreset, customFrom, customTo);
     if (!period) {
       notify(
         !customFrom || !customTo
@@ -288,21 +297,23 @@ export const MonthlyReportModal = ({
       // denna månad (hittills) kräver explicita datum för den pågående månaden,
       // precis som "Uppdatera (denna månad)" i Samlad synlighetsvy. Övriga
       // perioder aggregerar befintlig månadshistorik ("Hämta historik").
-      if (periodPreset === "last_month") {
-        await dataProvider.analyzeWebsite(company.id, {
-          window_kind: "calendar_month",
-        });
-      } else if (periodPreset === "this_month") {
+      // Forcerad omgenerering (redan skickad period) hämtar alltid färsk data
+      // för samma period först — t.ex. en månad som skickades ofullständig.
+      if (opts?.force || periodPreset === "this_month") {
         await dataProvider.analyzeWebsite(company.id, {
           window_kind: "calendar_month",
           start_date: period.period_start,
           end_date: period.period_end,
         });
+      } else if (periodPreset === "last_month") {
+        await dataProvider.analyzeWebsite(company.id, {
+          window_kind: "calendar_month",
+        });
       }
-      const result = await dataProvider.generateMonthlyReport(
-        company.id,
-        period,
-      );
+      const result = await dataProvider.generateMonthlyReport(company.id, {
+        ...period,
+        ...(opts?.force ? { force: true } : {}),
+      });
       if (!result.report_id || result.status.startsWith("skipped")) {
         notify(
           result.status === "skipped_no_snapshot"
@@ -320,6 +331,11 @@ export const MonthlyReportModal = ({
         return;
       }
       await loadReport(result.report_id);
+      if (opts?.force) {
+        notify("Rapporten omgenererad — granska och skicka igen.", {
+          type: "info",
+        });
+      }
     } catch (error) {
       notify(
         `Fel: ${error instanceof Error ? error.message : "Kunde inte generera rapport"}`,
@@ -422,6 +438,8 @@ export const MonthlyReportModal = ({
       (offer) => offer.service === selectedUpsellService,
     ) ?? report?.selected_upsells?.[0];
   const canSend = report?.status === "draft" || report?.status === "failed";
+  const isFinalized =
+    report?.status === "sent" || report?.status === "approved";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -497,6 +515,17 @@ export const MonthlyReportModal = ({
             </div>
           ) : (
             <div className="grid gap-5 py-4">
+              {isFinalized ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  {report.status === "sent"
+                    ? `Denna rapport skickades ${
+                        report.sent_at
+                          ? new Date(report.sent_at).toLocaleDateString("sv-SE")
+                          : "tidigare"
+                      } till ${report.recipient_email ?? "okänd mottagare"}. Generera om med aktuell data om du vill skicka en uppdaterad version.`
+                    : "Rapporten behandlas just nu (godkänd, utskick pågår)."}
+                </div>
+              ) : null}
               <div className="grid gap-2">
                 <Label htmlFor="report-recipient">Mottagare (e-post)</Label>
                 <Input
@@ -540,6 +569,7 @@ export const MonthlyReportModal = ({
                         ...current,
                         recommended_action: selected.description,
                         upsell_pitch: selected.pitch,
+                        recommended_service: selected.service,
                       }));
                     }}
                   >
@@ -725,7 +755,7 @@ export const MonthlyReportModal = ({
                 <>
                   <Button
                     variant="ghost"
-                    onClick={handleGenerate}
+                    onClick={() => handleGenerate()}
                     disabled={isGenerating}
                   >
                     {isGenerating ? (
@@ -747,12 +777,24 @@ export const MonthlyReportModal = ({
                     {isSending ? "Skickar..." : "Skicka till kund"}
                   </Button>
                 </>
+              ) : report.status === "sent" ? (
+                <>
+                  <Badge variant="outline">Redan skickad</Badge>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleGenerate({ force: true })}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    Generera om med aktuell data
+                  </Button>
+                </>
               ) : (
-                <Badge variant="outline">
-                  {report.status === "sent"
-                    ? "Rapporten är redan skickad"
-                    : "Rapporten behandlas"}
-                </Badge>
+                <Badge variant="outline">Rapporten behandlas</Badge>
               )}
             </>
           )}

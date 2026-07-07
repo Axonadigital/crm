@@ -100,4 +100,24 @@ describe("computeReportMetrics", () => {
     expect(m.ctr.current).toBeNull();
     expect(m.performance_score.current).toBe(90);
   });
+
+  it("computes keyword movers from the two snapshots' top_queries", () => {
+    const withHistory: ReportSnapshot = {
+      ...previous,
+      search_console: {
+        ...previous.search_console!,
+        top_queries: [
+          {
+            query: "jvs maskiner ab",
+            clicks: 6,
+            impressions: 30,
+            position: 3.4,
+          },
+        ],
+      },
+    };
+    const m = computeReportMetrics(latest, withHistory);
+    expect(m.keywordMovers?.improved[0]?.query).toBe("jvs maskiner ab");
+    expect(m.keywordMovers?.improved[0]?.delta).toBeCloseTo(1.2 - 3.4, 5);
+  });
 });

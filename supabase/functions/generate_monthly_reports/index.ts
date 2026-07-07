@@ -208,6 +208,12 @@ async function generateReportForCompany(
   companyId: number,
   source: "manual" | "cron",
   requestedPeriod?: { startDate: string; endDate: string },
+  /**
+   * Tillåter manuell omgenerering av en period som redan har status
+   * sent/approved (t.ex. skicka om med en nu fullständig månad). Sätts bara
+   * av en explicit, autentiserad CRM-handling — cron skickar aldrig denna.
+   */
+  force = false,
 ): Promise<{ report_id: number | null; status: string }> {
   // Period: vald (normaliserad till hela månader) eller default = förra månaden.
   const reportPeriod = requestedPeriod
@@ -237,7 +243,8 @@ async function generateReportForCompany(
     .maybeSingle();
   if (
     existing &&
-    (existing.status === "sent" || existing.status === "approved")
+    (existing.status === "sent" || existing.status === "approved") &&
+    !force
   ) {
     return { report_id: existing.id, status: "skipped_already_finalized" };
   }
@@ -606,10 +613,12 @@ Deno.serve(async (req: Request) =>
           typeof periodStart === "string" && typeof periodEnd === "string"
             ? { startDate: periodStart, endDate: periodEnd }
             : undefined;
+        const force = getOptionalBooleanField(body, "force") ?? false;
         const result = await generateReportForCompany(
           company_id as number,
           "manual",
           requestedPeriod,
+          force,
         );
         return createJsonResponse({ success: true, ...result });
       } catch (error) {

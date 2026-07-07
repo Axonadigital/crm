@@ -98,6 +98,31 @@ function buildSearchContextBlock(
   return lines;
 }
 
+/** Bara med i prompten när SEO-optimering är den föreslagna tjänsten. */
+function buildKeywordMovementBlock(metrics: ReportMetrics): string {
+  const movers = metrics.keywordMovers;
+  if (
+    !movers ||
+    (movers.improved.length === 0 && movers.declined.length === 0)
+  ) {
+    return "";
+  }
+  const fmtMover = (m: { query: string; previous: number; current: number }) =>
+    `${m.query} (${m.previous.toFixed(1)} → ${m.current.toFixed(1)})`;
+  const lines: string[] = [];
+  if (movers.improved.length > 0) {
+    lines.push(
+      `- Förbättrade sökordspositioner: ${movers.improved.map(fmtMover).join("; ")}`,
+    );
+  }
+  if (movers.declined.length > 0) {
+    lines.push(
+      `- Försämrade sökordspositioner: ${movers.declined.map(fmtMover).join("; ")}`,
+    );
+  }
+  return `\nSökordsrörelser mot förra månaden (lägre position är bättre):\n${lines.join("\n")}`;
+}
+
 function buildBrandDiscoveryBlock(metrics: ReportMetrics): string[] {
   const branded = metrics.branded;
   const nonBranded = metrics.nonBranded;
@@ -264,6 +289,10 @@ export function buildMonthlyReportPrompts(input: BuildReportPromptInput): {
   const upsellBlock = input.upsell
     ? `Föreslagen tjänst att rekommendera:\n- Tjänst: ${input.upsell.label}\n- Nästa möjlighet för kunden: ${input.upsell.description}\n- Pitch-vinkel att utgå från: ${input.upsell.pitch}`
     : "Inga tydliga möjligheter stack ut den här månaden. Föreslå då en lätt, fortsatt förbättring (t.ex. fortsatt innehållsarbete) utan att överdriva problem.";
+  const keywordMovementBlock =
+    input.upsell?.service === "SEO-optimering"
+      ? buildKeywordMovementBlock(input.metrics)
+      : "";
 
   const priorities = input.recommendations.slice(0, 3);
   const prioritiesBlock = priorities.length
@@ -287,6 +316,7 @@ ${buildMetricsBlock(input.metrics, input.hasSearchData, input.presentation)}
 Synlighet i AI-sök (beredskap): ${input.geoReadiness}
 
 ${upsellBlock}
+${keywordMovementBlock}
 
 ${prioritiesBlock}
 

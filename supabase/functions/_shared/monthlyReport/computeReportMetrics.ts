@@ -10,6 +10,7 @@
  */
 
 import type { MetricTrend, ReportMetrics, ReportSnapshot } from "./types.ts";
+import { computeKeywordMovers } from "./keywordMovement.ts";
 
 function trend(
   current: number | null | undefined,
@@ -107,5 +108,6 @@ export function computeReportMetrics(
     branded,
     nonBranded,
     isFirstReport,
+    keywordMovers: computeKeywordMovers(latest, previous),
   };
 }
