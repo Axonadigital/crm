@@ -20,6 +20,8 @@ export const DEFAULT_UPSELL_CATALOG: UpsellOffer[] = [
     label: "Prestandaoptimering",
     description:
       "Er sida laddar långsamt — och varje sekund kostar er besökare som annars blivit kunder.",
+    internalNote:
+      "Använd internt när fältdata eller flera labbsignaler visar att fart påverkar konvertering.",
     pitch:
       "Vi gör sidan snabbare. Snabbare laddning ger lägre avhopp och fler bokningar/förfrågningar — en direkt effekt på er affär.",
   },
@@ -28,6 +30,8 @@ export const DEFAULT_UPSELL_CATALOG: UpsellOffer[] = [
     label: "SEO-optimering",
     description:
       "Ni ligger nära förstasidan på Google men inte riktigt framme — där de flesta klicken finns.",
+    internalNote:
+      "Prioritera när non-branded-sökningar, position 4–20 eller låg klickfrekvens visar konkret potential.",
     pitch:
       "Ni är några steg från förstasidan på era viktigaste sökord. Det här är den snabbaste synlighetsvinsten ni kan göra.",
   },
@@ -36,6 +40,8 @@ export const DEFAULT_UPSELL_CATALOG: UpsellOffer[] = [
     label: "AI-sök-optimering",
     description:
       "När folk frågar ChatGPT, Claude eller Google AI om er bransch nämns ni sällan.",
+    internalNote:
+      "Internt paket för schema, tydligt expertinnehåll och AI-läsbar struktur.",
     pitch:
       "Sökning flyttar till AI-svar. Vi strukturerar ert innehåll så att AI förstår och rekommenderar er — inte konkurrenten.",
   },
@@ -44,6 +50,8 @@ export const DEFAULT_UPSELL_CATALOG: UpsellOffer[] = [
     label: "Google Business-paket",
     description:
       "Er Google Business-profil saknas eller har för få/för gamla recensioner — där de lokala kunderna letar.",
+    internalNote:
+      "Bör bara prioriteras när lokal synlighet är relevant för kundtypen.",
     pitch:
       "Vi sätter upp och vårdar er Google Business-profil och bygger en rutin för jämn ström av recensioner — högst ROI för lokala företag.",
   },
@@ -52,6 +60,8 @@ export const DEFAULT_UPSELL_CATALOG: UpsellOffer[] = [
     label: "Innehåll & synlighet",
     description:
       "Google och AI förstår inte riktigt vad ni erbjuder — innehållet behöver stärkas.",
+    internalNote:
+      "Bra när tekniken är okej men tjänstesidor, erbjudande eller topical coverage behöver bli tydligare.",
     pitch:
       "Vi gör innehållet tydligt och begripligt för både Google och AI, så att ni dyker upp där era kunder faktiskt frågar.",
   },

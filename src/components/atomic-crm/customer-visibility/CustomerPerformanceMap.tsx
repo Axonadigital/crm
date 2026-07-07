@@ -88,6 +88,11 @@ function CategoryColumn({
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1 text-[11px] font-normal text-muted-foreground">
                   <span>{dataBasisLabel(row.dataBasis)}</span>
+                  {row.brandShare != null && row.brandShare >= 0.7 ? (
+                    <span>
+                      · {Math.round(row.brandShare * 100)} % varumärke
+                    </span>
+                  ) : null}
                   {row.currentSnapshot?.performance_score != null ? (
                     <span>
                       · Prestanda {row.currentSnapshot.performance_score}

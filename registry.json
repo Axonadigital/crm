@@ -1238,6 +1238,22 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/companies/visibility/trendFormatting.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/companies/visibility/technicalSeoQuality.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/companies/visibility/pageExperienceStatus.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/companies/visibility/nextDeal.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/companies/visibility/VisibilityTrendChart.tsx",
           "type": "registry:component"
         },

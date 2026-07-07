@@ -20,6 +20,27 @@ const snap: ReportSnapshot = {
     top_queries: [
       { query: "jvs maskiner", clicks: 10, impressions: 40, position: 1.2 },
     ],
+    top_pages: [
+      {
+        page: "https://jvsmaskiner.se/service",
+        clicks: 8,
+        impressions: 70,
+        ctr: 8 / 70,
+        position: 5.4,
+      },
+    ],
+    branded: { clicks: 18, impressions: 80, queries: 2 },
+    non_branded: { clicks: 5, impressions: 41, queries: 12 },
+    opportunities: [
+      {
+        kind: "position_4_10",
+        query: "entreprenadmaskiner service",
+        clicks: 2,
+        impressions: 50,
+        ctr: 0.04,
+        position: 7.2,
+      },
+    ],
   },
 };
 
@@ -118,6 +139,11 @@ describe("buildMonthlyReportPrompts", () => {
     expect(prompt).toContain("Klick från Google: 23");
     expect(prompt).toContain("SEO-optimering");
     expect(prompt).toContain("key: low_position");
+    expect(prompt).toContain("Viktigaste landningssidor");
+    expect(prompt).toContain("https://jvsmaskiner.se/service");
+    expect(prompt).toContain("Konkreta sökmöjligheter");
+    expect(prompt).toContain("entreprenadmaskiner service");
+    expect(prompt).toContain("Varumärke vs upptäckt");
     expect(systemPrompt).toContain("Nämn ALDRIG pris");
     expect(systemPrompt).toContain("Börja sammanfattningen");
     expect(systemPrompt).toContain("action_plan");

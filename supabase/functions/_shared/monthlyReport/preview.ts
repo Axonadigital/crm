@@ -127,6 +127,8 @@ export const sampleViewModel: ReportViewModel = {
         position: 6.2,
       },
     ],
+    branded: { clicks: 6, impressions: 80, queries: 2 },
+    nonBranded: { clicks: 14, impressions: 254, queries: 18 },
     isFirstReport: false,
   },
   statuses: {

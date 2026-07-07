@@ -961,6 +961,18 @@ const dataProviderWithCustomMethods = {
     }
     return data;
   },
+  async archiveMonthlyReport(
+    reportId: Identifier,
+  ): Promise<{ success: true; report_id: Identifier; status: "archived" }> {
+    const { error } = await supabase
+      .from("monthly_reports")
+      .update({ status: "archived" })
+      .eq("id", reportId);
+    if (error) {
+      throw new Error(error.message);
+    }
+    return { success: true, report_id: reportId, status: "archived" };
+  },
   async getCustomerVisibilityDashboard(
     period: string,
   ): Promise<CustomerVisibilityDashboardResponse> {

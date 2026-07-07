@@ -109,6 +109,7 @@ export type SeoChecks = {
   robots: boolean;
   llms_txt: boolean;
   h1: boolean;
+  h1_count?: number | null;
   indexable?: boolean | null;
 };
 
@@ -177,6 +178,8 @@ export type Finding = {
   severity: FindingSeverity;
   title: string;
   description: string;
+  /** Intern sälj-/diagnostiknotis. Kundrapporten använder description. */
+  internalNote?: string;
   /** Axona-tjänsten som löser bristen — säljvinkeln. */
   service: string;
 };
@@ -186,6 +189,7 @@ export type AnalysisInput = {
   seoChecks: SeoChecks | null;
   businessProfile: BusinessProfile | null;
   searchConsole: SearchConsoleSummary | null;
+  localSeoRelevant?: boolean | null;
 };
 
 const SERVICES = {
@@ -202,7 +206,13 @@ function formatSeconds(ms: number): string {
 
 export function computeFindings(input: AnalysisInput): Finding[] {
   const findings: Finding[] = [];
-  const { pagespeed, seoChecks, businessProfile, searchConsole } = input;
+  const {
+    pagespeed,
+    seoChecks,
+    businessProfile,
+    searchConsole,
+    localSeoRelevant,
+  } = input;
 
   // --- Prestanda (PageSpeed) ---
   if (pagespeed?.performance_score != null) {
@@ -270,6 +280,17 @@ export function computeFindings(input: AnalysisInput): Finding[] {
           "Utan meta-beskrivning väljer Google själv vilken text som visas i sökresultatet — ofta sämre för klickfrekvensen.",
         service: SERVICES.seo,
       });
+    } else if (
+      seoChecks.meta_description.length < 120 ||
+      seoChecks.meta_description.length > 160
+    ) {
+      findings.push({
+        key: "poor_meta_description_length",
+        severity: "low",
+        title: "Meta-beskrivningen har svag längd",
+        description: `Meta-beskrivningen är ${seoChecks.meta_description.length} tecken. En bra längd är ofta 120–160 tecken för att sälja klicket utan att kapas.`,
+        service: SERVICES.seo,
+      });
     }
     if (!seoChecks.schema_org) {
       findings.push({
@@ -319,6 +340,26 @@ export function computeFindings(input: AnalysisInput): Finding[] {
         description: "Startsidan saknar huvudrubrik (H1), en SEO-grundsten.",
         service: SERVICES.seo,
       });
+    } else if (seoChecks.h1_count != null && seoChecks.h1_count !== 1) {
+      findings.push({
+        key: "multiple_h1",
+        severity: "low",
+        title: `${seoChecks.h1_count} H1-rubriker på startsidan`,
+        description:
+          "Startsidan bör ha en tydlig huvudrubrik. Flera H1-rubriker gör sidans huvudämne mindre tydligt för både Google och AI-tjänster.",
+        service: SERVICES.seo,
+      });
+    }
+    if (seoChecks.title) {
+      if (seoChecks.title.length < 15 || seoChecks.title.length > 60) {
+        findings.push({
+          key: "poor_title_length",
+          severity: "low",
+          title: "Sidtiteln har svag längd",
+          description: `Sidtiteln är ${seoChecks.title.length} tecken. En bra sidtitel är ofta 15–60 tecken och gör erbjudandet tydligt i sökresultatet.`,
+          service: SERVICES.seo,
+        });
+      }
     }
   }
 
@@ -327,10 +368,12 @@ export function computeFindings(input: AnalysisInput): Finding[] {
     if (!businessProfile.found) {
       findings.push({
         key: "missing_business_profile",
-        severity: "high",
+        severity: localSeoRelevant === false ? "low" : "high",
         title: "Saknar Google Business-profil",
         description:
-          "Företaget syns inte på Google Maps eller i lokala sökresultat — där de flesta lokala kunder letar. En Business-profil ger direkt fler söktraffär.",
+          localSeoRelevant === false
+            ? "Företaget saknar Google Business-profil, men lokal söktrafik är markerad som mindre relevant för den här kunden. Bevaka vid behov, men prioritera inte före kundens huvudmål."
+            : "Företaget syns inte på Google Maps eller i lokala sökresultat — där de flesta lokala kunder letar. En Business-profil ger direkt fler söktraffär.",
         service: SERVICES.business,
       });
     } else {
@@ -388,6 +431,40 @@ export function computeFindings(input: AnalysisInput): Finding[] {
           "Sajten hamnar i snitt utanför första sidan. Position 1–10 får ~90 % av alla klick.",
         service: SERVICES.seo,
       });
+    }
+
+    // Varumärke vs upptäckt: syns sajten bara för dem som redan känner till
+    // företaget? Non-branded-klick är den äkta SEO-vinsten — nya kunder som
+    // hittar via tjänstesökningar, inte fler som googlar namnet.
+    const branded = searchConsole.branded;
+    const nonBranded = searchConsole.non_branded;
+    if (branded && nonBranded) {
+      const breakdownClicks = branded.clicks + nonBranded.clicks;
+      const totalClicks =
+        searchConsole.clicks > 0 ? searchConsole.clicks : breakdownClicks;
+      const totalImpressions = branded.impressions + nonBranded.impressions;
+      const brandShare = totalClicks > 0 ? branded.clicks / totalClicks : null;
+      const enoughSignal = totalImpressions >= 10;
+      if (
+        enoughSignal &&
+        brandShare != null &&
+        brandShare >= 0.7 &&
+        nonBranded.clicks < 5
+      ) {
+        findings.push({
+          key: "high_brand_share",
+          severity: nonBranded.clicks === 0 ? "high" : "medium",
+          title: `${Math.round(brandShare * 100)} % av klicken är varumärkessökningar`,
+          description: `${totalClicks.toLocaleString("sv-SE")} klick totalt, ${branded.clicks.toLocaleString(
+            "sv-SE",
+          )} från varumärkessökningar men bara ${nonBranded.clicks.toLocaleString(
+            "sv-SE",
+          )} från upptäcktssökningar (tjänster/behov). Sajten syns för dem som redan känner till företaget, men fångar nästan ingen ny efterfrågan.`,
+          internalNote:
+            "Bra intern upsell-signal för SEO/innehåll: kunden har efterfrågan på varumärket men svag nykundsupptäckt.",
+          service: SERVICES.seo,
+        });
+      }
     }
   }
 

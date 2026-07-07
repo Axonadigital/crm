@@ -52,6 +52,10 @@ export type Company = {
   name: string;
   logo: RAFile;
   sector: string;
+  customer_type?: string | null;
+  local_seo_relevant?: boolean | null;
+  primary_geo_area?: string | null;
+  primary_goal?: string | null;
   size: 1 | 10 | 50 | 250 | 500;
   linkedin_url: string;
   website: string;
@@ -727,6 +731,7 @@ export type WebsiteFinding = {
   severity: "high" | "medium" | "low";
   title: string;
   description: string;
+  internalNote?: string;
   service: string;
 };
 
@@ -777,6 +782,7 @@ export type WebsiteSnapshot = {
     robots?: boolean;
     llms_txt?: boolean;
     h1?: boolean;
+    h1_count?: number | null;
     indexable?: boolean | null;
   } | null;
   business_profile?: {
@@ -862,6 +868,7 @@ export type UpsellOffer = {
   service: string;
   label: string;
   description: string;
+  internalNote?: string;
   pitch: string;
 };
 
@@ -927,6 +934,10 @@ export type ReportViewModel = {
     opportunities?: NonNullable<
       NonNullable<WebsiteSnapshot["search_console"]>["opportunities"]
     >;
+    branded?: NonNullable<WebsiteSnapshot["search_console"]>["branded"] | null;
+    nonBranded?:
+      | NonNullable<WebsiteSnapshot["search_console"]>["non_branded"]
+      | null;
   };
   statuses: {
     googleVisibility: ReportStatus;
@@ -951,7 +962,7 @@ export type MonthlyReport = {
   period: string; // YYYY-MM-01
   snapshot_id?: number | null;
   previous_snapshot_id?: number | null;
-  status: "draft" | "approved" | "sent" | "failed" | "skipped";
+  status: "draft" | "approved" | "sent" | "failed" | "skipped" | "archived";
   recipient_email?: string | null;
   recipient_name?: string | null;
   ai_content?: ReportAiContent | null;
@@ -998,7 +1009,8 @@ export type CustomerReportDeliveryStatus =
   | "sent"
   | "draft"
   | "missing"
-  | "failed";
+  | "failed"
+  | "archived";
 
 export type CustomerVisibilityDashboardResponse = {
   period: { start: string; end: string };
@@ -1006,6 +1018,7 @@ export type CustomerVisibilityDashboardResponse = {
   rows: Array<{
     company_id: Identifier;
     company_name: string;
+    local_seo_relevant?: boolean | null;
     delivered_website_url: string;
     launch_date?: string | null;
     current_snapshot: WebsiteSnapshot | null;
@@ -1025,6 +1038,7 @@ export type CustomerVisibilityRow = {
   companyId: Identifier;
   companyName: string;
   websiteUrl: string;
+  localSeoRelevant: boolean | null;
   launchDate: string | null;
   category: CustomerPerformanceCategory;
   reasons: CustomerVisibilityReason[];
@@ -1035,6 +1049,7 @@ export type CustomerVisibilityRow = {
   report: MonthlyReport | null;
   reportStatus: CustomerReportDeliveryStatus;
   viewModel: ReportViewModel | null;
+  brandShare: number | null;
   history: WebsiteSnapshot[];
 };
 
@@ -1075,6 +1090,7 @@ export type CustomerPortfolioViewModel = {
     gbpActions: number | null;
     gbpActionCustomers: number;
     searchCustomers: number;
+    brandShare: number | null;
   };
   trends: CustomerPortfolioTrendPoint[];
 };

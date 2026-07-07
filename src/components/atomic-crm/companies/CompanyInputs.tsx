@@ -233,6 +233,17 @@ const CompanyContextInputs = () => {
       name: translate("resources.companies.source.field", { _: "Fältarbete" }),
     },
   ];
+  const customerTypeChoices = [
+    { id: "local_business", name: "Lokalt företag" },
+    { id: "b2b_service", name: "B2B/tjänstebolag" },
+    { id: "ecommerce", name: "E-handel" },
+    { id: "saas", name: "SaaS/digital produkt" },
+    { id: "other", name: "Annat" },
+  ];
+  const localSeoChoices = [
+    { id: true, name: "Ja, lokal synlighet är relevant" },
+    { id: false, name: "Nej, tona ned lokal SEO/Google Business" },
+  ];
 
   return (
     <div className="flex flex-col gap-4">
@@ -248,6 +259,24 @@ const CompanyContextInputs = () => {
         optionValue="value"
         helperText={false}
       />
+      <SelectInput
+        source="customer_type"
+        label="Kundtyp"
+        choices={customerTypeChoices}
+        helperText={false}
+      />
+      <SelectInput
+        source="local_seo_relevant"
+        label="Lokal SEO relevant?"
+        choices={localSeoChoices}
+        helperText={false}
+      />
+      <TextInput
+        source="primary_geo_area"
+        label="Primärt geografiskt område"
+        helperText={false}
+      />
+      <TextInput source="primary_goal" label="Primärt mål" helperText={false} />
       <SelectInput source="size" choices={translatedSizes} helperText={false} />
       <TextInput source="revenue" helperText={false} />
       <TextInput source="tax_identifier" helperText={false} />

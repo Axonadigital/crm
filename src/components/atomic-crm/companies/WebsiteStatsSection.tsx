@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Archive,
   BarChart3,
   Download,
   ExternalLink,
@@ -42,6 +43,20 @@ import { MonthlyReportModal } from "./MonthlyReportModal";
 import { VisibilityMetricCard } from "./visibility/VisibilityMetricCard";
 import { VisibilityStatusCard } from "./visibility/VisibilityStatusCard";
 import { VisibilityTrendChart } from "./visibility/VisibilityTrendChart";
+import {
+  absoluteDelta,
+  percentagePointTrendText,
+  percentDelta,
+  trendTextWithAbsolute,
+} from "./visibility/trendFormatting";
+import { computePageExperienceStatus } from "./visibility/pageExperienceStatus";
+import {
+  buildTechnicalQualityChecks,
+  technicalQualityLabel,
+  technicalQualityStatus,
+  type TechnicalCheckLevel,
+} from "./visibility/technicalSeoQuality";
+import { buildNextDealRecommendation } from "./visibility/nextDeal";
 import type { VisibilityDataProvider } from "./visibility/types";
 
 function formatKiB(bytes?: number | null): string | null {
@@ -77,6 +92,7 @@ const REPORT_STATUS_STYLES: Record<MonthlyReport["status"], string> = {
   sent: "bg-green-100 text-green-800 border-green-200",
   failed: "bg-red-100 text-red-800 border-red-200",
   skipped: "bg-muted text-muted-foreground",
+  archived: "bg-muted text-muted-foreground",
 };
 
 const REPORT_STATUS_LABELS: Record<MonthlyReport["status"], string> = {
@@ -85,6 +101,7 @@ const REPORT_STATUS_LABELS: Record<MonthlyReport["status"], string> = {
   sent: "Skickad",
   failed: "Misslyckad",
   skipped: "Hoppad",
+  archived: "Arkiverad",
 };
 
 const SEVERITY_STYLES: Record<WebsiteFinding["severity"], string> = {
@@ -97,6 +114,13 @@ const SEVERITY_LABELS: Record<WebsiteFinding["severity"], string> = {
   high: "Hög prioritet",
   medium: "Medel",
   low: "Låg",
+};
+
+const TECHNICAL_LEVEL_STYLES: Record<TechnicalCheckLevel, string> = {
+  good: "bg-green-100 text-green-800",
+  ok: "bg-sky-100 text-sky-800",
+  poor: "bg-amber-100 text-amber-900",
+  critical: "bg-red-100 text-red-800",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -328,27 +352,6 @@ function periodLabel(snapshot: WebsiteSnapshot): string {
   return `${new Date(snapshot.fetched_at).toLocaleDateString("sv-SE")} · äldre analys`;
 }
 
-function percentDelta(
-  current?: number | null,
-  previous?: number | null,
-): number | null {
-  if (
-    typeof current !== "number" ||
-    typeof previous !== "number" ||
-    previous === 0
-  ) {
-    return null;
-  }
-  return ((current - previous) / previous) * 100;
-}
-
-function trendText(delta: number | null, lowerIsBetter = false): string {
-  if (delta == null) return "Ingen jämförbar föregående period";
-  if (Math.abs(delta) < 0.5) return "Oförändrat mot föregående period";
-  const improved = lowerIsBetter ? delta < 0 : delta > 0;
-  return `${improved ? "Förbättring" : "Försämring"} ${Math.abs(Math.round(delta))} %`;
-}
-
 function sourceStatus(
   snapshot: WebsiteSnapshot,
   key: string,
@@ -365,6 +368,10 @@ function sourceStatus(
             ? "available"
             : "unavailable")
   );
+}
+
+function cardStatus(status: "good" | "needs_attention" | "poor" | "missing") {
+  return status === "needs_attention" ? "attention" : status;
 }
 
 export function WebsiteStatsSection({ company }: { company: Company }) {
@@ -579,6 +586,22 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
     }
   };
 
+  const archiveReport = async (reportId: number) => {
+    if (!window.confirm("Arkivera rapporten?")) return;
+    try {
+      await dataProvider.archiveMonthlyReport(reportId);
+      notify("Rapporten arkiverades", { type: "info" });
+      await refetchReports();
+    } catch (error) {
+      notify(
+        error instanceof Error
+          ? error.message
+          : "Kunde inte arkivera rapporten",
+        { type: "warning" },
+      );
+    }
+  };
+
   if (!selected) {
     return (
       <Card>
@@ -628,10 +651,16 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
   const clickDelta = selectedIsPartial
     ? null
     : percentDelta(gsc?.clicks, previousGsc?.clicks);
+  const clickDeltaAbsolute = selectedIsPartial
+    ? null
+    : absoluteDelta(gsc?.clicks, previousGsc?.clicks);
   const impressionDelta = selectedIsPartial
     ? null
     : percentDelta(gsc?.impressions, previousGsc?.impressions);
-  const ctrDelta = selectedIsPartial ? null : percentDelta(ctr, previousCtr);
+  const impressionDeltaAbsolute = selectedIsPartial
+    ? null
+    : absoluteDelta(gsc?.impressions, previousGsc?.impressions);
+  const ctrDelta = selectedIsPartial ? null : absoluteDelta(ctr, previousCtr);
   const positionDelta =
     !selectedIsPartial && gsc && previousGsc
       ? gsc.position - previousGsc.position
@@ -656,53 +685,42 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
       : gsc.position > 10 || (gsc.impressions >= 50 && (ctr ?? 0) < 2)
         ? "attention"
         : "good";
-  const pageStatus =
-    selected.field_data?.lcp_rating === "POOR" ||
-    selected.field_data?.inp_rating === "POOR" ||
-    selected.field_data?.cls_rating === "POOR" ||
-    (selected.performance_score != null && selected.performance_score < 50)
-      ? "poor"
-      : selected.field_data?.lcp_rating === "NEEDS_IMPROVEMENT" ||
-          selected.field_data?.inp_rating === "NEEDS_IMPROVEMENT" ||
-          selected.field_data?.cls_rating === "NEEDS_IMPROVEMENT" ||
-          (selected.performance_score != null &&
-            selected.performance_score < 80)
-        ? "attention"
-        : selected.field_data || selected.performance_score != null
-          ? "good"
-          : "missing";
+  const pageStatus = cardStatus(computePageExperienceStatus(selected));
   const business = selected.business_profile;
   const localStatus = !business
     ? "missing"
-    : !business.found
-      ? "poor"
-      : (business.reviews_count ?? 0) < 5 || (business.rating ?? 5) < 4
-        ? "attention"
-        : "good";
-  const technicalValues = selected.seo_checks
-    ? [
-        selected.seo_checks.indexable !== false,
-        Boolean(selected.seo_checks.title),
-        Boolean(selected.seo_checks.meta_description),
-        Boolean(selected.seo_checks.h1),
-        Boolean(selected.seo_checks.sitemap),
-        Boolean(selected.seo_checks.robots),
-        Boolean(selected.seo_checks.schema_org),
-        Boolean(selected.seo_checks.og_tags),
-      ]
-    : [];
-  const failedTechnical = technicalValues.filter((value) => !value).length;
-  const technicalStatus =
-    technicalValues.length === 0
+    : company.local_seo_relevant === false
       ? "missing"
-      : failedTechnical >= 3
+      : !business.found
         ? "poor"
-        : failedTechnical > 0
+        : (business.reviews_count ?? 0) < 5 || (business.rating ?? 5) < 4
           ? "attention"
           : "good";
+  const technicalChecks = buildTechnicalQualityChecks(selected);
+  const technicalStatus = cardStatus(technicalQualityStatus(technicalChecks));
   const primaryFinding = selected.findings.find(
     (finding) => finding.key !== "missing_llms_txt",
   );
+  const branded = gsc?.branded;
+  const nonBranded = gsc?.non_branded;
+  const brandClicks = branded?.clicks ?? 0;
+  const nonBrandClicks = nonBranded?.clicks ?? 0;
+  const brandShare =
+    branded && nonBranded && brandClicks + nonBrandClicks > 0
+      ? brandClicks / (brandClicks + nonBrandClicks)
+      : null;
+  const brandSummary =
+    brandShare == null
+      ? "Search Console saknar uppdelning mellan varumärkes- och upptäcktssökningar."
+      : brandShare >= 0.7 && nonBrandClicks < 5
+        ? "Synligheten drivs främst av kunder som redan känner till namnet. Nästa SEO-vinst ligger i tjänste- och behovssökningar."
+        : "Sajten fångar både varumärkessökningar och upptäcktssökningar från nya behov.";
+  const nextDeal = buildNextDealRecommendation({
+    company,
+    snapshot: selected,
+    finding: primaryFinding,
+    brandShare,
+  });
 
   return (
     <Card>
@@ -877,11 +895,13 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                 title="Lokal synlighet"
                 status={localStatus}
                 detail={
-                  business?.found
-                    ? `${business.rating ?? "—"} i betyg · ${business.reviews_count ?? 0} recensioner`
-                    : business
-                      ? "Ingen verifierad Google Business-profil."
-                      : "Google Business kunde inte kontrolleras."
+                  company.local_seo_relevant === false
+                    ? "Lokal SEO är markerad som låg relevans för kunden."
+                    : business?.found
+                      ? `${business.rating ?? "—"} i betyg · ${business.reviews_count ?? 0} recensioner`
+                      : business
+                        ? "Ingen verifierad Google Business-profil."
+                        : "Google Business kunde inte kontrolleras."
                 }
                 icon={<MapPin className="size-4" />}
               />
@@ -889,8 +909,8 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                 title="Teknisk grund"
                 status={technicalStatus}
                 detail={
-                  technicalValues.length
-                    ? `${technicalValues.length - failedTechnical} av ${technicalValues.length} grundkontroller godkända.`
+                  technicalChecks.length
+                    ? `${technicalChecks.filter((check) => check.level === "good").length} av ${technicalChecks.length} kontroller är bra.`
                     : "Den tekniska crawlen saknas."
                 }
                 icon={<Settings2 className="size-4" />}
@@ -898,22 +918,98 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
             </div>
 
             <div className="rounded-lg border bg-muted/20 p-4">
-              <p className="text-sm font-semibold">Viktigaste nästa steg</p>
-              {primaryFinding ? (
-                <>
-                  <p className="mt-2 font-medium">{primaryFinding.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {primaryFinding.description}
-                  </p>
-                  <Badge className="mt-3" variant="outline">
-                    Rekommenderad insats: {primaryFinding.service}
-                  </Badge>
-                </>
+              <p className="text-sm font-semibold">Rekommenderad nästa affär</p>
+              {nextDeal && primaryFinding ? (
+                <div className="mt-3 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        Rekommenderat paket
+                      </p>
+                      <p className="mt-1 text-base font-semibold">
+                        {nextDeal.packageName}
+                      </p>
+                    </div>
+                    <Badge variant="outline">
+                      Prioritet: {SEVERITY_LABELS[primaryFinding.severity]}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-3 text-sm">
+                    <div>
+                      <p className="font-medium">Varför</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {nextDeal.why}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-medium">Bevis</p>
+                      <ul className="mt-1 space-y-1 text-muted-foreground">
+                        {nextDeal.evidence.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-medium">Föreslagen åtgärd</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {nextDeal.action}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-medium">Säljargument</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {nextDeal.salesArgument}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Inga kritiska brister hittades i tillgängliga datakällor.
+                  Ingen tydlig merförsäljningssignal hittades i tillgängliga
+                  datakällor.
                 </p>
               )}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[1fr_1.4fr]">
+              <div className="rounded-lg border p-4">
+                <p className="text-sm font-semibold">Varumärke vs upptäckt</p>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Varumärke</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums">
+                      {branded ? brandClicks.toLocaleString("sv-SE") : "Saknas"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {branded ? `${branded.queries} sökord` : "ingen data"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Upptäckt</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums">
+                      {nonBranded
+                        ? nonBrandClicks.toLocaleString("sv-SE")
+                        : "Saknas"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {nonBranded
+                        ? `${nonBranded.queries} sökord`
+                        : "ingen data"}
+                    </p>
+                  </div>
+                </div>
+                {brandShare != null ? (
+                  <Badge variant="outline" className="mt-4">
+                    {Math.round(brandShare * 100)} % varumärkesklick
+                  </Badge>
+                ) : null}
+              </div>
+              <div className="rounded-lg border p-4">
+                <p className="text-sm font-semibold">Tolkning</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {brandSummary}
+                </p>
+              </div>
             </div>
 
             <div>
@@ -953,7 +1049,13 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                 label="Klick från Google"
                 value={gsc?.clicks.toLocaleString("sv-SE") ?? "Saknas"}
                 trend={
-                  selectedIsPartial ? partialTrendNote : trendText(clickDelta)
+                  selectedIsPartial
+                    ? partialTrendNote
+                    : trendTextWithAbsolute(
+                        clickDelta,
+                        clickDeltaAbsolute,
+                        "klick",
+                      )
                 }
                 explanation={{
                   meaning:
@@ -962,7 +1064,11 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                     "Detta är den tydligaste kopplingen mellan söksynlighet och potentiella kunder.",
                   thresholds:
                     "Ingen universell bra nivå finns; stabil tillväxt och relevanta sökord är viktigast.",
-                  interpretation: trendText(clickDelta),
+                  interpretation: trendTextWithAbsolute(
+                    clickDelta,
+                    clickDeltaAbsolute,
+                    "klick",
+                  ),
                   action:
                     "Stärk sidor och sökord som redan får visningar men ännu få klick.",
                 }}
@@ -973,7 +1079,11 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                 trend={
                   selectedIsPartial
                     ? partialTrendNote
-                    : trendText(impressionDelta)
+                    : trendTextWithAbsolute(
+                        impressionDelta,
+                        impressionDeltaAbsolute,
+                        "visningar",
+                      )
                 }
                 explanation={{
                   meaning:
@@ -982,7 +1092,11 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                     "Visningar visar räckvidd, även när användaren inte klickar.",
                   thresholds:
                     "Bedöm trend och relevans. Ett plötsligt fall kräver kontroll av indexering och innehåll.",
-                  interpretation: trendText(impressionDelta),
+                  interpretation: trendTextWithAbsolute(
+                    impressionDelta,
+                    impressionDeltaAbsolute,
+                    "visningar",
+                  ),
                   action:
                     "Skapa eller förbättra innehåll för tjänster och frågor där kunden vill synas.",
                 }}
@@ -995,7 +1109,9 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                     : `${ctr.toLocaleString("sv-SE", { maximumFractionDigits: 1 })} %`
                 }
                 trend={
-                  selectedIsPartial ? partialTrendNote : trendText(ctrDelta)
+                  selectedIsPartial
+                    ? partialTrendNote
+                    : percentagePointTrendText(ctrDelta)
                 }
                 explanation={{
                   meaning:
@@ -1004,7 +1120,7 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                     "Visar om sökresultatets titel och beskrivning lockar rätt personer.",
                   thresholds:
                     "Bedöms tillsammans med position och sökintention. Under 2 % vid många visningar är en tydlig möjlighet.",
-                  interpretation: trendText(ctrDelta),
+                  interpretation: percentagePointTrendText(ctrDelta),
                   action:
                     "Skriv om sidtitel och metabeskrivning på sidor med många visningar men låg klickfrekvens.",
                 }}
@@ -1665,40 +1781,29 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {[
-                    ["Indexerbar", selected.seo_checks?.indexable !== false],
-                    ["Sidtitel", Boolean(selected.seo_checks?.title)],
-                    [
-                      "Metabeskrivning",
-                      Boolean(selected.seo_checks?.meta_description),
-                    ],
-                    ["Huvudrubrik", Boolean(selected.seo_checks?.h1)],
-                    ["Sitemap", Boolean(selected.seo_checks?.sitemap)],
-                    ["Robots.txt", Boolean(selected.seo_checks?.robots)],
-                    [
-                      "Strukturerad data",
-                      Boolean(selected.seo_checks?.schema_org),
-                    ],
-                    ["Delningsmetadata", Boolean(selected.seo_checks?.og_tags)],
-                  ].map(([label, passed]) => (
-                    <div
-                      key={String(label)}
-                      className="flex items-center justify-between border-b py-2 text-sm last:border-0"
-                    >
-                      <span>{label}</span>
-                      {selected.seo_checks ? (
-                        passed ? (
-                          <Badge className="bg-green-100 text-green-800">
-                            Finns
-                          </Badge>
-                        ) : (
-                          <Badge variant="destructive">Saknas</Badge>
-                        )
-                      ) : (
-                        <Badge variant="outline">Ej kontrollerad</Badge>
-                      )}
+                  {technicalChecks.length ? (
+                    technicalChecks.map((check) => (
+                      <div
+                        key={check.key}
+                        className="flex items-center justify-between gap-3 border-b py-2 text-sm last:border-0"
+                      >
+                        <div>
+                          <span>{check.label}</span>
+                          <p className="text-xs text-muted-foreground">
+                            {check.detail}
+                          </p>
+                        </div>
+                        <Badge className={TECHNICAL_LEVEL_STYLES[check.level]}>
+                          {technicalQualityLabel(check.level)}
+                        </Badge>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex items-center justify-between border-b py-2 text-sm last:border-0">
+                      <span>Teknisk crawl</span>
+                      <Badge variant="outline">Ej kontrollerad</Badge>
                     </div>
-                  ))}
+                  )}
                   {selected.seo_checks?.lastmod_newest ? (
                     <p className="pt-2 text-xs text-muted-foreground">
                       Innehållsfärskhet: senast uppdaterad{" "}
@@ -1924,7 +2029,9 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                 {reports.map((report) => (
                   <div
                     key={report.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4"
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 ${
+                      report.status === "archived" ? "opacity-65" : ""
+                    }`}
                   >
                     <button
                       type="button"
@@ -1941,11 +2048,18 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                         })}
                       </p>
                       <p className="text-xs text-muted-foreground">
+                        Skapad{" "}
+                        {new Date(report.created_at).toLocaleDateString(
+                          "sv-SE",
+                        )}
+                        {report.data_period_start && report.data_period_end
+                          ? ` · period ${formatDate(report.data_period_start)}–${formatDate(report.data_period_end)}`
+                          : ""}
                         {report.sent_at
-                          ? `Skickad till ${report.recipient_email ?? "—"}`
+                          ? ` · skickad till ${report.recipient_email ?? "—"}`
                           : report.error
-                            ? report.error
-                            : `${report.view_model?.coverage.available ?? "—"}/${report.view_model?.coverage.total ?? "—"} datakällor`}
+                            ? ` · ${report.error}`
+                            : ` · ${report.view_model?.coverage.available ?? "—"}/${report.view_model?.coverage.total ?? "—"} datakällor`}
                       </p>
                     </button>
                     <div className="flex items-center gap-2">
@@ -1966,6 +2080,17 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                           <Download className="size-4" />
                         </Button>
                       ) : null}
+                      {report.status !== "archived" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => archiveReport(Number(report.id))}
+                          aria-label="Arkivera rapport"
+                        >
+                          <Archive className="size-4" />
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -1983,6 +2108,11 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
         company={company}
         reportId={selectedReportId}
         open={reportOpen}
+        initialPeriod={
+          selected.period_start && selected.period_end
+            ? { start: selected.period_start, end: selected.period_end }
+            : null
+        }
         onOpenChange={(open) => {
           setReportOpen(open);
           if (!open && reportQuery) {

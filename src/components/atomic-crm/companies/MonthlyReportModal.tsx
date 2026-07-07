@@ -172,12 +172,14 @@ export const MonthlyReportModal = ({
   open,
   onOpenChange,
   onSent,
+  initialPeriod,
 }: {
   company: Company;
   reportId?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSent?: () => void;
+  initialPeriod?: { start: string; end: string } | null;
 }) => {
   const dataProvider = useDataProvider() as VisibilityDataProvider;
   const notify = useNotify();
@@ -218,6 +220,11 @@ export const MonthlyReportModal = ({
     if (!reportId) {
       setReport(null);
       setRecipientEmail("");
+      if (initialPeriod?.start && initialPeriod.end) {
+        setPeriodPreset("custom");
+        setCustomFrom(initialPeriod.start.slice(0, 7));
+        setCustomTo(initialPeriod.end.slice(0, 7));
+      }
       return;
     }
     let active = true;
@@ -243,7 +250,14 @@ export const MonthlyReportModal = ({
     return () => {
       active = false;
     };
-  }, [dataProvider, notify, open, reportId]);
+  }, [
+    dataProvider,
+    initialPeriod?.end,
+    initialPeriod?.start,
+    notify,
+    open,
+    reportId,
+  ]);
 
   const loadReport = async (id: number) => {
     const { data } = await dataProvider.getOne<MonthlyReport>(

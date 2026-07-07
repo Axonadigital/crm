@@ -53,6 +53,72 @@ function fmtDelta(deltaPct: number | null): string {
     : `(${rounded}% mot förra månaden)`;
 }
 
+function fmtPct(value: number | null | undefined): string {
+  if (typeof value !== "number") return "–";
+  return `${(value * 100).toLocaleString("sv-SE", { maximumFractionDigits: 1 })} %`;
+}
+
+function buildSearchContextBlock(
+  metrics: ReportMetrics,
+  pres: PresentationPolicy,
+): string[] {
+  const lines: string[] = [];
+
+  if (metrics.topPages.length > 0) {
+    lines.push(
+      `- Viktigaste landningssidor: ${metrics.topPages
+        .slice(0, 3)
+        .map(
+          (page) =>
+            `${page.page} (${fmtNum(page.clicks)} klick, ${fmtNum(page.impressions)} visningar, klickfrekvens ${fmtPct(page.ctr)})`,
+        )
+        .join("; ")}`,
+    );
+  }
+
+  const opportunities = metrics.opportunities
+    .filter((item) => !pres.filterZeroClickQueries || item.clicks > 0)
+    .slice(0, 3);
+  if (opportunities.length > 0) {
+    lines.push(
+      `- Konkreta sökmöjligheter: ${opportunities
+        .map((item) => {
+          const reason =
+            item.kind === "low_ctr"
+              ? "många ser resultatet men få klickar"
+              : item.kind === "position_4_10"
+                ? "redan på första sidan och kan lyftas"
+                : "nära första sidan";
+          return `${item.query} (${reason}, ${fmtNum(item.impressions)} visningar, position ${item.position.toLocaleString("sv-SE", { maximumFractionDigits: 1 })})`;
+        })
+        .join("; ")}`,
+    );
+  }
+
+  return lines;
+}
+
+function buildBrandDiscoveryBlock(metrics: ReportMetrics): string[] {
+  const branded = metrics.branded;
+  const nonBranded = metrics.nonBranded;
+  if (!branded || !nonBranded) return [];
+
+  const totalClicks = branded.clicks + nonBranded.clicks;
+  const brandShare = totalClicks > 0 ? branded.clicks / totalClicks : null;
+  const brandText =
+    brandShare == null
+      ? "andel okänd"
+      : `${Math.round(brandShare * 100)} % av klicken`;
+  const interpretation =
+    brandShare != null && brandShare >= 0.7 && nonBranded.clicks < 5
+      ? "tolka som att kunden främst hittas av personer som redan känner till namnet; formulera nästa steg mot tjänste-/behovssökningar"
+      : "tolka som balans mellan varumärkessökningar och upptäcktssökningar";
+
+  return [
+    `- Varumärke vs upptäckt: ${fmtNum(branded.clicks)} varumärkesklick (${branded.queries} sökord) och ${fmtNum(nonBranded.clicks)} upptäcktsklick (${nonBranded.queries} sökord), ${brandText}; ${interpretation}.`,
+  ];
+}
+
 function buildMetricsBlock(
   metrics: ReportMetrics,
   hasSearchData: boolean,
@@ -102,6 +168,8 @@ function buildMetricsBlock(
         `- Sökord som gav flest klick: ${queries.map((q) => q.query).join(", ")}`,
       );
     }
+    lines.push(...buildSearchContextBlock(metrics, pres));
+    lines.push(...buildBrandDiscoveryBlock(metrics));
   } else {
     lines.push(
       "- Sökdata (Google Search Console) saknas för den här kunden — nämn inte klick/visningar/position.",

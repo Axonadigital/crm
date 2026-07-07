@@ -11,6 +11,7 @@ export type ReportFinding = {
   severity: FindingSeverity;
   title: string;
   description: string;
+  internalNote?: string;
   /** Axona-tjänsten som löser bristen — nyckeln mot upsell-katalogen. */
   service: string;
 };
@@ -58,6 +59,7 @@ export type ReportSnapshot = {
     indexable?: boolean | null;
     robots?: boolean;
     og_tags?: boolean;
+    h1_count?: number | null;
   } | null;
   business_profile?: {
     found: boolean;
@@ -85,6 +87,8 @@ export type ReportSnapshot = {
       ctr: number;
       position: number;
     }>;
+    branded?: { clicks: number; impressions: number; queries: number };
+    non_branded?: { clicks: number; impressions: number; queries: number };
     opportunities?: Array<{
       kind: "low_ctr" | "position_4_10" | "position_11_20";
       query: string;
@@ -132,6 +136,10 @@ export type ReportMetrics = {
   opportunities: NonNullable<
     NonNullable<ReportSnapshot["search_console"]>["opportunities"]
   >;
+  branded: NonNullable<ReportSnapshot["search_console"]>["branded"] | null;
+  nonBranded:
+    | NonNullable<ReportSnapshot["search_console"]>["non_branded"]
+    | null;
   /** True när det inte fanns någon föregående snapshot (ingen trend att visa). */
   isFirstReport: boolean;
 };
@@ -143,6 +151,8 @@ export type UpsellOffer = {
   label: string;
   /** En mening kunden förstår. */
   description: string;
+  /** Intern säljnotis. Ska inte matas in som kundvänd pitch. */
+  internalNote?: string;
   /** Pitch-vinkel för säljaren/AI:n. */
   pitch: string;
 };

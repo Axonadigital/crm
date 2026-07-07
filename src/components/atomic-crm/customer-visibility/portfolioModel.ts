@@ -10,6 +10,11 @@ import type {
   ReportViewModel,
   WebsiteSnapshot,
 } from "../types";
+import { computePageExperienceStatus } from "../companies/visibility/pageExperienceStatus";
+import {
+  buildTechnicalQualityChecks,
+  technicalQualityStatus,
+} from "../companies/visibility/technicalSeoQuality";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("sv-SE", {
   month: "long",
@@ -44,6 +49,14 @@ function metricTrend(
   };
 }
 
+function brandShare(snapshot: WebsiteSnapshot | null): number | null {
+  const branded = snapshot?.search_console?.branded;
+  const nonBranded = snapshot?.search_console?.non_branded;
+  if (!branded || !nonBranded) return null;
+  const totalClicks = branded.clicks + nonBranded.clicks;
+  return totalClicks > 0 ? branded.clicks / totalClicks : null;
+}
+
 function googleStatus(snapshot: WebsiteSnapshot): ReportStatus {
   const search = snapshot.search_console;
   if (!search) return "missing";
@@ -57,20 +70,14 @@ function googleStatus(snapshot: WebsiteSnapshot): ReportStatus {
 }
 
 function pageExperienceStatus(snapshot: WebsiteSnapshot): ReportStatus {
-  const field = snapshot.field_data;
-  if (field) {
-    const ratings = [field.lcp_rating, field.inp_rating, field.cls_rating];
-    if (ratings.includes("POOR")) return "poor";
-    if (ratings.includes("NEEDS_IMPROVEMENT")) return "needs_attention";
-    if (ratings.some(Boolean)) return "good";
-  }
-  if (snapshot.performance_score == null) return "missing";
-  if (snapshot.performance_score < 50) return "poor";
-  if (snapshot.performance_score < 80) return "needs_attention";
-  return "good";
+  return computePageExperienceStatus(snapshot);
 }
 
-function localStatus(snapshot: WebsiteSnapshot): ReportStatus {
+function localStatus(
+  snapshot: WebsiteSnapshot,
+  localSeoRelevant?: boolean | null,
+): ReportStatus {
+  if (localSeoRelevant === false) return "missing";
   const profile = snapshot.business_profile;
   if (!profile) return "missing";
   if (!profile.found) return "poor";
@@ -84,28 +91,14 @@ function localStatus(snapshot: WebsiteSnapshot): ReportStatus {
 }
 
 function technicalStatus(snapshot: WebsiteSnapshot): ReportStatus {
-  const checks = snapshot.seo_checks;
-  if (!checks) return "missing";
-  const values = [
-    checks.indexable !== false,
-    Boolean(checks.title),
-    Boolean(checks.meta_description),
-    Boolean(checks.h1),
-    Boolean(checks.sitemap),
-    Boolean(checks.robots),
-    Boolean(checks.schema_org),
-    Boolean(checks.og_tags),
-  ];
-  const failed = values.filter((value) => !value).length;
-  if (failed >= 3) return "poor";
-  if (failed > 0) return "needs_attention";
-  return "good";
+  return technicalQualityStatus(buildTechnicalQualityChecks(snapshot));
 }
 
 function fallbackViewModel(
   companyName: string,
   latest: WebsiteSnapshot,
   previous: WebsiteSnapshot | null,
+  localSeoRelevant?: boolean | null,
 ): ReportViewModel {
   const sourceEntries = Object.entries(latest.source_status ?? {});
   const missingSources = sourceEntries
@@ -151,10 +144,7 @@ function fallbackViewModel(
         previousSearch?.impressions,
       ),
       ctr: metricTrend(latestSearch?.ctr, previousSearch?.ctr),
-      position: metricTrend(
-        latestSearch?.position,
-        previousSearch?.position,
-      ),
+      position: metricTrend(latestSearch?.position, previousSearch?.position),
       performance_score: metricTrend(
         latest.performance_score,
         previous?.performance_score,
@@ -171,10 +161,7 @@ function fallbackViewModel(
         latest.field_data?.inp_ms,
         previous?.field_data?.inp_ms,
       ),
-      field_cls: metricTrend(
-        latest.field_data?.cls,
-        previous?.field_data?.cls,
-      ),
+      field_cls: metricTrend(latest.field_data?.cls, previous?.field_data?.cls),
       reviews_count: metricTrend(
         latest.business_profile?.reviews_count,
         previous?.business_profile?.reviews_count,
@@ -187,12 +174,14 @@ function fallbackViewModel(
         })) ?? [],
       topPages: latestSearch?.top_pages ?? [],
       opportunities: latestSearch?.opportunities ?? [],
+      branded: latestSearch?.branded ?? null,
+      nonBranded: latestSearch?.non_branded ?? null,
       isFirstReport: !previous,
     },
     statuses: {
       googleVisibility: googleStatus(latest),
       pageExperience: pageExperienceStatus(latest),
-      localVisibility: localStatus(latest),
+      localVisibility: localStatus(latest, localSeoRelevant),
       technicalFoundation: technicalStatus(latest),
     },
     technicalChecks: [],
@@ -206,7 +195,9 @@ function reportStatus(
 ): CustomerReportDeliveryStatus {
   if (!report) return "missing";
   if (report.status === "sent") return "sent";
-  if (report.status === "failed" || report.status === "skipped") return "failed";
+  if (report.status === "archived") return "archived";
+  if (report.status === "failed" || report.status === "skipped")
+    return "failed";
   return "draft";
 }
 
@@ -260,14 +251,12 @@ function combineSnapshots(
   return {
     ...analysis,
     ...official,
-    performance_score:
-      analysis.performance_score ?? official.performance_score,
+    performance_score: analysis.performance_score ?? official.performance_score,
     seo_score: analysis.seo_score ?? official.seo_score,
     pagespeed: analysis.pagespeed ?? official.pagespeed,
     field_data: analysis.field_data ?? official.field_data,
     seo_checks: analysis.seo_checks ?? official.seo_checks,
-    business_profile:
-      analysis.business_profile ?? official.business_profile,
+    business_profile: analysis.business_profile ?? official.business_profile,
     search_console: official.search_console ?? analysis.search_console,
     competitors: analysis.competitors ?? official.competitors,
     gbp_actions: official.gbp_actions ?? analysis.gbp_actions,
@@ -378,11 +367,7 @@ function classifyCustomer(
       label: "Search Console saknas – övrig analys finns",
     });
   }
-  const reasons = [
-    ...negativeReasons,
-    ...positiveReasons,
-    ...neutralReasons,
-  ];
+  const reasons = [...negativeReasons, ...positiveReasons, ...neutralReasons];
 
   if (
     highFindings.length > 0 ||
@@ -471,9 +456,7 @@ function buildTrends(
       );
       const clicks = search.reduce((sum, metric) => sum + metric.clicks, 0);
       const performance = snapshots.flatMap((snapshot) =>
-        snapshot.performance_score != null
-          ? [snapshot.performance_score]
-          : [],
+        snapshot.performance_score != null ? [snapshot.performance_score] : [],
       );
       const gbpActions = snapshots.flatMap((snapshot) =>
         snapshot.gbp_actions
@@ -515,7 +498,11 @@ export function formatPeriod(period: string): string {
 
 export function previousCompleteMonth(referenceDate = new Date()): string {
   return new Date(
-    Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() - 1, 1),
+    Date.UTC(
+      referenceDate.getUTCFullYear(),
+      referenceDate.getUTCMonth() - 1,
+      1,
+    ),
   )
     .toISOString()
     .slice(0, 10);
@@ -534,6 +521,7 @@ export function buildCustomerPortfolioViewModel(
           row.company_name,
           currentSnapshot,
           row.previous_snapshot,
+          row.local_seo_relevant,
         )
       : null;
     const classification = classifyCustomer(
@@ -542,7 +530,8 @@ export function buildCustomerPortfolioViewModel(
       row.previous_snapshot,
     );
     const dataBasis =
-      row.current_snapshot && row.latest_analysis &&
+      row.current_snapshot &&
+      row.latest_analysis &&
       row.current_snapshot.id !== row.latest_analysis.id &&
       hasDiagnosticData(row.latest_analysis)
         ? "combined"
@@ -555,6 +544,7 @@ export function buildCustomerPortfolioViewModel(
       companyId: row.company_id,
       companyName: row.company_name,
       websiteUrl: row.delivered_website_url,
+      localSeoRelevant: row.local_seo_relevant ?? null,
       launchDate: row.launch_date ?? null,
       category: classification.category,
       reasons: classification.reasons,
@@ -565,6 +555,7 @@ export function buildCustomerPortfolioViewModel(
       report: row.report,
       reportStatus: reportStatus(row.report),
       viewModel,
+      brandShare: brandShare(currentSnapshot),
       history: row.history,
     };
   });
@@ -581,6 +572,7 @@ export function buildCustomerPortfolioViewModel(
     draft: 0,
     missing: 0,
     failed: 0,
+    archived: 0,
   } satisfies Record<CustomerReportDeliveryStatus, number>;
   for (const row of rows) {
     counts[row.category] += 1;
@@ -597,6 +589,14 @@ export function buildCustomerPortfolioViewModel(
     0,
   );
   const clicks = searchRows.reduce((sum, metric) => sum + metric.clicks, 0);
+  const brandedClicks = searchRows.reduce(
+    (sum, metric) => sum + (metric.branded?.clicks ?? 0),
+    0,
+  );
+  const nonBrandedClicks = searchRows.reduce(
+    (sum, metric) => sum + (metric.non_branded?.clicks ?? 0),
+    0,
+  );
   const performance = rows.flatMap((row) =>
     row.currentSnapshot?.performance_score != null
       ? [row.currentSnapshot.performance_score]
@@ -690,6 +690,10 @@ export function buildCustomerPortfolioViewModel(
         : null,
       gbpActionCustomers: gbpActions.length,
       searchCustomers: searchRows.length,
+      brandShare:
+        brandedClicks + nonBrandedClicks > 0
+          ? brandedClicks / (brandedClicks + nonBrandedClicks)
+          : null,
     },
     trends: buildTrends(response.rows),
   };

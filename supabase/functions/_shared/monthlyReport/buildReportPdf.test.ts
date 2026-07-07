@@ -72,6 +72,8 @@ const viewModel: ReportViewModel = {
         position: 7.1,
       },
     ],
+    branded: null,
+    nonBranded: null,
     isFirstReport: false,
   },
   statuses: {

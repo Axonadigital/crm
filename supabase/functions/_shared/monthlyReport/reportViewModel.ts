@@ -37,8 +37,13 @@ function pageExperienceStatus(snapshot: ReportSnapshot): ReportStatus {
   }
   if (snapshot.performance_score == null) return "missing";
   if (snapshot.performance_score < 50) return "poor";
-  if (snapshot.performance_score < 80) return "needs_attention";
-  return "good";
+  const weakLabSignals = [
+    snapshot.performance_score < 80,
+    typeof snapshot.pagespeed?.cls === "number" && snapshot.pagespeed.cls > 0.1,
+    typeof snapshot.pagespeed?.tbt_ms === "number" &&
+      snapshot.pagespeed.tbt_ms > 300,
+  ].filter(Boolean).length;
+  return weakLabSignals > 1 ? "needs_attention" : "good";
 }
 
 function localStatus(snapshot: ReportSnapshot): ReportStatus {

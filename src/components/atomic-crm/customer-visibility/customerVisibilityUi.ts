@@ -29,6 +29,7 @@ export const REPORT_STATUS_LABELS: Record<
   draft: "Utkast",
   missing: "Saknas",
   failed: "Misslyckad",
+  archived: "Arkiverad",
 };
 
 export function categoryBadgeClass(category: CustomerPerformanceCategory) {
@@ -50,7 +51,9 @@ export function reportBadgeClass(status: CustomerReportDeliveryStatus) {
       ? "border-sky-200 bg-sky-50 text-sky-800"
       : status === "failed"
         ? "border-red-200 bg-red-50 text-red-800"
-        : "border-slate-200 bg-slate-50 text-slate-700";
+        : status === "archived"
+          ? "border-slate-200 bg-slate-100 text-slate-700"
+          : "border-slate-200 bg-slate-50 text-slate-700";
 }
 
 export function dataBasisLabel(
@@ -76,8 +79,7 @@ export function formatMetric(
         ? trend.current.toFixed(1)
         : trend.current.toLocaleString("sv-SE");
   if (trend.deltaPct == null && trend.deltaAbsolute == null) return value;
-  const delta =
-    format === "decimal" ? trend.deltaAbsolute : trend.deltaPct;
+  const delta = format === "decimal" ? trend.deltaAbsolute : trend.deltaPct;
   if (delta == null || Math.abs(delta) < 0.5) return `${value} · oförändrat`;
   const improved = lowerIsBetter ? delta < 0 : delta > 0;
   return `${value} · ${improved ? "↑" : "↓"} ${Math.abs(Math.round(delta))}${format === "decimal" ? "" : " %"}`;

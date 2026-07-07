@@ -22,11 +22,7 @@ import {
   reportBadgeClass,
 } from "./customerVisibilityUi";
 
-export type CustomerTableSort =
-  | "category"
-  | "company"
-  | "clicks"
-  | "position";
+export type CustomerTableSort = "category" | "company" | "clicks" | "position";
 
 export function CustomerVisibilityTable({
   rows,
@@ -105,6 +101,11 @@ export function CustomerVisibilityTable({
                     <p className="text-xs text-muted-foreground">
                       {formatMetric(metrics?.ctr, "percent")}
                     </p>
+                    {row.brandShare != null && row.brandShare >= 0.7 ? (
+                      <Badge variant="outline" className="mt-1">
+                        {Math.round(row.brandShare * 100)} % varumärke
+                      </Badge>
+                    ) : null}
                   </TableCell>
                   <TableCell className="tabular-nums">
                     {formatMetric(metrics?.position, "decimal", true)}

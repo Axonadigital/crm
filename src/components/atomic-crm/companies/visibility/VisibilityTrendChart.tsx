@@ -39,6 +39,8 @@ export function VisibilityTrendChart({
   const path = coordinates
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ");
+  const labelStep =
+    coordinates.length <= 6 ? 1 : Math.ceil(coordinates.length / 6);
 
   return (
     <div className="overflow-x-auto">
@@ -56,22 +58,27 @@ export function VisibilityTrendChart({
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {coordinates.map((point) => (
+        {coordinates.map((point, index) => (
           <g key={`${point.label}-${point.x}`}>
+            <title>
+              {point.label}: {point.value.toLocaleString("sv-SE")}
+            </title>
             <circle
               cx={point.x}
               cy={point.y}
               r="4"
               fill="var(--color-primary)"
             />
-            <text
-              x={point.x}
-              y={height + 10}
-              textAnchor="middle"
-              className="fill-muted-foreground text-[10px]"
-            >
-              {point.label}
-            </text>
+            {index % labelStep === 0 || index === coordinates.length - 1 ? (
+              <text
+                x={point.x}
+                y={height + 10}
+                textAnchor="middle"
+                className="fill-muted-foreground text-[10px]"
+              >
+                {point.label}
+              </text>
+            ) : null}
           </g>
         ))}
       </svg>

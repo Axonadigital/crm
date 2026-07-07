@@ -81,6 +81,12 @@ function pctText(value: number | null): string {
   return `${rounded > 0 ? "+" : ""}${rounded} %`;
 }
 
+function ppText(value: number | null): string {
+  if (value == null) return "–";
+  const rounded = Math.round(value);
+  return `${rounded > 0 ? "+" : ""}${rounded} p.e.`;
+}
+
 function strongestSignal(viewModel: ReportViewModel): string {
   const m = viewModel.metrics;
   const candidates: Array<{ value: number; text: string }> = [];
@@ -679,7 +685,7 @@ export async function buildReportPdf(input: {
         m.ctr.deltaPct != null
           ? {
               kind: "pill",
-              text: pctText(m.ctr.deltaPct),
+              text: ppText(m.ctr.deltaPct),
               tone: m.ctr.deltaPct >= 0 ? "good" : "bad",
             }
           : undefined,

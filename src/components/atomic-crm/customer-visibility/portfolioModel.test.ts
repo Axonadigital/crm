@@ -9,9 +9,7 @@ import {
   previousCompleteMonth,
 } from "./portfolioModel";
 
-function snapshot(
-  overrides: Partial<WebsiteSnapshot> = {},
-): WebsiteSnapshot {
+function snapshot(overrides: Partial<WebsiteSnapshot> = {}): WebsiteSnapshot {
   return {
     id: 1,
     company_id: 1,
@@ -37,9 +35,11 @@ function snapshot(
     },
     seo_checks: {
       indexable: true,
-      title: "Titel",
-      meta_description: "Beskrivning",
+      title: "Tydlig sidtitel för byggfirma i Östersund",
+      meta_description:
+        "Testbolaget bygger hållbara hus, renoverar villor och hjälper kunder i Östersund från första idé till färdigt projekt med trygg process.",
       h1: true,
+      h1_count: 1,
       sitemap: true,
       robots: true,
       schema_org: true,
@@ -84,13 +84,18 @@ function response(
 describe("customer portfolio model", () => {
   it("classifies strong measured growth as very good", () => {
     const model = buildCustomerPortfolioViewModel(
-      response(snapshot(), snapshot({ search_console: {
-        clicks: 80,
-        impressions: 900,
-        ctr: 80 / 900,
-        position: 5,
-        top_queries: [],
-      } })),
+      response(
+        snapshot(),
+        snapshot({
+          search_console: {
+            clicks: 80,
+            impressions: 900,
+            ctr: 80 / 900,
+            position: 5,
+            top_queries: [],
+          },
+        }),
+      ),
     );
     expect(model.rows[0].category).toBe("very_good");
   });
@@ -147,6 +152,28 @@ describe("customer portfolio model", () => {
     });
     const model = buildCustomerPortfolioViewModel(data);
     expect(model.metrics.position).toBeCloseTo((4 * 1000 + 20 * 100) / 1100);
+  });
+
+  it("computes brand share for rows and the portfolio", () => {
+    const model = buildCustomerPortfolioViewModel(
+      response(
+        snapshot({
+          search_console: {
+            clicks: 20,
+            impressions: 300,
+            ctr: 20 / 300,
+            position: 4,
+            top_queries: [],
+            branded: { clicks: 15, impressions: 100, queries: 3 },
+            non_branded: { clicks: 5, impressions: 200, queries: 25 },
+          },
+        }),
+        null,
+      ),
+    );
+
+    expect(model.rows[0].brandShare).toBe(0.75);
+    expect(model.metrics.brandShare).toBe(0.75);
   });
 
   it("selects the previous complete calendar month over year boundaries", () => {
@@ -236,9 +263,7 @@ describe("customer portfolio model", () => {
         top_queries: [],
       },
     });
-    const model = buildCustomerPortfolioViewModel(
-      response(current, previous),
-    );
+    const model = buildCustomerPortfolioViewModel(response(current, previous));
 
     expect(model.rows[0].category).toBe("watch");
     expect(model.rows[0].reasons[0].label).toBe("Strukturerad data saknas");

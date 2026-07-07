@@ -56,7 +56,11 @@ function pillHtml(bg: string, fg: string, inner: string): string {
 }
 
 /** Trend-pill för procentmått (utan emoji-pilar). */
-function deltaPill(deltaPct: number | null, lowerIsBetter = false): string {
+function deltaPill(
+  deltaPct: number | null,
+  lowerIsBetter = false,
+  unit = "%",
+): string {
   if (deltaPct == null) return "";
   const rounded = Math.round(deltaPct);
   if (rounded === 0) return pillHtml(c.slateTint, c.slate, "Stabilt");
@@ -66,7 +70,7 @@ function deltaPill(deltaPct: number | null, lowerIsBetter = false): string {
   return pillHtml(
     bg,
     fg,
-    `${triangle(rounded > 0, fg)}${rounded > 0 ? "+" : ""}${rounded}&nbsp;%`,
+    `${triangle(rounded > 0, fg)}${rounded > 0 ? "+" : ""}${rounded}&nbsp;${unit}`,
   );
 }
 
@@ -238,7 +242,7 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
         kpiCard(
           "Andel som klickade",
           `${metrics.ctr.current.toLocaleString("sv-SE", { maximumFractionDigits: 1 })} %`,
-          deltaPill(metrics.ctr.deltaPct),
+          deltaPill(metrics.ctr.deltaPct, false, "procentenheter"),
           miniBars(metrics.ctr.previous, metrics.ctr.current),
         ),
       );

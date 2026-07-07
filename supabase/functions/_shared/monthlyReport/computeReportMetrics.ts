@@ -25,6 +25,21 @@ function trend(
   return { current: cur, previous: prev, deltaPct, deltaAbsolute };
 }
 
+function percentagePointTrend(
+  current: number | null | undefined,
+  previous: number | null | undefined,
+): MetricTrend {
+  const cur = typeof current === "number" ? current : null;
+  const prev = typeof previous === "number" ? previous : null;
+  const deltaAbsolute = cur != null && prev != null ? cur - prev : null;
+  return {
+    current: cur,
+    previous: prev,
+    deltaPct: deltaAbsolute,
+    deltaAbsolute,
+  };
+}
+
 function ctrOf(snap: ReportSnapshot | null | undefined): number | null {
   const sc = snap?.search_console;
   if (!sc || sc.impressions <= 0) return null;
@@ -51,6 +66,8 @@ export function computeReportMetrics(
     0,
     20,
   );
+  const branded = latest?.search_console?.branded ?? null;
+  const nonBranded = latest?.search_console?.non_branded ?? null;
 
   return {
     clicks: trend(
@@ -61,7 +78,7 @@ export function computeReportMetrics(
       latest?.search_console?.impressions,
       previous?.search_console?.impressions,
     ),
-    ctr: trend(ctrOf(latest), ctrOf(previous)),
+    ctr: percentagePointTrend(ctrOf(latest), ctrOf(previous)),
     position: trend(
       latest?.search_console?.position,
       previous?.search_console?.position,
@@ -87,6 +104,8 @@ export function computeReportMetrics(
     topQueries,
     topPages,
     opportunities,
+    branded,
+    nonBranded,
     isFirstReport,
   };
 }

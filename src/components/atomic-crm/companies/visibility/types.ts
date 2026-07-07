@@ -52,6 +52,9 @@ export type VisibilityDataProvider = DataProvider & {
   getMonthlyReportPdf(
     reportId: Identifier,
   ): Promise<{ success: true; signed_url: string; expires_in: number }>;
+  archiveMonthlyReport(
+    reportId: Identifier,
+  ): Promise<{ success: true; report_id: Identifier; status: "archived" }>;
   getCustomerVisibilityDashboard(
     period: string,
   ): Promise<CustomerVisibilityDashboardResponse>;

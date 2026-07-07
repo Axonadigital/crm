@@ -36,6 +36,8 @@ function viewModel(
       topQueries: [],
       topPages: [],
       opportunities: [],
+      branded: null,
+      nonBranded: null,
       isFirstReport: false,
       ...over,
     },

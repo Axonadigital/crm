@@ -666,6 +666,7 @@ async function crawlSeoChecks(url: string): Promise<SeoChecks | null> {
       /<meta[^>]+content=["']([^"']*)["'][^>]+name=["']robots["']/i,
     )?.[1] ??
     "";
+  const h1Count = html.match(/<h1[\s>]/gi)?.length ?? 0;
 
   // robots.txt kan peka ut sitemap som ligger på annan path
   let robotsBody = "";
@@ -696,7 +697,8 @@ async function crawlSeoChecks(url: string): Promise<SeoChecks | null> {
     stale_count: sitemap?.stale_count ?? null,
     robots: robotsBody.length > 0,
     llms_txt: llmsExists,
-    h1: /<h1[\s>]/i.test(html),
+    h1: h1Count > 0,
+    h1_count: h1Count,
     indexable: !/noindex/i.test(`${metaRobots} ${xRobotsTag}`),
   };
 }
@@ -1229,7 +1231,7 @@ async function analyzeCompany(
 ): Promise<{ snapshot_id: number; findings_count: number }> {
   const { data: company, error: companyError } = await supabaseAdmin
     .from("companies")
-    .select("id, name, city, website, google_place_id")
+    .select("id, name, city, website, google_place_id, local_seo_relevant")
     .eq("id", companyId)
     .single();
   if (companyError || !company) {
@@ -1324,6 +1326,7 @@ async function analyzeCompany(
     seoChecks,
     businessProfile,
     searchConsole,
+    localSeoRelevant: company.local_seo_relevant,
   });
   const fieldData = pagespeed?.field_data ?? null;
   const labPageSpeed = pagespeed

@@ -414,7 +414,7 @@ function CustomerVisibilityContent({
           icon={Send}
           label="Rapporter skickade"
           value={`${model.reports.sent}/${model.metrics.customers}`}
-          helper={`${model.reports.draft + model.reports.missing + model.reports.failed} återstår`}
+          helper={`${model.reports.draft + model.reports.missing + model.reports.failed} återstår · ${model.reports.archived} arkiverade`}
         />
       </div>
 
@@ -538,11 +538,11 @@ function CustomerVisibilityContent({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <CompactMetric
           icon={Globe2}
-          label="Portföljens CTR"
+          label="Varumärkesklick"
           value={
-            model.metrics.ctr == null
+            model.metrics.brandShare == null
               ? "Saknas"
-              : `${(model.metrics.ctr * 100).toFixed(1)} %`
+              : `${Math.round(model.metrics.brandShare * 100)} %`
           }
           coverage={`${model.metrics.searchCustomers} kunder`}
         />

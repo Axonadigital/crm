@@ -19,6 +19,17 @@ const latest: ReportSnapshot = {
         position: 8.1,
       },
     ],
+    top_pages: [
+      {
+        page: "https://example.se/service",
+        clicks: 8,
+        impressions: 80,
+        ctr: 0.1,
+        position: 5,
+      },
+    ],
+    branded: { clicks: 15, impressions: 50, queries: 2 },
+    non_branded: { clicks: 8, impressions: 71, queries: 10 },
   },
 };
 
@@ -48,6 +59,8 @@ describe("computeReportMetrics", () => {
     // 23/121*100 ≈ 19.0
     expect(m.ctr.current).toBeCloseTo(19.008, 2);
     expect(m.ctr.previous).toBe(20); // 20/100*100
+    expect(m.ctr.deltaPct).toBeCloseTo(-0.992, 2);
+    expect(m.ctr.deltaAbsolute).toBeCloseTo(-0.992, 2);
   });
 
   it("uses deltaAbsolute for position (lower is better)", () => {
@@ -64,6 +77,13 @@ describe("computeReportMetrics", () => {
       clicks: 10,
       position: 1.2,
     });
+  });
+
+  it("carries page and brand discovery context into report metrics", () => {
+    const m = computeReportMetrics(latest, previous);
+    expect(m.topPages[0]?.page).toBe("https://example.se/service");
+    expect(m.branded?.clicks).toBe(15);
+    expect(m.nonBranded?.queries).toBe(10);
   });
 
   it("flags first report when no previous snapshot", () => {
