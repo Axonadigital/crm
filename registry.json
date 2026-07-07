@@ -958,6 +958,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/customer-visibility/PipelineFailuresCard.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/customer-visibility/CustomerVisibilityTable.tsx",
           "type": "registry:component"
         },
