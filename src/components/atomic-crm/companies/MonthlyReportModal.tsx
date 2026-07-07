@@ -314,6 +314,18 @@ export const MonthlyReportModal = ({
         ...period,
         ...(opts?.force ? { force: true } : {}),
       });
+      if (result.status === "skipped_already_finalized" && result.report_id) {
+        // Perioden är redan skickad — öppna den befintliga rapporten istället
+        // för en död återvändsgränd. Varningsbannern + "Generera om med
+        // aktuell data"-knappen (isFinalized-läget nedan) låter användaren
+        // ändå skicka om, exakt som efterfrågat.
+        notify(
+          "En rapport för den här perioden finns redan och har skickats. Öppnar den — klicka 'Generera om med aktuell data' om du vill skicka en uppdaterad version.",
+          { type: "warning" },
+        );
+        await loadReport(result.report_id);
+        return;
+      }
       if (!result.report_id || result.status.startsWith("skipped")) {
         notify(
           result.status === "skipped_no_snapshot"
