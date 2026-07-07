@@ -224,6 +224,9 @@ Ton och regler (följ exakt):
 - Axona har byggt kundens sajt. Presentera ALDRIG en siffra Axona ansvarar för (laddtid, prestandapoäng, teknisk grund) som dålig, och skriv ALDRIG ut ett exakt svagt sådant tal (t.ex. "45 av 100" eller "6,1 sekunder"). Står det "utvecklingsmöjlighet" i underlaget: behåll det sifferlöst och framåtblickande.
 - Hitta ALDRIG på siffror, trender eller status. Använd enbart det som faktiskt står i månadens underlag nedan — allt du skriver måste vara sant.
 - Inga emojis i texten (mailmallen lägger till sina egna ikoner).
+- Ordval: undvik "saknar", "missar", "problem", "brist", "måste". Använd
+  istället "nästa steg", "nästa möjlighet", "komplettera", "stärka", "bygga
+  vidare" — rapporten ska sälja nästa nivå, inte lista brister.
 
 Åtgärdsplanen (action_plan):
 - Skapa EXAKT en post per prioritering som listas under "Prioriteringar", med SAMMA "key".
@@ -259,18 +262,18 @@ export function buildMonthlyReportPrompts(input: BuildReportPromptInput): {
     : null;
 
   const upsellBlock = input.upsell
-    ? `Föreslagen tjänst att rekommendera:\n- Tjänst: ${input.upsell.label}\n- Behov hos kunden: ${input.upsell.description}\n- Pitch-vinkel att utgå från: ${input.upsell.pitch}`
-    : "Inga tydliga brister hittades den här månaden. Föreslå då en lätt, fortsatt förbättring (t.ex. fortsatt innehållsarbete) utan att överdriva problem.";
+    ? `Föreslagen tjänst att rekommendera:\n- Tjänst: ${input.upsell.label}\n- Nästa möjlighet för kunden: ${input.upsell.description}\n- Pitch-vinkel att utgå från: ${input.upsell.pitch}`
+    : "Inga tydliga möjligheter stack ut den här månaden. Föreslå då en lätt, fortsatt förbättring (t.ex. fortsatt innehållsarbete) utan att överdriva problem.";
 
   const priorities = input.recommendations.slice(0, 3);
   const prioritiesBlock = priorities.length
     ? `Prioriteringar (skapa en action_plan-post per rad, samma key):\n${priorities
         .map(
           (r) =>
-            `- key: ${r.key} | Problem: ${r.title} | Bakgrund: ${r.description} | Tjänst: ${r.service}`,
+            `- key: ${r.key} | Iakttagelse: ${r.title} | Bakgrund: ${r.description} | Tjänst: ${r.service}`,
         )
         .join("\n")}`
-    : 'Prioriteringar: inga tydliga brister — skapa en enda action_plan-post med key "fortsatt_forbattring".';
+    : 'Prioriteringar: inga tydliga möjligheter — skapa en enda action_plan-post med key "fortsatt_forbattring".';
 
   const prompt = `Kund: ${input.companyName}
 Kontaktperson: ${greetingName ?? "okänd (använd 'Hej,')"}

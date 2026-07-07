@@ -204,6 +204,8 @@ export type BuildReportEmailInput = {
   presentation?: PresentationPolicy;
   /** From-adress för en "svara på mejlet"-CTA. */
   replyToEmail: string;
+  /** Bokningslänk för primär CTA. Saknas den → mailto-fallback med förifyllt ämne. */
+  bookingUrl?: string;
 };
 
 export function buildReportEmailHtml(input: BuildReportEmailInput): string {
@@ -274,6 +276,8 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
   const safeCompany = escapeHtml(input.companyName);
   const safePeriod = escapeHtml(input.periodLabel);
   const safeMailto = `mailto:${encodeURIComponent(input.replyToEmail)}`;
+  const bookingMailto = `mailto:${encodeURIComponent(input.replyToEmail)}?subject=${encodeURIComponent("Genomgång av synlighetsrapport")}`;
+  const primaryCtaUrl = input.bookingUrl || bookingMailto;
   const service =
     input.viewModel?.primaryRecommendation?.service ??
     "nästa prioriterade insats";
@@ -400,7 +404,7 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
         ${section(
           "22px 36px 6px",
           `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${c.panel};border:1px solid ${c.hairline};border-radius:14px;"><tr><td style="padding:22px 24px;font-family:${FONT};">
-            <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:${c.accentText};">Rekommenderad tilläggstjänst · ${escapeHtml(service)}</p>
+            <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:${c.accentText};">Rekommenderat nästa steg · ${escapeHtml(service)}</p>
             <p style="margin:0 0 10px;font-size:16px;font-weight:700;line-height:1.45;color:${c.ink};">${escapeHtml(aiContent.recommended_action)}</p>
             <p style="margin:0;font-size:14px;font-weight:500;line-height:1.6;color:${c.slate};">${escapeHtml(aiContent.upsell_pitch)}</p>
           </td></tr></table>`,
@@ -411,9 +415,10 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
           "22px 36px 4px",
           `<p style="margin:0 0 22px;font-size:14px;line-height:1.6;color:${c.slate};text-align:center;">Hela analysen — sökord, sidupplevelse, teknisk grund och en prioriterad åtgärdsplan — finns i den bifogade PDF-rapporten.</p>
            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td align="center" style="border-radius:10px;background:${c.accent};">
-             <a href="${safeMailto}" style="display:inline-block;font-family:${FONT};font-size:15px;font-weight:700;color:#fff;text-decoration:none;padding:14px 30px;border-radius:10px;">Prata med oss om nästa steg</a>
+             <a href="${escapeHtml(primaryCtaUrl)}" style="display:inline-block;font-family:${FONT};font-size:15px;font-weight:700;color:#fff;text-decoration:none;padding:14px 30px;border-radius:10px;">Boka 15 min genomgång</a>
            </td></tr></table>
-           <p style="margin:18px 0 0;font-size:13px;color:${c.faint};line-height:1.6;text-align:center;">Svara gärna på det här mejlet så hör vi av oss.</p>`,
+           <p style="margin:12px 0 0;font-size:13px;color:${c.faint};line-height:1.6;text-align:center;">Vi går igenom rapporten, visar vad siffrorna betyder och rekommenderar nästa konkreta steg.</p>
+           <p style="margin:18px 0 0;font-size:13px;color:${c.faint};line-height:1.6;text-align:center;">Vill du hellre ta det via mejl? <a href="${safeMailto}" style="color:${c.accentText};font-weight:600;text-decoration:none;">Svara på detta mejl</a> så återkommer vi med ett konkret förslag.</p>`,
         )}
 
         <tr><td style="height:8px;font-size:0;line-height:8px;">&nbsp;</td></tr>

@@ -369,6 +369,7 @@ async function generateReportForCompany(
     hasSearchData,
     presentation,
     replyToEmail: Deno.env.get("RESEND_FROM_EMAIL") || "hej@axonadigital.se",
+    bookingUrl: Deno.env.get("MONTHLY_REPORT_BOOKING_URL") || undefined,
   });
   const pdfBytes = await buildReportPdf({
     viewModel,

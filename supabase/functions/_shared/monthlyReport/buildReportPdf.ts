@@ -966,9 +966,9 @@ export async function buildReportPdf(input: {
     y = ly - 12;
   });
 
-  // Rekommenderad tilläggstjänst
+  // Rekommenderat nästa steg
   y -= 4;
-  heading("Rekommenderad tilläggstjänst", 13);
+  heading("Rekommenderat nästa steg", 13);
   if (input.viewModel.primaryRecommendation) {
     ensure(40);
     roundedRect(MARGIN, y + 14, CONTENT_WIDTH, 34, 10, {

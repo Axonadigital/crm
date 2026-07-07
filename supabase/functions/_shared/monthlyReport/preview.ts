@@ -226,7 +226,7 @@ export const sampleViewModel: ReportViewModel = {
 export const sampleAiContent: ReportAiContent = {
   greeting: "Hej Rasmus,",
   summary:
-    "Maj har varit en riktigt positiv månad för er synlighet på Google — klicken till hemsidan har mer än fördubblats jämfört med april och er snittposition har förbättrats med nästan 14 platser. Samtidigt finns en sak som bromsar: hemsidan laddar långsamt på mobil, vilket är värt att ta tag i nu när fler hittar er.",
+    "Maj har varit en riktigt positiv månad för er synlighet på Google — klicken till hemsidan har mer än fördubblats jämfört med april och er snittposition har förbättrats med nästan 14 platser. Nästa möjlighet är att bredda synligheten ytterligare, bland annat genom att komplettera med Google Business.",
   recommended_action:
     "Sätt upp och vårda er Google Business-profil och bygg en enkel rutin för nya recensioner.",
   upsell_pitch:
@@ -235,9 +235,9 @@ export const sampleAiContent: ReportAiContent = {
     {
       key: "missing_business_profile",
       what_we_see:
-        "Ni saknar en Google Business-profil, så ni syns inte på Maps eller i lokala sökresultat.",
+        "Nästa naturliga komplettering är Google Business, så att ni även syns i Google Maps och lokala sökresultat.",
       what_it_means:
-        "De flesta lokala kunder söker just där — utan profil missar ni dem helt.",
+        "De flesta lokala kunder söker just där — en väl ifylld profil gör det enklare för dem att hitta och välja er.",
       how_we_help:
         "Vi sätter upp och optimerar profilen och bygger en rutin för nya recensioner — Google Business-paket.",
       next_step: "Hör av er så sätter vi upp profilen den här veckan.",

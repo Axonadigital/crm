@@ -283,8 +283,41 @@ describe("buildReportEmailHtml", () => {
     expect(idxLead).toBeGreaterThan(idxQueries);
     expect(html).toContain("Långsam laddtid");
     expect(html).toContain("Så löser vi det");
-    expect(html).toContain("Rekommenderad tilläggstjänst");
+    expect(html).toContain("Rekommenderat nästa steg");
     expect(html).toContain("Prestandaoptimering");
+  });
+
+  it("CTA falls back to a mailto with a prefilled subject when no bookingUrl is set", () => {
+    const html = buildReportEmailHtml({
+      companyName: "JVS Maskiner AB",
+      periodLabel: "juni 2026",
+      aiContent,
+      metrics: computeReportMetrics(snap, null),
+      hasSearchData: true,
+      replyToEmail: "hej@axonadigital.se",
+    });
+    expect(html).toContain("Boka 15 min genomgång");
+    expect(html).toContain(
+      `href="mailto:hej%40axonadigital.se?subject=Genomg%C3%A5ng%20av%20synlighetsrapport"`,
+    );
+    expect(html).toContain("Svara på detta mejl");
+  });
+
+  it("CTA uses the booking URL as the primary link when provided", () => {
+    const html = buildReportEmailHtml({
+      companyName: "JVS Maskiner AB",
+      periodLabel: "juni 2026",
+      aiContent,
+      metrics: computeReportMetrics(snap, null),
+      hasSearchData: true,
+      replyToEmail: "hej@axonadigital.se",
+      bookingUrl: "https://cal.com/axona/genomgang",
+    });
+    expect(html).toContain(`href="https://cal.com/axona/genomgang"`);
+    expect(html).toContain("Boka 15 min genomgång");
+    // Sekundär mailto-länk finns kvar även när en bokningslänk är satt.
+    expect(html).toContain(`href="mailto:hej%40axonadigital.se"`);
+    expect(html).toContain("Svara på detta mejl");
   });
 
   it("escapes HTML in customer-controlled values", () => {
