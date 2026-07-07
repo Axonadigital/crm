@@ -178,6 +178,19 @@ function fallbackActionItems(
   return ordered.slice(0, 3).map(actionItemFromRecommendation);
 }
 
+function actionItemFromSelectedService(
+  aiContent: ReportAiContent,
+): ReportActionItem | null {
+  if (!aiContent.recommended_service) return null;
+  return {
+    key: "selected_recommended_service",
+    what_we_see: aiContent.recommended_action,
+    what_it_means: aiContent.upsell_pitch,
+    how_we_help: `Med ${aiContent.recommended_service} arbetar vi praktiskt med nästa prioriterade förbättring och gör den mätbar över tid.`,
+    next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
+  };
+}
+
 /** action_plan från AI:n, annars deterministisk fallback ur findings. */
 function resolveActionItems(
   aiContent: ReportAiContent,
@@ -186,6 +199,9 @@ function resolveActionItems(
   const recommendedKey = viewModel?.recommendations?.find(
     (r) => r.service === aiContent.recommended_service,
   )?.key;
+  const selectedServiceItem = recommendedKey
+    ? null
+    : actionItemFromSelectedService(aiContent);
   if (aiContent.action_plan && aiContent.action_plan.length > 0) {
     if (
       recommendedKey &&
@@ -193,9 +209,15 @@ function resolveActionItems(
     ) {
       return fallbackActionItems(viewModel, aiContent.recommended_service);
     }
+    if (selectedServiceItem) {
+      return [selectedServiceItem, ...aiContent.action_plan.slice(0, 2)];
+    }
     return reorderForRecommendedService(aiContent.action_plan, recommendedKey);
   }
-  return fallbackActionItems(viewModel, aiContent.recommended_service);
+  const fallback = fallbackActionItems(viewModel, aiContent.recommended_service);
+  return selectedServiceItem
+    ? [selectedServiceItem, ...fallback.slice(0, 2)]
+    : fallback;
 }
 
 /** Prominent "viktigast just nu"-kort — mailet leder med detta. */

@@ -146,12 +146,22 @@ function buildBrandDiscoveryBlock(metrics: ReportMetrics): string[] {
 
 function orderRecommendationsForService(
   recommendations: ReportFinding[],
-  service: string | undefined,
+  upsell: UpsellOffer | null,
 ): ReportFinding[] {
+  const service = upsell?.service;
   if (!service) return recommendations;
+  const matching = recommendations.filter((r) => r.service === service);
+  const rest = recommendations.filter((r) => r.service !== service);
+  if (matching.length > 0) return [...matching, ...rest];
   return [
-    ...recommendations.filter((r) => r.service === service),
-    ...recommendations.filter((r) => r.service !== service),
+    {
+      key: "selected_recommended_service",
+      severity: "medium",
+      title: upsell.description,
+      description: upsell.pitch,
+      service,
+    },
+    ...recommendations,
   ];
 }
 
@@ -307,7 +317,7 @@ export function buildMonthlyReportPrompts(input: BuildReportPromptInput): {
 
   const priorities = orderRecommendationsForService(
     input.recommendations,
-    input.upsell?.service,
+    input.upsell,
   ).slice(0, 3);
   const prioritiesBlock = priorities.length
     ? `Prioriteringar (skapa en action_plan-post per rad, samma key):\n${priorities
