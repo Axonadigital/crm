@@ -880,12 +880,21 @@ export type MetricTrend = {
   deltaAbsolute: number | null;
 };
 
+export type ReportActionItem = {
+  key: string;
+  what_we_see: string;
+  what_it_means: string;
+  how_we_help: string;
+  next_step: string;
+};
+
 /** AI-genererat, kundvänt rapportinnehåll. */
 export type ReportAiContent = {
   greeting: string;
   summary: string;
   recommended_action: string;
   upsell_pitch: string;
+  action_plan?: ReportActionItem[];
   /** Manuellt vald "Rekommenderad huvudåtgärd" (matchar UpsellOffer.service). */
   recommended_service?: string;
 };

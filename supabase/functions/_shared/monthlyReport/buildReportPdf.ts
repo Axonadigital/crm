@@ -164,6 +164,45 @@ function reorderForRecommendedService(
   return [picked, ...copy];
 }
 
+function actionItemFromRecommendation(
+  r: ReportViewModel["recommendations"][number],
+): ReportActionItem {
+  return {
+    key: r.key,
+    what_we_see: r.title,
+    what_it_means: r.description,
+    how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
+    next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
+  };
+}
+
+function fallbackActionItems(
+  viewModel: ReportViewModel,
+  recommendedService: string | undefined,
+): ReportActionItem[] {
+  const recs = viewModel.recommendations;
+  const ordered = recommendedService
+    ? [
+        ...recs.filter((r) => r.service === recommendedService),
+        ...recs.filter((r) => r.service !== recommendedService),
+      ]
+    : recs;
+  return ordered.slice(0, 3).map(actionItemFromRecommendation);
+}
+
+function actionItemFromSelectedService(
+  aiContent: ReportAiContent,
+): ReportActionItem | null {
+  if (!aiContent.recommended_service) return null;
+  return {
+    key: "selected_recommended_service",
+    what_we_see: aiContent.recommended_action,
+    what_it_means: aiContent.upsell_pitch,
+    how_we_help: `Med ${aiContent.recommended_service} arbetar vi praktiskt med nästa prioriterade förbättring och gör den mätbar över tid.`,
+    next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
+  };
+}
+
 /** action_plan från AI:n, annars deterministisk fallback ur findings. */
 function resolveActionItems(
   aiContent: ReportAiContent,
@@ -172,19 +211,25 @@ function resolveActionItems(
   const recommendedKey = viewModel.recommendations.find(
     (r) => r.service === aiContent.recommended_service,
   )?.key;
+  const selectedServiceItem = recommendedKey
+    ? null
+    : actionItemFromSelectedService(aiContent);
   if (aiContent.action_plan && aiContent.action_plan.length > 0) {
+    if (
+      recommendedKey &&
+      !aiContent.action_plan.some((item) => item.key === recommendedKey)
+    ) {
+      return fallbackActionItems(viewModel, aiContent.recommended_service);
+    }
+    if (selectedServiceItem) {
+      return [selectedServiceItem, ...aiContent.action_plan.slice(0, 2)];
+    }
     return reorderForRecommendedService(aiContent.action_plan, recommendedKey);
   }
-  return reorderForRecommendedService(
-    viewModel.recommendations.slice(0, 3).map((r) => ({
-      key: r.key,
-      what_we_see: r.title,
-      what_it_means: r.description,
-      how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
-      next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
-    })),
-    recommendedKey,
-  );
+  const fallback = fallbackActionItems(viewModel, aiContent.recommended_service);
+  return selectedServiceItem
+    ? [selectedServiceItem, ...fallback.slice(0, 2)]
+    : fallback;
 }
 
 export async function buildReportPdf(input: {

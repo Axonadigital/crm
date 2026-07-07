@@ -214,6 +214,7 @@ async function generateReportForCompany(
    * av en explicit, autentiserad CRM-handling — cron skickar aldrig denna.
    */
   force = false,
+  recommendedService?: string,
 ): Promise<{ report_id: number | null; status: string }> {
   // Period: vald (normaliserad till hela månader) eller default = förra månaden.
   const reportPeriod = requestedPeriod
@@ -320,6 +321,18 @@ async function generateReportForCompany(
     catalog,
     CUSTOMER_HIDDEN_FINDING_KEYS,
   );
+  const selectedUpsell =
+    (recommendedService
+      ? upsells.find((offer) => offer.service === recommendedService) ??
+        catalog.find((offer) => offer.service === recommendedService)
+      : null) ??
+    upsells[0] ??
+    null;
+  const reportUpsells =
+    selectedUpsell &&
+    !upsells.some((offer) => offer.service === selectedUpsell.service)
+      ? [selectedUpsell, ...upsells]
+      : upsells;
   const hasSearchData = !!latest.search_console;
 
   const { prompt, systemPrompt } = buildMonthlyReportPrompts({
@@ -327,7 +340,7 @@ async function generateReportForCompany(
     contactName: recipient.name,
     periodLabel,
     metrics,
-    upsell: upsells[0] ?? null,
+    upsell: selectedUpsell,
     recommendations: viewModel.recommendations,
     geoReadiness: geoReadiness(latest.seo_checks),
     hasSearchData,
@@ -336,6 +349,7 @@ async function generateReportForCompany(
 
   let content = buildFallbackReportContent(viewModel, recipient.name);
   let aiFallbackReason: string | null = null;
+  let usedGeneratedContent = false;
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (apiKey) {
     try {
@@ -356,6 +370,7 @@ async function generateReportForCompany(
       });
       if (result.content) {
         content = result.content;
+        usedGeneratedContent = true;
       } else {
         aiFallbackReason = "AI-svaret klarade inte valideringen";
       }
@@ -365,6 +380,18 @@ async function generateReportForCompany(
     }
   } else {
     aiFallbackReason = "ANTHROPIC_API_KEY saknas";
+  }
+  if (selectedUpsell) {
+    content = {
+      ...content,
+      recommended_service: selectedUpsell.service,
+      recommended_action: usedGeneratedContent
+        ? content.recommended_action
+        : selectedUpsell.description,
+      upsell_pitch: usedGeneratedContent
+        ? content.upsell_pitch
+        : selectedUpsell.pitch,
+    };
   }
 
   const html = buildReportEmailHtml({
@@ -401,7 +428,7 @@ async function generateReportForCompany(
     recipient_email: recipient.email,
     recipient_name: recipient.name,
     ai_content: content,
-    selected_upsells: upsells,
+    selected_upsells: reportUpsells,
     metrics,
     view_model: viewModel,
     generated_html: html,
@@ -432,7 +459,7 @@ async function generateReportForCompany(
       description:
         `**Period:** ${periodLabel}\n` +
         `**Mottagare:** ${recipientLine}\n` +
-        `**Föreslagen upsell:** ${upsells[0]?.label ?? "ingen"}\n` +
+        `**Föreslagen upsell:** ${selectedUpsell?.label ?? "ingen"}\n` +
         (aiFallbackReason
           ? `ℹ️ **Reservtext användes:** ${aiFallbackReason.slice(0, 120)}\n`
           : "") +
@@ -614,11 +641,17 @@ Deno.serve(async (req: Request) =>
             ? { startDate: periodStart, endDate: periodEnd }
             : undefined;
         const force = getOptionalBooleanField(body, "force") ?? false;
+        const recommendedService =
+          typeof (body as { recommended_service?: unknown })
+            .recommended_service === "string"
+            ? ((body as { recommended_service: string }).recommended_service)
+            : undefined;
         const result = await generateReportForCompany(
           company_id as number,
           "manual",
           requestedPeriod,
           force,
+          recommendedService,
         );
         return createJsonResponse({ success: true, ...result });
       } catch (error) {

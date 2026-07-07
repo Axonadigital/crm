@@ -234,7 +234,11 @@ export const MonthlyReportModal = ({
         if (!active) return;
         setReport(data);
         setRecipientEmail(data.recipient_email ?? "");
-        setSelectedUpsellService(data.selected_upsells[0]?.service ?? "");
+        setSelectedUpsellService(
+          data.ai_content?.recommended_service ??
+            data.selected_upsells[0]?.service ??
+            "",
+        );
         if (data.ai_content) setAi(data.ai_content);
       })
       .catch((error) => {
@@ -266,11 +270,37 @@ export const MonthlyReportModal = ({
     );
     setReport(data);
     setRecipientEmail(data.recipient_email ?? "");
-    setSelectedUpsellService(data.selected_upsells[0]?.service ?? "");
+    setSelectedUpsellService(
+      data.ai_content?.recommended_service ??
+        data.selected_upsells[0]?.service ??
+        "",
+    );
     if (data.ai_content) setAi(data.ai_content);
+    return data;
   };
 
   const handleGenerate = async (opts?: { force?: boolean }) => {
+    // Omgenerering skriver helt ny AI-text (inkl. tömmer recommended_service)
+    // — bevara ett manuellt val av "Rekommenderad huvudåtgärd" som gjordes
+    // INNAN omgenereringen, så att det inte tyst försvinner när man tvingas
+    // klicka "Generera om" för att låsa upp Skicka-knappen på en redan
+    // skickad rapport.
+    const priorRecommendedService =
+      selectedUpsellService || ai.recommended_service;
+    const reapplyPriorRecommendation = (data: MonthlyReport) => {
+      if (!priorRecommendedService) return;
+      const stillOffered = data.selected_upsells.find(
+        (offer) => offer.service === priorRecommendedService,
+      );
+      if (!stillOffered) return;
+      setSelectedUpsellService(stillOffered.service);
+      setAi((current) => ({
+        ...current,
+        recommended_service: stillOffered.service,
+        recommended_action: stillOffered.description,
+        upsell_pitch: stillOffered.pitch,
+      }));
+    };
     // Vid omgenerering av en redan öppen rapport (t.ex. en redan skickad
     // period) används rapportens EGEN period — aldrig periodPreset-state,
     // som kan vara kvar från ett tidigare "ny rapport"-läge i samma modal.
@@ -313,7 +343,23 @@ export const MonthlyReportModal = ({
       const result = await dataProvider.generateMonthlyReport(company.id, {
         ...period,
         ...(opts?.force ? { force: true } : {}),
+        ...(priorRecommendedService
+          ? { recommended_service: priorRecommendedService }
+          : {}),
       });
+      if (result.status === "skipped_already_finalized" && result.report_id) {
+        // Perioden är redan skickad — öppna den befintliga rapporten istället
+        // för en död återvändsgränd. Varningsbannern + "Generera om med
+        // aktuell data"-knappen (isFinalized-läget nedan) låter användaren
+        // ändå skicka om, exakt som efterfrågat.
+        notify(
+          "En rapport för den här perioden finns redan och har skickats. Öppnar den — klicka 'Generera om med aktuell data' om du vill skicka en uppdaterad version.",
+          { type: "warning" },
+        );
+        const data = await loadReport(result.report_id);
+        reapplyPriorRecommendation(data);
+        return;
+      }
       if (!result.report_id || result.status.startsWith("skipped")) {
         notify(
           result.status === "skipped_no_snapshot"
@@ -330,7 +376,8 @@ export const MonthlyReportModal = ({
         );
         return;
       }
-      await loadReport(result.report_id);
+      const data = await loadReport(result.report_id);
+      reapplyPriorRecommendation(data);
       if (opts?.force) {
         notify("Rapporten omgenererad — granska och skicka igen.", {
           type: "info",

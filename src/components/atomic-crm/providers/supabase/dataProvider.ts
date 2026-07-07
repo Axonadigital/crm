@@ -885,7 +885,12 @@ const dataProviderWithCustomMethods = {
   },
   async generateMonthlyReport(
     companyId: Identifier,
-    period?: { period_start: string; period_end: string },
+    period?: {
+      period_start: string;
+      period_end: string;
+      force?: boolean;
+      recommended_service?: string;
+    },
   ): Promise<{ success: true; report_id: number | null; status: string }> {
     const { data, error } = await supabase.functions.invoke(
       "generate_monthly_reports",

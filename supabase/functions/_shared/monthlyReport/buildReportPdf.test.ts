@@ -130,4 +130,58 @@ describe("buildReportPdf", () => {
     expect(pdf.getPageCount()).toBeGreaterThanOrEqual(2);
     expect(pdf.getTitle()).toContain("Östersunds Måleri");
   });
+
+  it("builds when selected service differs from the original primary recommendation", async () => {
+    const mismatchedViewModel: ReportViewModel = {
+      ...viewModel,
+      companyName: "Axona Digital AB",
+      recommendations: [
+        {
+          key: "missing_business_profile",
+          severity: "high",
+          title: "Google Business saknas",
+          description: "Ni syns inte i lokala kartresultat.",
+          service: "Google Business-paket",
+        },
+        {
+          key: "low_position",
+          severity: "medium",
+          title: "Nära första sidan",
+          description: "Flera sökord ligger precis utanför topp 10.",
+          service: "SEO-optimering",
+        },
+      ],
+      primaryRecommendation: {
+        key: "missing_business_profile",
+        severity: "high",
+        title: "Google Business saknas",
+        description: "Ni syns inte i lokala kartresultat.",
+        service: "Google Business-paket",
+      },
+    };
+
+    const bytes = await buildReportPdf({
+      viewModel: mismatchedViewModel,
+      aiContent: {
+        greeting: "Hej,",
+        summary: "Klicken ökade och nästa möjlighet är SEO.",
+        recommended_action: "Vi rekommenderar SEO-optimering.",
+        upsell_pitch: "Det hjälper er lyfta viktiga sökord.",
+        recommended_service: "SEO-optimering",
+        action_plan: [
+          {
+            key: "missing_business_profile",
+            what_we_see: "Google Business-profilen saknas.",
+            what_it_means: "Lokala kunder hittar er inte lika enkelt.",
+            how_we_help: "Vi sätter upp Google Business-paketet.",
+            next_step: "Hör av er så startar vi.",
+          },
+        ],
+      },
+    });
+
+    expect(bytes.byteLength).toBeGreaterThan(2_000);
+    const pdf = await PDFDocument.load(bytes);
+    expect(pdf.getPageCount()).toBeGreaterThanOrEqual(2);
+  });
 });

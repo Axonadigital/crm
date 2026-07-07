@@ -144,6 +144,27 @@ function buildBrandDiscoveryBlock(metrics: ReportMetrics): string[] {
   ];
 }
 
+function orderRecommendationsForService(
+  recommendations: ReportFinding[],
+  upsell: UpsellOffer | null,
+): ReportFinding[] {
+  const service = upsell?.service;
+  if (!service) return recommendations;
+  const matching = recommendations.filter((r) => r.service === service);
+  const rest = recommendations.filter((r) => r.service !== service);
+  if (matching.length > 0) return [...matching, ...rest];
+  return [
+    {
+      key: "selected_recommended_service",
+      severity: "medium",
+      title: upsell.description,
+      description: upsell.pitch,
+      service,
+    },
+    ...recommendations,
+  ];
+}
+
 function buildMetricsBlock(
   metrics: ReportMetrics,
   hasSearchData: boolean,
@@ -294,7 +315,10 @@ export function buildMonthlyReportPrompts(input: BuildReportPromptInput): {
       ? buildKeywordMovementBlock(input.metrics)
       : "";
 
-  const priorities = input.recommendations.slice(0, 3);
+  const priorities = orderRecommendationsForService(
+    input.recommendations,
+    input.upsell,
+  ).slice(0, 3);
   const prioritiesBlock = priorities.length
     ? `Prioriteringar (skapa en action_plan-post per rad, samma key):\n${priorities
         .map(
