@@ -135,6 +135,20 @@ describe("buildReportPdf", () => {
     const mismatchedViewModel: ReportViewModel = {
       ...viewModel,
       companyName: "Axona Digital AB",
+      metrics: {
+        ...viewModel.metrics,
+        keywordMovers: {
+          improved: [
+            {
+              query: "crm system stockholm",
+              current: 3.2,
+              previous: 9.4,
+              delta: -6.2,
+            },
+          ],
+          declined: [],
+        },
+      },
       recommendations: [
         {
           key: "missing_business_profile",
@@ -165,7 +179,7 @@ describe("buildReportPdf", () => {
       aiContent: {
         greeting: "Hej,",
         summary: "Klicken ökade och nästa möjlighet är SEO.",
-        recommended_action: "Vi rekommenderar SEO-optimering.",
+        recommended_action: "Vi rekommenderar SEO-optimering: position 9 → 3.",
         upsell_pitch: "Det hjälper er lyfta viktiga sökord.",
         recommended_service: "SEO-optimering",
         action_plan: [

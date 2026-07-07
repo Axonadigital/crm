@@ -655,6 +655,7 @@ Deno.serve(async (req: Request) =>
         );
         return createJsonResponse({ success: true, ...result });
       } catch (error) {
+        console.error("generate_monthly_reports request failed:", error);
         return errorResponseFromUnknown(error);
       }
     }),

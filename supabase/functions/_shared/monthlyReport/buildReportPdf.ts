@@ -51,13 +51,38 @@ const col = {
   white: rgb(1, 1, 1),
 };
 
+function pdfText(text: string): string {
+  return text
+    .replace(/→/g, "->")
+    .replace(/←/g, "<-")
+    .replace(/[–—]/g, "-")
+    .replace(/•/g, "-")
+    .replace(/…/g, "...")
+    .replace(/≥/g, ">=")
+    .replace(/≤/g, "<=")
+    .replace(/×/g, "x")
+    .replace(/≈/g, "~");
+}
+
+function textWidth(font: PDFFont, text: string, size: number): number {
+  return font.widthOfTextAtSize(pdfText(text), size);
+}
+
+function drawText(
+  page: PDFPage,
+  text: string,
+  options: Parameters<PDFPage["drawText"]>[1],
+) {
+  page.drawText(pdfText(text), options);
+}
+
 function wrapText(text: string, font: PDFFont, size: number, width: number) {
-  const words = text.replace(/\s+/g, " ").trim().split(" ");
+  const words = pdfText(text).replace(/\s+/g, " ").trim().split(" ");
   const lines: string[] = [];
   let line = "";
   for (const word of words) {
     const candidate = line ? `${line} ${word}` : word;
-    if (font.widthOfTextAtSize(candidate, size) <= width) {
+    if (textWidth(font, candidate, size) <= width) {
       line = candidate;
     } else {
       if (line) lines.push(line);
@@ -300,10 +325,10 @@ export async function buildReportPdf(input: {
   ) => {
     const padX = 8;
     const h = size + 7;
-    const tw = bold.widthOfTextAtSize(text, size);
+    const tw = textWidth(bold, text, size);
     const w = tw + padX * 2;
     roundedRect(x, yTop, w, h, h / 2, { color: bg });
-    page.drawText(text, {
+    drawText(page, text, {
       x: x + padX,
       y: yTop - h / 2 - size * 0.36,
       size,
@@ -316,18 +341,18 @@ export async function buildReportPdf(input: {
   const drawPageHeader = () => {
     // Loggan är vit (för mörk hero) → syns inte på vit topp. Sidhuvudet på
     // sida 2/3 använder därför wordmark i accentblått (loggan finns på sida 1).
-    page.drawText("AXONA DIGITAL", {
+    drawText(page, "AXONA DIGITAL", {
       x: MARGIN,
       y,
       size: 9.5,
       font: bold,
       color: col.accent,
     });
-    page.drawText(input.viewModel.period.label, {
+    drawText(page, input.viewModel.period.label, {
       x:
         PAGE_WIDTH -
         MARGIN -
-        regular.widthOfTextAtSize(input.viewModel.period.label, 9),
+        textWidth(regular, input.viewModel.period.label, 9),
       y,
       size: 9,
       font: regular,
@@ -355,7 +380,7 @@ export async function buildReportPdf(input: {
   const heading = (text: string, size = 15) => {
     y -= 12; // luft ovanför rubriken
     ensure(size + 24);
-    page.drawText(text, { x: MARGIN, y, size, font: bold, color: col.ink });
+    drawText(page, text, { x: MARGIN, y, size, font: bold, color: col.ink });
     page.drawRectangle({
       x: MARGIN,
       y: y - 8,
@@ -378,7 +403,7 @@ export async function buildReportPdf(input: {
     const lines = wrapText(text, regular, size, CONTENT_WIDTH);
     ensure(lines.length * (size + 4) + 6);
     for (const line of lines) {
-      page.drawText(line, {
+      drawText(page, line, {
         x: MARGIN,
         y,
         size,
@@ -401,7 +426,7 @@ export async function buildReportPdf(input: {
     const ROW_H = 28;
     ensure(ROW_H);
     const baseline = y - 17;
-    page.drawText(label, {
+    drawText(page, label, {
       x: MARGIN,
       y: baseline,
       size: 10,
@@ -409,8 +434,8 @@ export async function buildReportPdf(input: {
       color: col.ink,
     });
     const valColRight = PAGE_WIDTH - MARGIN - 150;
-    const vw = bold.widthOfTextAtSize(value, 11);
-    page.drawText(value, {
+    const vw = textWidth(bold, value, 11);
+    drawText(page, value, {
       x: valColRight - vw,
       y: baseline,
       size: 11,
@@ -431,12 +456,12 @@ export async function buildReportPdf(input: {
             ? col.amber
             : col.slate;
       const size = 9;
-      const tw = bold.widthOfTextAtSize(change.text, size);
+      const tw = textWidth(bold, change.text, size);
       const w = tw + 16;
       drawPill(change.text, PAGE_WIDTH - MARGIN - w, y - 6, bg, fg, size);
     } else if (change?.kind === "note") {
-      const nw = regular.widthOfTextAtSize(change.text, 9);
-      page.drawText(change.text, {
+      const nw = textWidth(regular, change.text, 9);
+      drawText(page, change.text, {
         x: PAGE_WIDTH - MARGIN - nw,
         y: baseline,
         size: 9,
@@ -467,7 +492,7 @@ export async function buildReportPdf(input: {
     roundedRect(options.x, y + 14, options.width, boxHeight, 12, {
       color: options.bg,
     });
-    page.drawText(title, {
+    drawText(page, title, {
       x: options.x + 16,
       y: y - 4,
       size: 9,
@@ -477,7 +502,7 @@ export async function buildReportPdf(input: {
     const lines = wrapText(text, regular, 10, options.width - 32);
     let lineY = y - 22;
     for (const line of lines.slice(0, 4)) {
-      page.drawText(line, {
+      drawText(page, line, {
         x: options.x + 16,
         y: lineY,
         size: 10,
@@ -509,14 +534,14 @@ export async function buildReportPdf(input: {
       borderWidth: 0.8,
     });
     const padX = opts.x + 14;
-    page.drawText(label, {
+    drawText(page, label, {
       x: padX,
       y: opts.yTop - 22,
       size: 8.5,
       font: bold,
       color: col.muted,
     });
-    page.drawText(value, {
+    drawText(page, value, {
       x: padX,
       y: opts.yTop - 47,
       size: 22,
@@ -535,7 +560,7 @@ export async function buildReportPdf(input: {
         tag: string,
         strong: boolean,
       ) => {
-        page.drawText(tag, {
+        drawText(page, tag, {
           x: padX,
           y: rowY - 1,
           size: 7.5,
@@ -549,7 +574,7 @@ export async function buildReportPdf(input: {
       bar(opts.yTop - 60, opts.prev / max, col.prevBar, "Förra", false);
       bar(opts.yTop - 73, opts.now / max, col.accent, "Nu", true);
     } else if (opts.note) {
-      page.drawText(opts.note, {
+      drawText(page, opts.note, {
         x: padX,
         y: opts.yTop - 64,
         size: 8,
@@ -595,7 +620,7 @@ export async function buildReportPdf(input: {
       height: lh,
     });
   } else {
-    page.drawText("AXONA DIGITAL", {
+    drawText(page, "AXONA DIGITAL", {
       x: MARGIN,
       y: PAGE_HEIGHT - 62,
       size: 16,
@@ -603,21 +628,21 @@ export async function buildReportPdf(input: {
       color: col.white,
     });
   }
-  page.drawText("SYNLIGHETSRAPPORT", {
+  drawText(page, "SYNLIGHETSRAPPORT", {
     x: MARGIN,
     y: PAGE_HEIGHT - 96,
     size: 9,
     font: bold,
     color: col.heroAccent,
   });
-  page.drawText("Er synlighet just nu", {
+  drawText(page, "Er synlighet just nu", {
     x: MARGIN,
     y: PAGE_HEIGHT - 124,
     size: 26,
     font: bold,
     color: col.white,
   });
-  page.drawText(
+  drawText(page, 
     `${input.viewModel.companyName}  ·  ${input.viewModel.period.start} – ${input.viewModel.period.end}`,
     {
       x: MARGIN,
@@ -891,7 +916,7 @@ export async function buildReportPdf(input: {
     statusRows.forEach(([label, status]) => {
       ensure(28);
       const baseline = y - 16;
-      page.drawText(label, {
+      drawText(page, label, {
         x: MARGIN,
         y: baseline,
         size: 11,
@@ -907,7 +932,7 @@ export async function buildReportPdf(input: {
               ? { bg: col.slateTint, fg: col.slate }
               : { bg: col.amberTint, fg: col.amber };
       const text = statusLabel(status);
-      const w = bold.widthOfTextAtSize(text, 9) + 16;
+      const w = textWidth(bold, text, 9) + 16;
       drawPill(text, PAGE_WIDTH - MARGIN - w, y - 4, tone.bg, tone.fg, 9);
       y -= 26;
       page.drawLine({
@@ -969,28 +994,28 @@ export async function buildReportPdf(input: {
           : { bg: col.redTint, fg: col.red };
     ensure(26);
     const baseline = y - 15;
-    page.drawText(check.label, {
+    drawText(page, check.label, {
       x: MARGIN,
       y: baseline,
       size: 10,
       font: bold,
       color: col.ink,
     });
-    const labelW = bold.widthOfTextAtSize(check.label, 10);
+    const labelW = textWidth(bold, check.label, 10);
     const exp = wrapText(
       check.explanation,
       regular,
       9,
       PAGE_WIDTH - MARGIN * 2 - labelW - 90,
     );
-    page.drawText(exp[0] ?? "", {
+    drawText(page, exp[0] ?? "", {
       x: MARGIN + labelW + 10,
       y: baseline,
       size: 9,
       font: regular,
       color: col.muted,
     });
-    const w = bold.widthOfTextAtSize(status, 8.5) + 16;
+    const w = textWidth(bold, status, 8.5) + 16;
     drawPill(status, PAGE_WIDTH - MARGIN - w, y - 3, tone.bg, tone.fg, 8.5);
     y -= 24;
     page.drawLine({
@@ -1031,8 +1056,8 @@ export async function buildReportPdf(input: {
     ensure(blockH);
     // sifferchip
     roundedRect(MARGIN, y + 2, 22, 22, 7, { color: col.hero });
-    page.drawText(`${index + 1}`, {
-      x: MARGIN + 22 / 2 - bold.widthOfTextAtSize(`${index + 1}`, 12) / 2,
+    drawText(page, `${index + 1}`, {
+      x: MARGIN + 22 / 2 - textWidth(bold, `${index + 1}`, 12) / 2,
       y: y - 12,
       size: 12,
       font: bold,
@@ -1042,7 +1067,7 @@ export async function buildReportPdf(input: {
     const tw = CONTENT_WIDTH - 34;
     let ly = y - 4;
     for (const line of whatLines) {
-      page.drawText(line, {
+      drawText(page, line, {
         x: tx,
         y: ly,
         size: 11,
@@ -1052,7 +1077,7 @@ export async function buildReportPdf(input: {
       ly -= 14;
     }
     for (const line of meansLines) {
-      page.drawText(line, {
+      drawText(page, line, {
         x: tx,
         y: ly,
         size: 10,
@@ -1063,7 +1088,7 @@ export async function buildReportPdf(input: {
     }
     for (let i = 0; i < helpLines.length; i++) {
       const line = helpLines[i];
-      page.drawText(line, {
+      drawText(page, line, {
         x: tx,
         y: ly,
         size: 10,
@@ -1086,7 +1111,7 @@ export async function buildReportPdf(input: {
       borderColor: col.accentBorder,
       borderWidth: 0.8,
     });
-    page.drawText(resolvedService, {
+    drawText(page, resolvedService, {
       x: MARGIN + 16,
       y: y - 6,
       size: 11,
@@ -1131,7 +1156,7 @@ export async function buildReportPdf(input: {
         borderColor: col.line,
         borderWidth: 0.8,
       });
-      page.drawText(title, {
+      drawText(page, title, {
         x: MARGIN + 18,
         y: y - 8,
         size: 12,
@@ -1140,7 +1165,7 @@ export async function buildReportPdf(input: {
       });
       let ly = y - 28;
       for (const line of bodyLines) {
-        page.drawText(line, {
+        drawText(page, line, {
           x: MARGIN + 18,
           y: ly,
           size: 10.5,
@@ -1156,14 +1181,14 @@ export async function buildReportPdf(input: {
   // Sidfötter
   const pages = pdf.getPages();
   pages.forEach((p, index) => {
-    p.drawText(`Sida ${index + 1} av ${pages.length}`, {
+    drawText(p, `Sida ${index + 1} av ${pages.length}`, {
       x: PAGE_WIDTH - MARGIN - 64,
       y: 26,
       size: 8,
       font: regular,
       color: col.faint,
     });
-    p.drawText("Axona Digital AB · Synlighetsrapport", {
+    drawText(p, "Axona Digital AB · Synlighetsrapport", {
       x: MARGIN,
       y: 26,
       size: 8,
