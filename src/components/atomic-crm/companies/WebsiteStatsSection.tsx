@@ -2055,8 +2055,8 @@ export function WebsiteStatsSection({ company }: { company: Company }) {
                         {report.data_period_start && report.data_period_end
                           ? ` · period ${formatDate(report.data_period_start)}–${formatDate(report.data_period_end)}`
                           : ""}
-                        {report.sent_at
-                          ? ` · skickad till ${report.recipient_email ?? "—"}`
+                        {report.status === "sent" && report.sent_at
+                          ? ` · skickad ${new Date(report.sent_at).toLocaleDateString("sv-SE")} till ${report.recipient_email ?? "—"}`
                           : report.error
                             ? ` · ${report.error}`
                             : ` · ${report.view_model?.coverage.available ?? "—"}/${report.view_model?.coverage.total ?? "—"} datakällor`}

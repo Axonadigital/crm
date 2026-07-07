@@ -283,8 +283,41 @@ describe("buildReportEmailHtml", () => {
     expect(idxLead).toBeGreaterThan(idxQueries);
     expect(html).toContain("Långsam laddtid");
     expect(html).toContain("Så löser vi det");
-    expect(html).toContain("Rekommenderad tilläggstjänst");
+    expect(html).toContain("Rekommenderat nästa steg");
     expect(html).toContain("Prestandaoptimering");
+  });
+
+  it("CTA falls back to a mailto with a prefilled subject when no bookingUrl is set", () => {
+    const html = buildReportEmailHtml({
+      companyName: "JVS Maskiner AB",
+      periodLabel: "juni 2026",
+      aiContent,
+      metrics: computeReportMetrics(snap, null),
+      hasSearchData: true,
+      replyToEmail: "hej@axonadigital.se",
+    });
+    expect(html).toContain("Boka 15 min genomgång");
+    expect(html).toContain(
+      `href="mailto:hej%40axonadigital.se?subject=Genomg%C3%A5ng%20av%20synlighetsrapport"`,
+    );
+    expect(html).toContain("Svara på detta mejl");
+  });
+
+  it("CTA uses the booking URL as the primary link when provided", () => {
+    const html = buildReportEmailHtml({
+      companyName: "JVS Maskiner AB",
+      periodLabel: "juni 2026",
+      aiContent,
+      metrics: computeReportMetrics(snap, null),
+      hasSearchData: true,
+      replyToEmail: "hej@axonadigital.se",
+      bookingUrl: "https://cal.com/axona/genomgang",
+    });
+    expect(html).toContain(`href="https://cal.com/axona/genomgang"`);
+    expect(html).toContain("Boka 15 min genomgång");
+    // Sekundär mailto-länk finns kvar även när en bokningslänk är satt.
+    expect(html).toContain(`href="mailto:hej%40axonadigital.se"`);
+    expect(html).toContain("Svara på detta mejl");
   });
 
   it("escapes HTML in customer-controlled values", () => {
@@ -370,5 +403,111 @@ describe("buildReportEmailHtml", () => {
 
   it("exposes the hidden-finding key list", () => {
     expect(CUSTOMER_HIDDEN_FINDING_KEYS).toContain("missing_llms_txt");
+  });
+
+  it("lets recommended_service override the primary recommendation heading and lead action", () => {
+    const metrics = computeReportMetrics(snap, null);
+    const viewModel: ReportViewModel = {
+      version: 2,
+      companyName: "JVS Maskiner AB",
+      period: { start: "2026-06-01", end: "2026-06-30", label: "juni 2026" },
+      comparisonPeriod: null,
+      coverage: { available: 4, total: 4, ratio: 1, missingSources: [] },
+      metrics,
+      statuses: {
+        googleVisibility: "good",
+        pageExperience: "needs_attention",
+        localVisibility: "missing",
+        technicalFoundation: "good",
+      },
+      technicalChecks: [],
+      recommendations: [
+        {
+          key: "slow_lcp",
+          severity: "medium",
+          title: "Långsam laddtid",
+          description: "Sidan laddar långsamt för mobila besökare.",
+          service: "Prestandaoptimering",
+        },
+        {
+          key: "low_position",
+          severity: "medium",
+          title: "Nära första sidan",
+          description: "Flera sökord ligger precis utanför topp 10.",
+          service: "SEO-optimering",
+        },
+      ],
+      primaryRecommendation: {
+        key: "slow_lcp",
+        severity: "medium",
+        title: "Långsam laddtid",
+        description: "Sidan laddar långsamt för mobila besökare.",
+        service: "Prestandaoptimering",
+      },
+    };
+    const html = buildReportEmailHtml({
+      companyName: "JVS Maskiner AB",
+      periodLabel: "juni 2026",
+      aiContent: { ...aiContent, recommended_service: "SEO-optimering" },
+      metrics,
+      viewModel,
+      hasSearchData: true,
+      replyToEmail: "hej@axonadigital.se",
+    });
+    expect(html).toContain("Rekommenderat nästa steg · SEO-optimering");
+    // action_plan-fallbacken byggs ur recommendations — SEO-posten flyttas
+    // fram och blir "Viktigast just nu" trots att den låg sist i listan.
+    expect(html).toContain("Nära första sidan");
+    const idxLeadLabel = html.indexOf("Viktigast just nu");
+    const idxSeoTitle = html.indexOf("Nära första sidan");
+    const idxLcpTitle = html.indexOf("Långsam laddtid");
+    expect(idxSeoTitle).toBeGreaterThan(idxLeadLabel);
+    expect(idxSeoTitle).toBeLessThan(idxLcpTitle);
+  });
+
+  it("shows Sökordsrörelser only when the resolved recommendation is SEO-optimering", () => {
+    const seoSnap: ReportSnapshot = {
+      ...snap,
+      search_console: {
+        ...snap.search_console!,
+        top_queries: [
+          { query: "jvs maskiner", clicks: 10, impressions: 40, position: 3.0 },
+        ],
+      },
+    };
+    const priorSnap: ReportSnapshot = {
+      search_console: {
+        clicks: 8,
+        impressions: 30,
+        position: 12,
+        top_queries: [
+          { query: "jvs maskiner", clicks: 6, impressions: 30, position: 9.0 },
+        ],
+      },
+    };
+    const metrics = computeReportMetrics(seoSnap, priorSnap);
+
+    const withoutOverride = buildReportEmailHtml({
+      companyName: "JVS Maskiner AB",
+      periodLabel: "juni 2026",
+      aiContent,
+      metrics,
+      hasSearchData: true,
+      replyToEmail: "hej@axonadigital.se",
+    });
+    // Kollar den faktiska sektionsrubriken (en <p>-tagg), inte HTML-kommentaren
+    // som alltid finns i mallen oavsett gate.
+    expect(withoutOverride).not.toContain(">Sökordsrörelser<");
+
+    const withOverride = buildReportEmailHtml({
+      companyName: "JVS Maskiner AB",
+      periodLabel: "juni 2026",
+      aiContent: { ...aiContent, recommended_service: "SEO-optimering" },
+      metrics,
+      hasSearchData: true,
+      replyToEmail: "hej@axonadigital.se",
+    });
+    expect(withOverride).toContain(">Sökordsrörelser<");
+    expect(withOverride).toContain("jvs maskiner");
   });
 });

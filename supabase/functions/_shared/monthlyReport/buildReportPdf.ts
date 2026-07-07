@@ -124,8 +124,15 @@ function strongestSignal(viewModel: ReportViewModel): string {
 function improvementFocus(
   viewModel: ReportViewModel,
   presentation: PresentationPolicy,
+  recommendedService?: string,
 ): string {
   const m = viewModel.metrics;
+  const manuallyRecommended = viewModel.recommendations.find(
+    (r) => r.service === recommendedService,
+  );
+  if (manuallyRecommended) {
+    return `${manuallyRecommended.title} är den viktigaste förbättringen i underlaget.`;
+  }
   if (m.lcp_ms.current != null && m.lcp_ms.current > 2500) {
     // Dölj det råa sekundtalet när policyn säger så (Axona-ägd siffra).
     return presentation.showLcp
@@ -141,21 +148,43 @@ function improvementFocus(
   return "Fortsätt förstärka den synlighet som redan finns.";
 }
 
+/**
+ * Flyttar posten som matchar den manuellt valda huvudåtgärden längst fram,
+ * utan att generera om text — ren omsortering av redan genererat innehåll.
+ */
+function reorderForRecommendedService(
+  items: ReportActionItem[],
+  recommendedKey: string | undefined,
+): ReportActionItem[] {
+  if (!recommendedKey) return items;
+  const idx = items.findIndex((item) => item.key === recommendedKey);
+  if (idx <= 0) return items;
+  const copy = [...items];
+  const [picked] = copy.splice(idx, 1);
+  return [picked, ...copy];
+}
+
 /** action_plan från AI:n, annars deterministisk fallback ur findings. */
 function resolveActionItems(
   aiContent: ReportAiContent,
   viewModel: ReportViewModel,
 ): ReportActionItem[] {
+  const recommendedKey = viewModel.recommendations.find(
+    (r) => r.service === aiContent.recommended_service,
+  )?.key;
   if (aiContent.action_plan && aiContent.action_plan.length > 0) {
-    return aiContent.action_plan;
+    return reorderForRecommendedService(aiContent.action_plan, recommendedKey);
   }
-  return viewModel.recommendations.slice(0, 3).map((r) => ({
-    key: r.key,
-    what_we_see: r.title,
-    what_it_means: r.description,
-    how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
-    next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
-  }));
+  return reorderForRecommendedService(
+    viewModel.recommendations.slice(0, 3).map((r) => ({
+      key: r.key,
+      what_we_see: r.title,
+      what_it_means: r.description,
+      how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
+      next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
+    })),
+    recommendedKey,
+  );
 }
 
 export async function buildReportPdf(input: {
@@ -168,6 +197,9 @@ export async function buildReportPdf(input: {
     input.presentation ??
     input.viewModel.presentation ??
     buildPresentationPolicy(input.viewModel);
+  const resolvedService =
+    input.aiContent.recommended_service ??
+    input.viewModel.primaryRecommendation?.service;
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -561,12 +593,20 @@ export async function buildReportPdf(input: {
     bg: col.greenTint,
     titleColor: col.green,
   });
-  insightBox("NÄSTA MÖJLIGHET", improvementFocus(input.viewModel, pres), {
-    x: MARGIN + halfW + 16,
-    width: halfW,
-    bg: col.amberTint,
-    titleColor: col.amber,
-  });
+  insightBox(
+    "NÄSTA MÖJLIGHET",
+    improvementFocus(
+      input.viewModel,
+      pres,
+      input.aiContent.recommended_service,
+    ),
+    {
+      x: MARGIN + halfW + 16,
+      width: halfW,
+      bg: col.amberTint,
+      titleColor: col.amber,
+    },
+  );
   y = boxTop - 96;
   paragraph(input.aiContent.summary, { size: 11.5, color: col.ink, gap: 6 });
   paragraph(
@@ -741,6 +781,31 @@ export async function buildReportPdf(input: {
       metricRow(q.query, `${q.clicks.toLocaleString("sv-SE")} klick`, {
         kind: "note",
         text: `position ${q.position.toFixed(1)}`,
+      }),
+    );
+  }
+
+  // Sökordsrörelser — endast vid SEO-optimering som huvudåtgärd.
+  const keywordMovers = m.keywordMovers;
+  if (
+    resolvedService === "SEO-optimering" &&
+    keywordMovers &&
+    (keywordMovers.improved.length || keywordMovers.declined.length)
+  ) {
+    y -= 8;
+    heading("Sökordsrörelser", 13);
+    keywordMovers.improved.forEach((mover) =>
+      metricRow(mover.query, `→ pos ${mover.current.toFixed(1)}`, {
+        kind: "pill",
+        text: `förbättring ${Math.abs(mover.delta).toFixed(1)}`,
+        tone: "good",
+      }),
+    );
+    keywordMovers.declined.forEach((mover) =>
+      metricRow(mover.query, `→ pos ${mover.current.toFixed(1)}`, {
+        kind: "pill",
+        text: `försämring ${Math.abs(mover.delta).toFixed(1)}`,
+        tone: "bad",
       }),
     );
   }
@@ -966,17 +1031,17 @@ export async function buildReportPdf(input: {
     y = ly - 12;
   });
 
-  // Rekommenderad tilläggstjänst
+  // Rekommenderat nästa steg
   y -= 4;
-  heading("Rekommenderad tilläggstjänst", 13);
-  if (input.viewModel.primaryRecommendation) {
+  heading("Rekommenderat nästa steg", 13);
+  if (resolvedService) {
     ensure(40);
     roundedRect(MARGIN, y + 14, CONTENT_WIDTH, 34, 10, {
       color: col.accentTint,
       borderColor: col.accentBorder,
       borderWidth: 0.8,
     });
-    page.drawText(input.viewModel.primaryRecommendation.service, {
+    page.drawText(resolvedService, {
       x: MARGIN + 16,
       y: y - 6,
       size: 11,

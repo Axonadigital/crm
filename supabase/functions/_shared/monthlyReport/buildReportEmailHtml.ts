@@ -136,22 +136,44 @@ function metricRows(cards: string[]): string {
   return rows.join("\n");
 }
 
+/**
+ * Flyttar posten som matchar den manuellt valda huvudåtgärden längst fram,
+ * utan att generera om text — ren omsortering av redan genererat innehåll.
+ */
+function reorderForRecommendedService(
+  items: ReportActionItem[],
+  recommendedKey: string | undefined,
+): ReportActionItem[] {
+  if (!recommendedKey) return items;
+  const idx = items.findIndex((item) => item.key === recommendedKey);
+  if (idx <= 0) return items;
+  const copy = [...items];
+  const [picked] = copy.splice(idx, 1);
+  return [picked, ...copy];
+}
+
 /** action_plan från AI:n, annars deterministisk fallback ur findings. */
 function resolveActionItems(
   aiContent: ReportAiContent,
   viewModel?: ReportViewModel,
 ): ReportActionItem[] {
+  const recommendedKey = viewModel?.recommendations?.find(
+    (r) => r.service === aiContent.recommended_service,
+  )?.key;
   if (aiContent.action_plan && aiContent.action_plan.length > 0) {
-    return aiContent.action_plan;
+    return reorderForRecommendedService(aiContent.action_plan, recommendedKey);
   }
   const recs = (viewModel?.recommendations ?? []).slice(0, 3);
-  return recs.map((r) => ({
-    key: r.key,
-    what_we_see: r.title,
-    what_it_means: r.description,
-    how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
-    next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
-  }));
+  return reorderForRecommendedService(
+    recs.map((r) => ({
+      key: r.key,
+      what_we_see: r.title,
+      what_it_means: r.description,
+      how_we_help: `Med ${r.service} arbetar vi praktiskt med just det här och gör förbättringen mätbar över tid.`,
+      next_step: "Hör av er så lägger vi en konkret plan för nästa steg.",
+    })),
+    recommendedKey,
+  );
 }
 
 /** Prominent "viktigast just nu"-kort — mailet leder med detta. */
@@ -185,6 +207,18 @@ function actionRow(item: ReportActionItem, index: number): string {
   </td></tr>`;
 }
 
+/** Rad i "Sökordsrörelser"-tabellen (endast vid SEO-optimering). */
+function keywordMoverRow(
+  m: { query: string; current: number; previous: number; delta: number },
+  improved: boolean,
+): string {
+  const color = improved ? c.green : c.amber;
+  return `<tr>
+    <td style="font-size:13px;font-weight:600;color:${c.ink};padding:6px 0;border-top:1px solid ${c.hairline};">${escapeHtml(m.query)}</td>
+    <td align="right" style="font-size:12px;color:${color};padding:6px 0;white-space:nowrap;border-top:1px solid ${c.hairline};">${triangle(improved, color)}${Math.abs(m.delta).toFixed(1)}&nbsp;platser (→ pos&nbsp;${m.current.toFixed(1)})</td>
+  </tr>`;
+}
+
 function section(padding: string, inner: string): string {
   return `<tr><td style="padding:${padding};">${inner}</td></tr>`;
 }
@@ -204,6 +238,8 @@ export type BuildReportEmailInput = {
   presentation?: PresentationPolicy;
   /** From-adress för en "svara på mejlet"-CTA. */
   replyToEmail: string;
+  /** Bokningslänk för primär CTA. Saknas den → mailto-fallback med förifyllt ämne. */
+  bookingUrl?: string;
 };
 
 export function buildReportEmailHtml(input: BuildReportEmailInput): string {
@@ -274,7 +310,10 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
   const safeCompany = escapeHtml(input.companyName);
   const safePeriod = escapeHtml(input.periodLabel);
   const safeMailto = `mailto:${encodeURIComponent(input.replyToEmail)}`;
+  const bookingMailto = `mailto:${encodeURIComponent(input.replyToEmail)}?subject=${encodeURIComponent("Genomgång av synlighetsrapport")}`;
+  const primaryCtaUrl = input.bookingUrl || bookingMailto;
   const service =
+    aiContent.recommended_service ??
     input.viewModel?.primaryRecommendation?.service ??
     "nästa prioriterade insats";
 
@@ -297,6 +336,12 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
     input.hasSearchData && topQueriesSource.length > 0
       ? topQueriesSource.slice(0, 3)
       : [];
+
+  const keywordMovers = metrics.keywordMovers;
+  const showKeywordMovers =
+    service === "SEO-optimering" &&
+    !!keywordMovers &&
+    (keywordMovers.improved.length > 0 || keywordMovers.declined.length > 0);
 
   return `<!DOCTYPE html>
 <html lang="sv">
@@ -380,6 +425,23 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
             : ""
         }
 
+        <!-- Sökordsrörelser (endast vid SEO-optimering som huvudåtgärd) -->
+        ${
+          showKeywordMovers
+            ? section(
+                "20px 36px 6px",
+                `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid ${c.hairline};border-radius:14px;"><tr><td style="padding:18px 20px;font-family:${FONT};">
+                  ${sectionLabel("Sökordsrörelser")}
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    ${keywordMovers!.improved.map((m) => keywordMoverRow(m, true)).join("")}
+                    ${keywordMovers!.declined.map((m) => keywordMoverRow(m, false)).join("")}
+                  </table>
+                  <p style="margin:10px 0 0;font-size:11px;color:${c.faint};line-height:1.5;">Positionsförändringar mot förra månaden — lägre position är bättre.</p>
+                </td></tr></table>`,
+              )
+            : ""
+        }
+
         <!-- Lead action (#1) — placeras under statistiken -->
         ${leadItem ? section("22px 36px 6px", leadActionCard(leadItem)) : ""}
 
@@ -400,7 +462,7 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
         ${section(
           "22px 36px 6px",
           `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${c.panel};border:1px solid ${c.hairline};border-radius:14px;"><tr><td style="padding:22px 24px;font-family:${FONT};">
-            <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:${c.accentText};">Rekommenderad tilläggstjänst · ${escapeHtml(service)}</p>
+            <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:${c.accentText};">Rekommenderat nästa steg · ${escapeHtml(service)}</p>
             <p style="margin:0 0 10px;font-size:16px;font-weight:700;line-height:1.45;color:${c.ink};">${escapeHtml(aiContent.recommended_action)}</p>
             <p style="margin:0;font-size:14px;font-weight:500;line-height:1.6;color:${c.slate};">${escapeHtml(aiContent.upsell_pitch)}</p>
           </td></tr></table>`,
@@ -411,9 +473,10 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
           "22px 36px 4px",
           `<p style="margin:0 0 22px;font-size:14px;line-height:1.6;color:${c.slate};text-align:center;">Hela analysen — sökord, sidupplevelse, teknisk grund och en prioriterad åtgärdsplan — finns i den bifogade PDF-rapporten.</p>
            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td align="center" style="border-radius:10px;background:${c.accent};">
-             <a href="${safeMailto}" style="display:inline-block;font-family:${FONT};font-size:15px;font-weight:700;color:#fff;text-decoration:none;padding:14px 30px;border-radius:10px;">Prata med oss om nästa steg</a>
+             <a href="${escapeHtml(primaryCtaUrl)}" style="display:inline-block;font-family:${FONT};font-size:15px;font-weight:700;color:#fff;text-decoration:none;padding:14px 30px;border-radius:10px;">Boka 15 min genomgång</a>
            </td></tr></table>
-           <p style="margin:18px 0 0;font-size:13px;color:${c.faint};line-height:1.6;text-align:center;">Svara gärna på det här mejlet så hör vi av oss.</p>`,
+           <p style="margin:12px 0 0;font-size:13px;color:${c.faint};line-height:1.6;text-align:center;">Vi går igenom rapporten, visar vad siffrorna betyder och rekommenderar nästa konkreta steg.</p>
+           <p style="margin:18px 0 0;font-size:13px;color:${c.faint};line-height:1.6;text-align:center;">Vill du hellre ta det via mejl? <a href="${safeMailto}" style="color:${c.accentText};font-weight:600;text-decoration:none;">Svara på detta mejl</a> så återkommer vi med ett konkret förslag.</p>`,
         )}
 
         <tr><td style="height:8px;font-size:0;line-height:8px;">&nbsp;</td></tr>

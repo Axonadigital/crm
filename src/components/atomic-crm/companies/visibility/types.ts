@@ -23,7 +23,12 @@ export type VisibilityDataProvider = DataProvider & {
   ): Promise<{ accepted?: boolean; created?: number; skipped?: number }>;
   generateMonthlyReport(
     companyId: Identifier,
-    period?: { period_start: string; period_end: string },
+    period?: {
+      period_start: string;
+      period_end: string;
+      /** Kör om en period som redan har status sent/approved. Manuellt, aldrig från cron. */
+      force?: boolean;
+    },
   ): Promise<{ success: true; report_id: number | null; status: string }>;
   sendMonthlyReport(
     reportId: Identifier,

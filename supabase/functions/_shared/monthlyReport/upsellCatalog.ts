@@ -19,51 +19,51 @@ export const DEFAULT_UPSELL_CATALOG: UpsellOffer[] = [
     service: "Prestandaoptimering",
     label: "Prestandaoptimering",
     description:
-      "Er sida laddar långsamt — och varje sekund kostar er besökare som annars blivit kunder.",
+      "Den tekniska grunden är på plats. Nästa steg är att finjustera farten ytterligare, särskilt för mobila besökare.",
     internalNote:
       "Använd internt när fältdata eller flera labbsignaler visar att fart påverkar konvertering.",
     pitch:
-      "Vi gör sidan snabbare. Snabbare laddning ger lägre avhopp och fler bokningar/förfrågningar — en direkt effekt på er affär.",
+      "Vi finjusterar farten så att fler besökare stannar kvar och blir kunder — en direkt effekt på er affär.",
   },
   {
     service: "SEO-optimering",
     label: "SEO-optimering",
     description:
-      "Ni ligger nära förstasidan på Google men inte riktigt framme — där de flesta klicken finns.",
+      "Ni börjar synas på Google — nästa möjlighet är att ta er hela vägen till förstasidan på fler sökord.",
     internalNote:
       "Prioritera när non-branded-sökningar, position 4–20 eller låg klickfrekvens visar konkret potential.",
     pitch:
-      "Ni är några steg från förstasidan på era viktigaste sökord. Det här är den snabbaste synlighetsvinsten ni kan göra.",
+      "Vi tar er de sista stegen till förstasidan på era viktigaste sökord — den snabbaste synlighetsvinsten just nu.",
   },
   {
     service: "AI-sök-optimering",
     label: "AI-sök-optimering",
     description:
-      "När folk frågar ChatGPT, Claude eller Google AI om er bransch nämns ni sällan.",
+      "Sökning flyttar till AI-svar som ChatGPT, Claude och Google AI — nästa steg är att bygga synlighet även där.",
     internalNote:
       "Internt paket för schema, tydligt expertinnehåll och AI-läsbar struktur.",
     pitch:
-      "Sökning flyttar till AI-svar. Vi strukturerar ert innehåll så att AI förstår och rekommenderar er — inte konkurrenten.",
+      "Vi strukturerar ert innehåll så att AI förstår och rekommenderar er när kunder frågar om er bransch.",
   },
   {
     service: "Google Business-paket",
     label: "Google Business-paket",
     description:
-      "Er Google Business-profil saknas eller har för få/för gamla recensioner — där de lokala kunderna letar.",
+      "Nästa naturliga komplettering är Google Business, så att ni även syns i Google Maps och lokala sökresultat.",
     internalNote:
       "Bör bara prioriteras när lokal synlighet är relevant för kundtypen.",
     pitch:
-      "Vi sätter upp och vårdar er Google Business-profil och bygger en rutin för jämn ström av recensioner — högst ROI för lokala företag.",
+      "Vi sätter upp och vårdar er Google Business-profil med en enkel rutin för recensioner — högst ROI för lokala företag.",
   },
   {
     service: "Innehåll & synlighet",
     label: "Innehåll & synlighet",
     description:
-      "Google och AI förstår inte riktigt vad ni erbjuder — innehållet behöver stärkas.",
+      "Innehållet fungerar — nästa steg är att göra det ännu tydligare för både Google och AI vad ni erbjuder.",
     internalNote:
       "Bra när tekniken är okej men tjänstesidor, erbjudande eller topical coverage behöver bli tydligare.",
     pitch:
-      "Vi gör innehållet tydligt och begripligt för både Google och AI, så att ni dyker upp där era kunder faktiskt frågar.",
+      "Vi skärper innehållet så att ni dyker upp där era kunder faktiskt frågar.",
   },
 ];
 

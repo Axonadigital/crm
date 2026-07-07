@@ -142,6 +142,25 @@ export type ReportMetrics = {
     | null;
   /** True när det inte fanns någon föregående snapshot (ingen trend att visa). */
   isFirstReport: boolean;
+  /**
+   * Positionsrörelser mot föregående månad (se keywordMovement.ts). Valfri
+   * på typnivå för bakåtkompatibilitet med andra konsumenter av ReportMetrics
+   * (t.ex. kundportfölj-dashboarden) som inte bygger fältet.
+   */
+  keywordMovers?: {
+    improved: Array<{
+      query: string;
+      current: number;
+      previous: number;
+      delta: number;
+    }>;
+    declined: Array<{
+      query: string;
+      current: number;
+      previous: number;
+      delta: number;
+    }>;
+  };
 };
 
 /** En upsell-post i katalogen (utan pris — pris tas i dialog, per beslut). */
@@ -186,6 +205,13 @@ export type ReportAiContent = {
    * manuella send-time-overrides — renderarna faller tillbaka snyggt om den saknas.
    */
   action_plan?: ReportActionItem[];
+  /**
+   * Servicen kunden manuellt valt som "Rekommenderad huvudåtgärd" i CRM-modalen
+   * (matchar UpsellOffer.service / ReportFinding.service). Styr rubrik och
+   * prioritering i mejl/PDF — går före det vid generering fixerade
+   * `primaryRecommendation.service`. Saknas på äldre rapporter (fallback).
+   */
+  recommended_service?: string;
 };
 
 export type ReportStatus = "good" | "needs_attention" | "poor" | "missing";
