@@ -646,6 +646,16 @@ export const MonthlyReportModal = ({
                 </div>
               ) : null}
 
+              {report.view_model?.periodCoverage &&
+              !report.view_model.periodCoverage.complete ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  Endast {report.view_model.periodCoverage.monthsFound} av{" "}
+                  {report.view_model.periodCoverage.monthsRequested} månader i
+                  perioden har mätdata — siffrorna nedan speglar INTE hela
+                  perioden. Kör "Hämta historik" på Kund-fliken och generera om.
+                </div>
+              ) : null}
+
               <div className="grid gap-3 border-t pt-4">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Mail className="h-4 w-4" />

@@ -270,6 +270,22 @@ async function generateReportForCompany(
   const latest = aggregateReportSnapshot(rangeSnaps, reportPeriod);
   const previous = aggregateReportSnapshot(comparisonSnaps, comparisonPeriod);
 
+  // Täckning: hur många av de begärda månaderna hade faktiskt en snapshot.
+  // Skiljer "hela perioden summerad" från "bara delar av den" (t.ex. saknad
+  // historik före pipelinen gick live) — se periodCoverage på ReportViewModel.
+  const periodCoverage = {
+    monthsRequested: months,
+    monthsFound: rangeSnaps.length,
+    complete: rangeSnaps.length >= months,
+  };
+  const monthlySeries = rangeSnaps
+    .filter((s) => s.search_console)
+    .map((s) => ({
+      month: (s.period_start ?? "").slice(0, 7),
+      clicks: s.search_console!.clicks,
+      impressions: s.search_console!.impressions,
+    }));
+
   const writeRow = async (fields: Record<string, unknown>) => {
     if (existing) {
       const { data, error } = await supabaseAdmin
@@ -310,6 +326,11 @@ async function generateReportForCompany(
     latest,
     previous,
   });
+  // rangeSnaps-härledd data som den rena buildReportViewModel (latest/previous
+  // only) inte kan bygga själv — tilldelas post-hoc, samma mönster som
+  // presentation nedan.
+  viewModel.periodCoverage = periodCoverage;
+  viewModel.metrics.monthlySeries = monthlySeries;
   // Auto-policy: vad som är presentabelt + ton. Lagras inuti view_model så den
   // följer med till send (single source of truth för rendering).
   const presentation = buildPresentationPolicy(viewModel);
@@ -323,8 +344,8 @@ async function generateReportForCompany(
   );
   const selectedUpsell =
     (recommendedService
-      ? upsells.find((offer) => offer.service === recommendedService) ??
-        catalog.find((offer) => offer.service === recommendedService)
+      ? (upsells.find((offer) => offer.service === recommendedService) ??
+        catalog.find((offer) => offer.service === recommendedService))
       : null) ??
     upsells[0] ??
     null;
@@ -644,7 +665,7 @@ Deno.serve(async (req: Request) =>
         const recommendedService =
           typeof (body as { recommended_service?: unknown })
             .recommended_service === "string"
-            ? ((body as { recommended_service: string }).recommended_service)
+            ? (body as { recommended_service: string }).recommended_service
             : undefined;
         const result = await generateReportForCompany(
           company_id as number,

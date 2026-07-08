@@ -965,6 +965,12 @@ export type ReportViewModel = {
   recommendations: WebsiteFinding[];
   primaryRecommendation: WebsiteFinding | null;
   presentation?: PresentationPolicy;
+  /** Sant först när samtliga begärda kalendermånader hade en snapshot. */
+  periodCoverage?: {
+    monthsRequested: number;
+    monthsFound: number;
+    complete: boolean;
+  };
 };
 
 /** En månatlig kundrapport (draft → godkänd → skickad). Tabell: monthly_reports. */

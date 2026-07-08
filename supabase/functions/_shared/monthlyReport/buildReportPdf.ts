@@ -251,7 +251,10 @@ function resolveActionItems(
     }
     return reorderForRecommendedService(aiContent.action_plan, recommendedKey);
   }
-  const fallback = fallbackActionItems(viewModel, aiContent.recommended_service);
+  const fallback = fallbackActionItems(
+    viewModel,
+    aiContent.recommended_service,
+  );
   return selectedServiceItem
     ? [selectedServiceItem, ...fallback.slice(0, 2)]
     : fallback;
@@ -599,6 +602,102 @@ export async function buildReportPdf(input: {
     }
   };
 
+  /** Kort svensk månadsförkortning ur "YYYY-MM" (samma som mejlets). */
+  const monthLabelPdf = (monthIso: string): string => {
+    const [yr, mo] = monthIso.split("-").map(Number);
+    if (!yr || !mo) return monthIso;
+    return new Date(Date.UTC(yr, mo - 1, 1))
+      .toLocaleDateString("sv-SE", { month: "short" })
+      .replace(".", "");
+  };
+
+  /**
+   * Riktig vektor-trendgraf (två linjer: klick + visningar) över flera
+   * månader — à la Google Search Console. Klick/visningar skalas var för sig
+   * (olika storleksordning) mot samma rityta.
+   */
+  const monthlyTrendChart = (
+    series: Array<{ month: string; clicks: number; impressions: number }>,
+  ) => {
+    if (series.length < 2) return;
+    heading("Utveckling per månad", 13);
+    const chartH = 100;
+    ensure(chartH + 34);
+    const top = y;
+    const bottom = top - chartH;
+    const left = MARGIN + 6;
+    const right = PAGE_WIDTH - MARGIN - 6;
+    const plotW = right - left;
+    const maxClicks = Math.max(...series.map((s) => s.clicks), 1);
+    const maxImpressions = Math.max(...series.map((s) => s.impressions), 1);
+    const xAt = (i: number) =>
+      series.length > 1 ? left + (i / (series.length - 1)) * plotW : left;
+
+    const drawSeries = (
+      values: number[],
+      max: number,
+      color: ReturnType<typeof rgb>,
+    ) => {
+      const points = values.map((v, i) => ({
+        x: xAt(i),
+        y: bottom + (v / max) * chartH,
+      }));
+      for (let i = 1; i < points.length; i++) {
+        page.drawLine({
+          start: points[i - 1],
+          end: points[i],
+          thickness: 2,
+          color,
+        });
+      }
+      points.forEach((p) => {
+        roundedRect(p.x - 3, p.y + 3, 6, 6, 3, { color });
+      });
+    };
+    drawSeries(
+      series.map((s) => s.clicks),
+      maxClicks,
+      col.accent,
+    );
+    drawSeries(
+      series.map((s) => s.impressions),
+      maxImpressions,
+      col.prevBar,
+    );
+
+    series.forEach((point, i) => {
+      const label = monthLabelPdf(point.month);
+      const lw = textWidth(regular, label, 7.5);
+      drawText(page, label, {
+        x: xAt(i) - lw / 2,
+        y: bottom - 13,
+        size: 7.5,
+        font: regular,
+        color: col.faint,
+      });
+    });
+
+    roundedRect(MARGIN, bottom - 30, 8, 8, 2, { color: col.accent });
+    drawText(page, "Klick", {
+      x: MARGIN + 14,
+      y: bottom - 28,
+      size: 8,
+      font: regular,
+      color: col.faint,
+    });
+    const legendX = MARGIN + 14 + textWidth(regular, "Klick", 8) + 16;
+    roundedRect(legendX, bottom - 30, 8, 8, 2, { color: col.prevBar });
+    drawText(page, "Visningar", {
+      x: legendX + 14,
+      y: bottom - 28,
+      size: 8,
+      font: regular,
+      color: col.faint,
+    });
+
+    y = bottom - 46;
+  };
+
   // ---------- Sida 1 ----------
   newPage();
   // Hero-band (near-black) över hela bredden, ovanför sidhuvudet.
@@ -642,7 +741,8 @@ export async function buildReportPdf(input: {
     font: bold,
     color: col.white,
   });
-  drawText(page, 
+  drawText(
+    page,
     `${input.viewModel.companyName}  ·  ${input.viewModel.period.start} – ${input.viewModel.period.end}`,
     {
       x: MARGIN,
@@ -841,6 +941,11 @@ export async function buildReportPdf(input: {
     rowDescs.forEach((row) => metricRow(row.label, row.value, row.change));
   }
 
+  if (m.monthlySeries && m.monthlySeries.length >= 2) {
+    y -= 8;
+    monthlyTrendChart(m.monthlySeries);
+  }
+
   const topQueries = pres.filterZeroClickQueries
     ? m.topQueries.filter((q) => q.clicks > 0)
     : m.topQueries;
@@ -876,6 +981,21 @@ export async function buildReportPdf(input: {
         kind: "pill",
         text: `försämring ${Math.abs(mover.delta).toFixed(1)}`,
         tone: "bad",
+      }),
+    );
+  }
+
+  // Sökordsmöjligheter — endast vid SEO-optimering som huvudåtgärd. Sökord
+  // med visningar men utanför topp 3 (till skillnad från "Sökord som driver
+  // trafik" ovan, som bara visar redan starka sökord).
+  const keywordOpportunities = m.keywordOpportunities ?? [];
+  if (resolvedService === "SEO-optimering" && keywordOpportunities.length) {
+    y -= 8;
+    heading("Sökordsmöjligheter", 13);
+    keywordOpportunities.forEach((k) =>
+      metricRow(k.query, `${k.impressions.toLocaleString("sv-SE")} visningar`, {
+        kind: "note",
+        text: `position ${k.position.toFixed(1)}`,
       }),
     );
   }

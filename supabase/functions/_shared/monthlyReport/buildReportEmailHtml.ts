@@ -214,7 +214,10 @@ function resolveActionItems(
     }
     return reorderForRecommendedService(aiContent.action_plan, recommendedKey);
   }
-  const fallback = fallbackActionItems(viewModel, aiContent.recommended_service);
+  const fallback = fallbackActionItems(
+    viewModel,
+    aiContent.recommended_service,
+  );
   return selectedServiceItem
     ? [selectedServiceItem, ...fallback.slice(0, 2)]
     : fallback;
@@ -261,6 +264,57 @@ function keywordMoverRow(
     <td style="font-size:13px;font-weight:600;color:${c.ink};padding:6px 0;border-top:1px solid ${c.hairline};">${escapeHtml(m.query)}</td>
     <td align="right" style="font-size:12px;color:${color};padding:6px 0;white-space:nowrap;border-top:1px solid ${c.hairline};">${triangle(improved, color)}${Math.abs(m.delta).toFixed(1)}&nbsp;platser (→ pos&nbsp;${m.current.toFixed(1)})</td>
   </tr>`;
+}
+
+/** Kort svensk månadsförkortning ur "YYYY-MM". */
+function shortMonthLabel(monthIso: string): string {
+  const [y, m] = monthIso.split("-").map(Number);
+  if (!y || !m) return monthIso;
+  return new Date(Date.UTC(y, m - 1, 1))
+    .toLocaleDateString("sv-SE", { month: "short" })
+    .replace(".", "");
+}
+
+/**
+ * Trendgraf över flera månader (à la Google Search Console), byggd av
+ * tabellceller — samma email-säkra teknik som miniBars, men en rad per
+ * månad istället för en förra/nu-jämförelse. Klick och visningar skalas
+ * var för sig (olika storleksordning) så båda staplarna förblir läsbara.
+ */
+function monthlyTrendChart(
+  series: NonNullable<ReportMetrics["monthlySeries"]>,
+): string {
+  if (series.length < 2) return "";
+  const maxClicks = Math.max(...series.map((s) => s.clicks), 1);
+  const maxImpressions = Math.max(...series.map((s) => s.impressions), 1);
+  const rows = series
+    .map((point) => {
+      const clickWidth = Math.max(
+        4,
+        Math.round((point.clicks / maxClicks) * 100),
+      );
+      const impressionWidth = Math.max(
+        4,
+        Math.round((point.impressions / maxImpressions) * 100),
+      );
+      return `<tr>
+        <td width="34" style="width:34px;font-size:11px;font-weight:700;color:${c.faint};text-transform:capitalize;padding:8px 8px 8px 0;white-space:nowrap;">${escapeHtml(shortMonthLabel(point.month))}</td>
+        <td style="padding:8px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="${clickWidth}%" style="height:7px;background:${c.accent};border-radius:3px;font-size:0;line-height:7px;">&nbsp;</td><td>&nbsp;</td></tr></table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:3px;"><tr><td width="${impressionWidth}%" style="height:7px;background:#CBD5E1;border-radius:3px;font-size:0;line-height:7px;">&nbsp;</td><td>&nbsp;</td></tr></table>
+        </td>
+        <td align="right" style="font-size:11px;color:${c.muted};padding:8px 0 8px 10px;white-space:nowrap;">${point.clicks.toLocaleString("sv-SE")}&nbsp;kl&nbsp;·&nbsp;${point.impressions.toLocaleString("sv-SE")}&nbsp;vis</td>
+      </tr>`;
+    })
+    .join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid ${c.hairline};border-radius:14px;"><tr><td style="padding:18px 20px;font-family:${FONT};">
+    ${sectionLabel("Utveckling per månad")}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows}</table>
+    <div style="margin-top:12px;">
+      <span style="display:inline-block;width:10px;height:10px;background:${c.accent};border-radius:2px;vertical-align:middle;margin-right:6px;"></span><span style="font-size:11px;color:${c.faint};margin-right:16px;">Klick</span>
+      <span style="display:inline-block;width:10px;height:10px;background:#CBD5E1;border-radius:2px;vertical-align:middle;margin-right:6px;"></span><span style="font-size:11px;color:${c.faint};">Visningar</span>
+    </div>
+  </td></tr></table>`;
 }
 
 function section(padding: string, inner: string): string {
@@ -387,6 +441,13 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
     !!keywordMovers &&
     (keywordMovers.improved.length > 0 || keywordMovers.declined.length > 0);
 
+  const keywordOpportunities = metrics.keywordOpportunities ?? [];
+  const showKeywordOpportunities =
+    service === "SEO-optimering" && keywordOpportunities.length > 0;
+
+  const monthlySeries = metrics.monthlySeries ?? [];
+  const trendChart = monthlyTrendChart(monthlySeries);
+
   return `<!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -448,6 +509,9 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
             : ""
         }
 
+        <!-- Trend per månad -->
+        ${trendChart ? section("20px 36px 6px", trendChart) : ""}
+
         <!-- Top sökord -->
         ${
           topQueries.length
@@ -481,6 +545,28 @@ export function buildReportEmailHtml(input: BuildReportEmailInput): string {
                     ${keywordMovers!.declined.map((m) => keywordMoverRow(m, false)).join("")}
                   </table>
                   <p style="margin:10px 0 0;font-size:11px;color:${c.faint};line-height:1.5;">Positionsförändringar mot förra månaden — lägre position är bättre.</p>
+                </td></tr></table>`,
+              )
+            : ""
+        }
+
+        <!-- Sökordsmöjligheter (endast vid SEO-optimering som huvudåtgärd) -->
+        ${
+          showKeywordOpportunities
+            ? section(
+                "20px 36px 6px",
+                `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid ${c.hairline};border-radius:14px;"><tr><td style="padding:18px 20px;font-family:${FONT};">
+                  ${sectionLabel("Sökordsmöjligheter")}
+                  ${keywordOpportunities
+                    .map(
+                      (k, i) =>
+                        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                          <td style="font-size:14px;font-weight:600;color:${c.ink};padding:7px 0;${i ? `border-top:1px solid ${c.hairline};` : ""}">${escapeHtml(k.query)}</td>
+                          <td align="right" style="font-size:13px;color:${c.muted};padding:7px 0;${i ? `border-top:1px solid ${c.hairline};` : ""}white-space:nowrap;">${k.impressions.toLocaleString("sv-SE")} visningar · pos ${k.position.toFixed(1)}</td>
+                        </tr></table>`,
+                    )
+                    .join("")}
+                  <p style="margin:10px 0 0;font-size:11px;color:${c.faint};line-height:1.5;">Sökord med visningar men utanför topp 3 — här finns störst potential att vinna fler klick.</p>
                 </td></tr></table>`,
               )
             : ""

@@ -120,4 +120,16 @@ describe("computeReportMetrics", () => {
     expect(m.keywordMovers?.improved[0]?.query).toBe("jvs maskiner ab");
     expect(m.keywordMovers?.improved[0]?.delta).toBeCloseTo(1.2 - 3.4, 5);
   });
+
+  it("computes keyword opportunities from the latest snapshot's top_queries", () => {
+    const m = computeReportMetrics(latest, previous);
+    expect(m.keywordOpportunities).toEqual([
+      {
+        query: "entreprenadmaskiner",
+        clicks: 5,
+        impressions: 30,
+        position: 8.1,
+      },
+    ]);
+  });
 });

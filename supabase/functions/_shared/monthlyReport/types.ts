@@ -126,6 +126,25 @@ export type ReportMetrics = {
   reviews_count: MetricTrend;
   /** Topp-sökningar från senaste snapshoten (för "vilka ord driver trafik"). */
   topQueries: Array<{ query: string; clicks: number; position: number }>;
+  /**
+   * Sökord med visningar men position utanför topp 3 — konkreta exempel på
+   * vad som är värt att optimera för (se keywordOpportunities.ts). Valfri på
+   * typnivå av samma bakåtkompatibilitetsskäl som keywordMovers.
+   */
+  keywordOpportunities?: Array<{
+    query: string;
+    clicks: number;
+    impressions: number;
+    position: number;
+  }>;
+  /**
+   * En punkt per kalendermånad i den begärda perioden (klick + visningar) —
+   * underlag för trendgrafen. Byggs i generate_monthly_reports/index.ts ur
+   * rangeSnaps (inte tillgängligt inne i den rena computeReportMetrics, som
+   * bara ser den redan hopslagna latest/previous-snapshoten) och tilldelas
+   * post-hoc, samma mönster som view_model.presentation.
+   */
+  monthlySeries?: Array<{ month: string; clicks: number; impressions: number }>;
   topPages: Array<{
     page: string;
     clicks: number;
@@ -267,4 +286,16 @@ export type ReportViewModel = {
   primaryRecommendation: ReportFinding | null;
   /** Auto-beräknad presentations-policy (reportPresentation.ts). */
   presentation?: PresentationPolicy;
+  /**
+   * Hur många av de begärda kalendermånaderna som faktiskt hade en snapshot
+   * att aggregera. `complete: false` betyder att siffrorna i rapporten INTE
+   * täcker hela den valda perioden (t.ex. saknad historik före pipelinen gick
+   * live) — måste synas i CRM:t istället för att tyst se ut som en fullständig
+   * periodsumma. Tilldelas post-hoc i generate_monthly_reports/index.ts.
+   */
+  periodCoverage?: {
+    monthsRequested: number;
+    monthsFound: number;
+    complete: boolean;
+  };
 };

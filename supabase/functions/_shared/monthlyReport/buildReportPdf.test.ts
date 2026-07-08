@@ -198,4 +198,64 @@ describe("buildReportPdf", () => {
     const pdf = await PDFDocument.load(bytes);
     expect(pdf.getPageCount()).toBeGreaterThanOrEqual(2);
   });
+
+  it("renders the monthly trend chart and keyword opportunities for a multi-month SEO-optimering report", async () => {
+    const multiMonthViewModel: ReportViewModel = {
+      ...viewModel,
+      companyName: "ES Byggmontage AB",
+      period: {
+        start: "2026-04-01",
+        end: "2026-06-30",
+        label: "april – juni 2026",
+      },
+      metrics: {
+        ...viewModel.metrics,
+        monthlySeries: [
+          { month: "2026-04", clicks: 12, impressions: 180 },
+          { month: "2026-05", clicks: 20, impressions: 210 },
+          { month: "2026-06", clicks: 17, impressions: 234 },
+        ],
+        keywordOpportunities: [
+          {
+            query: "byggmontage östersund",
+            clicks: 0,
+            impressions: 74,
+            position: 12.4,
+          },
+          { query: "montageteam", clicks: 0, impressions: 55, position: 8.1 },
+        ],
+      },
+      recommendations: [
+        {
+          key: "low_position",
+          severity: "medium",
+          title: "Flera sökord nära första sidan",
+          description: "Sökord med visningar men utanför topp 3.",
+          service: "SEO-optimering",
+        },
+      ],
+      primaryRecommendation: {
+        key: "low_position",
+        severity: "medium",
+        title: "Flera sökord nära första sidan",
+        description: "Sökord med visningar men utanför topp 3.",
+        service: "SEO-optimering",
+      },
+    };
+
+    const bytes = await buildReportPdf({
+      viewModel: multiMonthViewModel,
+      aiContent: {
+        greeting: "Hej,",
+        summary: "Klicken ökade under perioden.",
+        recommended_action: "Vi rekommenderar SEO-optimering.",
+        upsell_pitch: "Fler sökord kan flyttas till topp 3.",
+        recommended_service: "SEO-optimering",
+      },
+    });
+
+    expect(bytes.byteLength).toBeGreaterThan(2_000);
+    const pdf = await PDFDocument.load(bytes);
+    expect(pdf.getPageCount()).toBeGreaterThanOrEqual(2);
+  });
 });

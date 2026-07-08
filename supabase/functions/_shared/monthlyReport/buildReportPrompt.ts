@@ -123,6 +123,17 @@ function buildKeywordMovementBlock(metrics: ReportMetrics): string {
   return `\nSökordsrörelser mot förra månaden (lägre position är bättre):\n${lines.join("\n")}`;
 }
 
+/** Bara med i prompten när SEO-optimering är den föreslagna tjänsten. */
+function buildKeywordOpportunitiesBlock(metrics: ReportMetrics): string {
+  const opportunities = metrics.keywordOpportunities ?? [];
+  if (opportunities.length === 0) return "";
+  const lines = opportunities.map(
+    (k) =>
+      `${k.query} (${k.impressions} visningar, position ${k.position.toFixed(1)})`,
+  );
+  return `\nSökord med visningar men utanför topp 3 — konkreta exempel att nämna som vad vi bör optimera för:\n- ${lines.join("; ")}`;
+}
+
 function buildBrandDiscoveryBlock(metrics: ReportMetrics): string[] {
   const branded = metrics.branded;
   const nonBranded = metrics.nonBranded;
@@ -314,6 +325,10 @@ export function buildMonthlyReportPrompts(input: BuildReportPromptInput): {
     input.upsell?.service === "SEO-optimering"
       ? buildKeywordMovementBlock(input.metrics)
       : "";
+  const keywordOpportunitiesBlock =
+    input.upsell?.service === "SEO-optimering"
+      ? buildKeywordOpportunitiesBlock(input.metrics)
+      : "";
 
   const priorities = orderRecommendationsForService(
     input.recommendations,
@@ -341,6 +356,7 @@ Synlighet i AI-sök (beredskap): ${input.geoReadiness}
 
 ${upsellBlock}
 ${keywordMovementBlock}
+${keywordOpportunitiesBlock}
 
 ${prioritiesBlock}
 

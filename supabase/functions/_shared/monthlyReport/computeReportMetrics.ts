@@ -11,6 +11,7 @@
 
 import type { MetricTrend, ReportMetrics, ReportSnapshot } from "./types.ts";
 import { computeKeywordMovers } from "./keywordMovement.ts";
+import { computeKeywordOpportunities } from "./keywordOpportunities.ts";
 
 function trend(
   current: number | null | undefined,
@@ -109,5 +110,6 @@ export function computeReportMetrics(
     nonBranded,
     isFirstReport,
     keywordMovers: computeKeywordMovers(latest, previous),
+    keywordOpportunities: computeKeywordOpportunities(latest),
   };
 }
