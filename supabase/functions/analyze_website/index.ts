@@ -6,6 +6,7 @@ import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import {
   errorResponseFromUnknown,
+  getEnumField,
   getOptionalBooleanField,
   getPositiveIntegerField,
   parseRequiredJsonBody,
@@ -1427,17 +1428,9 @@ async function analyzeCompany(
 
 // --- Backfill: historiska GSC-månader ---
 
-/**
- * Skapar officiella kalendermånad-mätningar för de senaste `months` avslutade
- * månaderna ur Google Search Console-historiken (GSC har ~16 mån). ENDAST
- * GSC-data backfillas — PageSpeed/CWV/Business är ögonblicksmätningar och kan
- * inte hämtas bakåt. Hoppar månader som redan har en mätning (klottrar aldrig
- * över cron-data).
- */
-async function backfillCompany(
+async function resolveCompanyWebsite(
   companyId: number,
-  months: number,
-): Promise<{ created: number; skipped: number }> {
+): Promise<{ url: string; brand: ReturnType<typeof brandTokens> }> {
   const { data: company, error: companyError } = await supabaseAdmin
     .from("companies")
     .select("id, name, website")
@@ -1455,9 +1448,122 @@ async function backfillCompany(
   if (!rawUrl) {
     throw new Error(`Company ${companyId} has no website to analyze`);
   }
-  const url = normalizeUrl(rawUrl);
-  const brand = brandTokens(company.name, company.website);
+  return {
+    url: normalizeUrl(rawUrl),
+    brand: brandTokens(company.name, company.website),
+  };
+}
 
+/**
+ * Backfillar EN kalendermånad GSC-data för en kund. ENDAST GSC-data
+ * backfillas — PageSpeed/CWV/Business är ögonblicksmätningar och kan inte
+ * hämtas bakåt. No-op (created: false) om månaden redan har en mätning
+ * (klottrar aldrig över cron-data) eller om GSC saknar data/åtkomst.
+ * Uppdelad per månad (istället för att loopa `months` internt) så att ett
+ * enskilt anrop förblir snabbt nog för Supabase edge-funktioners wall-clock-
+ * gräns — se backfill_queue-migrationen för resonemanget.
+ */
+async function backfillCompanyMonth(
+  companyId: number,
+  startDate: string,
+  endDate: string,
+): Promise<{ created: boolean }> {
+  const { url, brand } = await resolveCompanyWebsite(companyId);
+
+  const { data: existing } = await supabaseAdmin
+    .from("website_snapshots")
+    .select("id")
+    .eq("company_id", companyId)
+    .eq("window_kind", "calendar_month")
+    .eq("period_start", startDate)
+    .maybeSingle();
+  if (existing) {
+    return { created: false };
+  }
+
+  let searchConsole: SearchConsoleSummary | null = null;
+  try {
+    searchConsole = await fetchSearchConsole(
+      url,
+      { kind: "calendar_month", startDate, endDate },
+      brand,
+    );
+  } catch (error) {
+    console.warn(
+      `analyze_website backfill: GSC failed for ${startDate}: ${
+        error instanceof Error ? error.message : error
+      }`,
+    );
+  }
+  if (!searchConsole) {
+    return { created: false };
+  }
+
+  const findings = computeFindings({
+    pagespeed: null,
+    seoChecks: null,
+    businessProfile: null,
+    searchConsole,
+  });
+  const { error: insertError } = await supabaseAdmin
+    .from("website_snapshots")
+    .insert({
+      company_id: companyId,
+      source: "manual",
+      url,
+      period_start: startDate,
+      period_end: endDate,
+      window_kind: "calendar_month",
+      data_coverage: {
+        available_sources: 1,
+        total_sources: 4,
+        ratio: 0.25,
+        has_search_console: true,
+        has_field_data: false,
+        backfilled: true,
+      },
+      source_status: {
+        search_console: { status: "available" },
+        pagespeed: {
+          status: "unavailable",
+          message: "Historisk månad — endast söktrafik backfillad",
+        },
+        seo_crawl: { status: "unavailable", message: "Historisk månad" },
+        business_profile: {
+          status: "unavailable",
+          message: "Historisk månad",
+        },
+      },
+      performance_score: null,
+      seo_score: null,
+      pagespeed: null,
+      field_data: null,
+      seo_checks: null,
+      business_profile: null,
+      search_console: searchConsole,
+      competitors: null,
+      gbp_actions: null,
+      local_rank: null,
+      findings,
+    });
+  if (insertError) {
+    console.warn(
+      `analyze_website backfill: insert failed for ${startDate}: ${insertError.message}`,
+    );
+    return { created: false };
+  }
+  return { created: true };
+}
+
+/**
+ * Backfillar de senaste `months` avslutade kalendermånaderna för en kund,
+ * sekventiellt. Används av den manuella "Hämta historik"-knappen (en kund i
+ * taget, bakgrundskörd via EdgeRuntime.waitUntil — se handlern nedan).
+ */
+async function backfillCompany(
+  companyId: number,
+  months: number,
+): Promise<{ created: number; skipped: number }> {
   const now = new Date();
   let created = 0;
   let skipped = 0;
@@ -1472,92 +1578,9 @@ async function backfillCompany(
     const startDate = start.toISOString().slice(0, 10);
     const endDate = end.toISOString().slice(0, 10);
 
-    const { data: existing } = await supabaseAdmin
-      .from("website_snapshots")
-      .select("id")
-      .eq("company_id", companyId)
-      .eq("window_kind", "calendar_month")
-      .eq("period_start", startDate)
-      .maybeSingle();
-    if (existing) {
-      skipped++;
-      continue;
-    }
-
-    let searchConsole: SearchConsoleSummary | null = null;
-    try {
-      searchConsole = await fetchSearchConsole(
-        url,
-        { kind: "calendar_month", startDate, endDate },
-        brand,
-      );
-    } catch (error) {
-      console.warn(
-        `analyze_website backfill: GSC failed for ${startDate}: ${
-          error instanceof Error ? error.message : error
-        }`,
-      );
-    }
-    if (!searchConsole) {
-      skipped++;
-      continue;
-    }
-
-    const findings = computeFindings({
-      pagespeed: null,
-      seoChecks: null,
-      businessProfile: null,
-      searchConsole,
-    });
-    const { error: insertError } = await supabaseAdmin
-      .from("website_snapshots")
-      .insert({
-        company_id: companyId,
-        source: "manual",
-        url,
-        period_start: startDate,
-        period_end: endDate,
-        window_kind: "calendar_month",
-        data_coverage: {
-          available_sources: 1,
-          total_sources: 4,
-          ratio: 0.25,
-          has_search_console: true,
-          has_field_data: false,
-          backfilled: true,
-        },
-        source_status: {
-          search_console: { status: "available" },
-          pagespeed: {
-            status: "unavailable",
-            message: "Historisk månad — endast söktrafik backfillad",
-          },
-          seo_crawl: { status: "unavailable", message: "Historisk månad" },
-          business_profile: {
-            status: "unavailable",
-            message: "Historisk månad",
-          },
-        },
-        performance_score: null,
-        seo_score: null,
-        pagespeed: null,
-        field_data: null,
-        seo_checks: null,
-        business_profile: null,
-        search_console: searchConsole,
-        competitors: null,
-        gbp_actions: null,
-        local_rank: null,
-        findings,
-      });
-    if (insertError) {
-      console.warn(
-        `analyze_website backfill: insert failed for ${startDate}: ${insertError.message}`,
-      );
-      skipped++;
-      continue;
-    }
-    created++;
+    const result = await backfillCompanyMonth(companyId, startDate, endDate);
+    if (result.created) created++;
+    else skipped++;
   }
 
   console.warn(
@@ -1651,6 +1674,65 @@ async function runQueueTick(batchSize: number): Promise<void> {
   console.warn("analyze_website tick: batch complete");
 }
 
+// --- Tick-läge: plocka N rader ur backfill_queue och backfilla GSC-historik ---
+
+type BackfillQueueRow = {
+  id: number;
+  company_id: number;
+  period_start: string;
+  period_end: string;
+  claimed_at: string;
+};
+
+async function runBackfillTick(batchSize: number): Promise<void> {
+  const { data: claimed, error } = await supabaseAdmin.rpc(
+    "claim_backfill_batch",
+    { p_batch_size: batchSize },
+  );
+  if (error) {
+    console.error(
+      "analyze_website backfill tick: could not claim queue batch",
+      error,
+    );
+    return;
+  }
+  const rows = (claimed ?? []) as BackfillQueueRow[];
+  if (rows.length === 0) return;
+
+  console.warn(
+    `analyze_website backfill tick: backfilling ${rows.length} kund-månader`,
+  );
+  await Promise.all(
+    rows.map(async (row) => {
+      try {
+        await backfillCompanyMonth(
+          row.company_id,
+          row.period_start,
+          row.period_end,
+        );
+        // p_claimed_at = fencing token — se complete_backfill_item.
+        await supabaseAdmin.rpc("complete_backfill_item", {
+          p_id: row.id,
+          p_success: true,
+          p_claimed_at: row.claimed_at,
+        });
+      } catch (err) {
+        console.error(
+          `analyze_website backfill tick: company ${row.company_id} failed:`,
+          err,
+        );
+        await supabaseAdmin.rpc("complete_backfill_item", {
+          p_id: row.id,
+          p_success: false,
+          p_error: err instanceof Error ? err.message : String(err),
+          p_claimed_at: row.claimed_at,
+        });
+      }
+    }),
+  );
+  console.warn("analyze_website backfill tick: batch complete");
+}
+
 // --- Main handler (samma dubbla auth-läge som enrich_company) ---
 
 const isCronAuthorized = (req: Request) => {
@@ -1677,10 +1759,16 @@ Deno.serve(async (req: Request) =>
         const body = await parseRequiredJsonBody(req);
         const tick = getOptionalBooleanField(body, "tick");
         if (tick) {
+          const mode = getEnumField(body, "mode", ["backfill"] as const, {
+            required: false,
+          });
           const batchSize =
             getPositiveIntegerField(body, "batch_size", { required: false }) ??
             CRON_BATCH_SIZE;
-          const job = runQueueTick(batchSize as number);
+          const job =
+            mode === "backfill"
+              ? runBackfillTick(batchSize as number)
+              : runQueueTick(batchSize as number);
           if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
             EdgeRuntime.waitUntil(
               job.catch((err) =>
