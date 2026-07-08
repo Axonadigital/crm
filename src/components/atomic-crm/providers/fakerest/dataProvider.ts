@@ -20,6 +20,7 @@ import type {
   SignUpData,
   Task,
   CustomerVisibilityDashboardResponse,
+  MonthlyAnalysisPeriodSummary,
 } from "../../types";
 import type { ConfigurationContextValue } from "../../root/ConfigurationContext";
 import { getActivityLog } from "../commons/activity";
@@ -194,6 +195,13 @@ export const createDataProvider = ({
         rows: [],
       };
     },
+    async getMonthlyAnalysisStatusSummary(): Promise<
+      MonthlyAnalysisPeriodSummary[]
+    > {
+      // Ingen report_pipeline_queue-generator finns i fakerest-datasetet
+      // ännu; returnera tomt istället för att hitta på siffror.
+      return [];
+    },
     async getList(resource: string, params: any) {
       if (resource === "activity_log") {
         const { filter = {}, pagination } = params;
@@ -256,7 +264,9 @@ export const createDataProvider = ({
         password,
       };
     },
-    salesCreate: async ({ ...data }: SalesFormData): Promise<{
+    salesCreate: async ({
+      ...data
+    }: SalesFormData): Promise<{
       data: Sale;
       invite_link?: string | null;
       temporary_password?: string | null;

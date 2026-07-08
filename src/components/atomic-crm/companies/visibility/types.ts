@@ -1,6 +1,7 @@
 import type { DataProvider, Identifier } from "ra-core";
 import type {
   CustomerVisibilityDashboardResponse,
+  MonthlyAnalysisPeriodSummary,
   PresentationPolicy,
   ReportAiContent,
 } from "../../types";
@@ -65,4 +66,5 @@ export type VisibilityDataProvider = DataProvider & {
   getCustomerVisibilityDashboard(
     period: string,
   ): Promise<CustomerVisibilityDashboardResponse>;
+  getMonthlyAnalysisStatusSummary(): Promise<MonthlyAnalysisPeriodSummary[]>;
 };

@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { useDataProvider, useGetList, useGetMany, useNotify } from "ra-core";
@@ -20,10 +21,21 @@ const STAGE_LABELS: Record<ReportPipelineQueueItem["stage"], string> = {
   report: "Rapport",
 };
 
+function formatPeriodLabel(periodStart: string): string {
+  const label = new Date(`${periodStart}T00:00:00Z`).toLocaleDateString(
+    "sv-SE",
+    { month: "long", year: "numeric", timeZone: "UTC" },
+  );
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 /**
- * Visar kunder vars automatiska månadsanalys/rapport misslyckades (report_pipeline_queue,
- * status='failed') med exakt felmeddelande, och en "Kör om"-knapp som återanvänder samma
- * manuella anrop som Kund-fliken redan har. Tomt/inget att visa → renderar ingenting.
+ * Visar statusen för den automatiska månadsanalys/rapport-pipelinen
+ * (report_pipeline_queue): en räkning av klara/pågående/inte klara analyser
+ * för innevarande period, en varning om äldre perioder fortfarande har
+ * ofärdigt arbete, samt kunder vars körning misslyckades (status='failed')
+ * med exakt felmeddelande och en "Kör om"-knapp. Tomt/inget att visa →
+ * renderar ingenting.
  */
 export function PipelineFailuresCard() {
   const dataProvider = useDataProvider<VisibilityDataProvider>();
@@ -53,7 +65,18 @@ export function PipelineFailuresCard() {
     (companies ?? []).map((company) => [company.id, company.name]),
   );
 
-  if (isPending || !failures || failures.length === 0) return null;
+  const { data: summaryPeriods, isPending: summaryPending } = useQuery({
+    queryKey: ["monthly-analysis-status-summary"],
+    queryFn: () => dataProvider.getMonthlyAnalysisStatusSummary(),
+  });
+
+  const currentPeriod = summaryPeriods?.[0];
+  const backlogPeriods = (summaryPeriods ?? [])
+    .slice(1)
+    .filter((p) => p.in_progress_count > 0 || p.not_done_count > 0);
+
+  if (isPending || summaryPending) return null;
+  if ((!failures || failures.length === 0) && !currentPeriod) return null;
 
   const handleRetry = async (item: ReportPipelineQueueItem) => {
     const companyName =
@@ -118,58 +141,104 @@ export function PipelineFailuresCard() {
     }
   };
 
+  const failureItems = failures ?? [];
+  const hasFailures = failureItems.length > 0;
+
   return (
-    <Card className="border-amber-300/60 dark:border-amber-900/60">
+    <Card
+      className={
+        hasFailures ? "border-amber-300/60 dark:border-amber-900/60" : undefined
+      }
+    >
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-500">
-          <AlertTriangle className="size-4" />
-          {failures.length} kund{failures.length === 1 ? "" : "er"} fastnade i
-          månadsrapport-kön
+        <CardTitle
+          className={
+            hasFailures
+              ? "flex items-center gap-2 text-amber-700 dark:text-amber-500"
+              : "flex items-center gap-2"
+          }
+        >
+          {hasFailures ? (
+            <>
+              <AlertTriangle className="size-4" />
+              {failureItems.length} kund{failureItems.length === 1 ? "" : "er"}{" "}
+              fastnade i månadsrapport-kön
+            </>
+          ) : (
+            "Analyspipeline"
+          )}
         </CardTitle>
-        <CardDescription>
-          Automatisk analys eller rapportgenerering misslyckades — kör om direkt
-          här.
-          {total != null && total > failures.length
-            ? ` Visar de ${failures.length} senaste av ${total}.`
-            : ""}
+        <CardDescription className="space-y-1">
+          {currentPeriod ? (
+            <div>
+              {formatPeriodLabel(currentPeriod.period_start)}:{" "}
+              {currentPeriod.done_count} klara ·{" "}
+              {currentPeriod.in_progress_count} pågående ·{" "}
+              {currentPeriod.not_done_count} inte klara
+            </div>
+          ) : null}
+          {backlogPeriods.length > 0 ? (
+            <div className="text-amber-700 dark:text-amber-500">
+              ⚠ Äldre perioder har fortfarande ofärdiga analyser:{" "}
+              {backlogPeriods
+                .map(
+                  (p) =>
+                    `${formatPeriodLabel(p.period_start)} (${
+                      p.in_progress_count
+                    } pågående, ${p.not_done_count} inte klara)`,
+                )
+                .join(", ")}
+            </div>
+          ) : null}
+          {hasFailures ? (
+            <div>
+              Automatisk analys eller rapportgenerering misslyckades — kör om
+              direkt här.
+              {total != null && total > failureItems.length
+                ? ` Visar de ${failureItems.length} senaste av ${total}.`
+                : ""}
+            </div>
+          ) : null}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {failures.map((item) => (
-          <div
-            key={item.id}
-            className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">
-                  {companyNameById.get(item.company_id) ??
-                    `Kund #${item.company_id}`}
-                </span>
-                <Badge variant="outline">{STAGE_LABELS[item.stage]}</Badge>
-                <span className="text-xs text-muted-foreground">
-                  {item.attempts} försök
-                </span>
-              </div>
-              <p
-                className="mt-1 truncate text-xs text-muted-foreground"
-                title={item.error ?? undefined}
-              >
-                {item.error ?? "Okänt fel"}
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={retryingId === item.id}
-              onClick={() => handleRetry(item)}
+      {hasFailures ? (
+        <CardContent className="space-y-2">
+          {failureItems.map((item) => (
+            <div
+              key={item.id}
+              className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
             >
-              <RotateCcw className="size-4" />
-              Kör om
-            </Button>
-          </div>
-        ))}
-      </CardContent>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">
+                    {companyNameById.get(item.company_id) ??
+                      `Kund #${item.company_id}`}
+                  </span>
+                  <Badge variant="outline">{STAGE_LABELS[item.stage]}</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {item.attempts} försök
+                  </span>
+                </div>
+                <p
+                  className="mt-1 truncate text-xs text-muted-foreground"
+                  title={item.error ?? undefined}
+                >
+                  {item.error ?? "Okänt fel"}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={retryingId === item.id}
+                onClick={() => handleRetry(item)}
+              >
+                <RotateCcw className="size-4" />
+                Kör om
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

@@ -11,6 +11,7 @@ import type {
   ContactNote,
   Deal,
   DealNote,
+  MonthlyAnalysisPeriodSummary,
   PresentationPolicy,
   RAFile,
   ReportAiContent,
@@ -991,6 +992,19 @@ const dataProviderWithCustomMethods = {
       );
     }
     return data as CustomerVisibilityDashboardResponse;
+  },
+  async getMonthlyAnalysisStatusSummary(): Promise<
+    MonthlyAnalysisPeriodSummary[]
+  > {
+    const { data, error } = await supabase.rpc(
+      "get_monthly_analysis_status_summary",
+    );
+    if (error || !data) {
+      throw new Error(
+        error?.message ?? "Failed to load monthly analysis status summary",
+      );
+    }
+    return (data as { periods: MonthlyAnalysisPeriodSummary[] }).periods;
   },
   async expireOverdueQuotes(): Promise<{ affected: number }> {
     const { data, error } = await supabase.rpc("expire_overdue_quotes");

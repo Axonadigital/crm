@@ -1009,6 +1009,15 @@ export type ReportPipelineQueueItem = {
   created_at: string;
 } & Pick<RaRecord, "id">;
 
+export type MonthlyAnalysisPeriodSummary = {
+  period_start: string;
+  period_end: string;
+  total_count: number;
+  done_count: number;
+  in_progress_count: number;
+  not_done_count: number;
+};
+
 export type CustomerPerformanceCategory =
   | "very_good"
   | "good"
