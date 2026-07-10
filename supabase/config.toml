@@ -171,6 +171,8 @@ verify_jwt = false
 verify_jwt = false
 [functions.postmark]
 verify_jwt = false
+[functions.resend_events]
+verify_jwt = false
 [functions.calendar_sync]
 verify_jwt = false
 [functions.update_password]
