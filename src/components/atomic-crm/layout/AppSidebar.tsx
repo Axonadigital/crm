@@ -5,6 +5,7 @@ import {
   FileText,
   Handshake,
   LayoutDashboard,
+  Mail,
   Phone,
   Radar,
   Users,
@@ -55,6 +56,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Kundradar", to: "/customer-radar", icon: Radar },
       { label: "Ringlista", to: "/call-queue", icon: Phone },
       { label: "Kalender", to: "/calendar", icon: CalendarDays },
+      { label: "Email-statistik", to: "/email-stats", icon: Mail },
     ],
   },
   {

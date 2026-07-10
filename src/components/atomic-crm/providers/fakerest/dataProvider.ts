@@ -20,6 +20,7 @@ import type {
   SignUpData,
   Task,
   CustomerVisibilityDashboardResponse,
+  EmailSendStatsResponse,
   MonthlyAnalysisPeriodSummary,
 } from "../../types";
 import type { ConfigurationContextValue } from "../../root/ConfigurationContext";
@@ -201,6 +202,28 @@ export const createDataProvider = ({
       // Ingen report_pipeline_queue-generator finns i fakerest-datasetet
       // ännu; returnera tomt istället för att hitta på siffror.
       return [];
+    },
+    async getEmailSendStats(): Promise<EmailSendStatsResponse> {
+      // Inget email_sends-dataset i fakerest ännu; returnera tomt istället
+      // för att hitta på siffror.
+      return {
+        totals: {
+          sent: 0,
+          delivered: 0,
+          opened: 0,
+          clicked: 0,
+          bounced: 0,
+          complained: 0,
+          replied: 0,
+          open_rate: null,
+          click_rate: null,
+          bounce_rate: null,
+          reply_rate: null,
+        },
+        by_channel: [],
+        by_template: [],
+        trend: [],
+      };
     },
     async getList(resource: string, params: any) {
       if (resource === "activity_log") {

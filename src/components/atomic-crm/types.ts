@@ -1055,6 +1055,62 @@ export type CustomerVisibilityDashboardResponse = {
   }>;
 };
 
+export type EmailSendStatsChannel = {
+  channel: "monthly_report" | "docuseal_signing" | "template" | "other";
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+  replied: number;
+  open_rate: number | null;
+  click_rate: number | null;
+  reply_rate: number | null;
+};
+
+export type EmailSendStatsTemplate = {
+  template_id: Identifier;
+  template_name: string;
+  category: string;
+  sent: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  open_rate: number | null;
+  click_rate: number | null;
+  reply_rate: number | null;
+};
+
+export type EmailSendStatsTrendPoint = {
+  period_start: string;
+  sent: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  open_rate: number | null;
+  click_rate: number | null;
+  reply_rate: number | null;
+};
+
+export type EmailSendStatsResponse = {
+  totals: {
+    sent: number;
+    delivered: number;
+    opened: number;
+    clicked: number;
+    bounced: number;
+    complained: number;
+    replied: number;
+    open_rate: number | null;
+    click_rate: number | null;
+    bounce_rate: number | null;
+    reply_rate: number | null;
+  };
+  by_channel: EmailSendStatsChannel[];
+  by_template: EmailSendStatsTemplate[];
+  trend: EmailSendStatsTrendPoint[];
+};
+
 export type CustomerVisibilityReason = {
   tone: "positive" | "neutral" | "negative";
   label: string;

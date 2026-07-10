@@ -75,6 +75,7 @@ import { MobileSalesList } from "../sales/MobileSalesList";
 import { MobileSequencesList } from "../sequences/MobileSequencesList";
 import { MobileEmailTemplatesList } from "../templates/MobileEmailTemplatesList";
 import { CustomerVisibilityPage } from "../customer-visibility/CustomerVisibilityPage";
+import { EmailStatsPage } from "../email-stats/EmailStatsPage";
 
 const defaultStore = localStorageStore(undefined, "CRM");
 
@@ -266,6 +267,7 @@ const DesktopAdmin = (props: CoreAdminProps) => {
         <Route path="/call-queue" element={<CallQueue />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/customer-radar" element={<CustomerVisibilityPage />} />
+        <Route path="/email-stats" element={<EmailStatsPage />} />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
       <Resource name="quotes" {...quotes} />
@@ -354,6 +356,7 @@ const MobileAdmin = (props: CoreAdminProps) => {
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/call-queue" element={<MobileCallQueue />} />
           <Route path="/customer-radar" element={<CustomerVisibilityPage />} />
+          <Route path="/email-stats" element={<EmailStatsPage />} />
         </CustomRoutes>
         <Resource
           name="contacts"

@@ -11,6 +11,7 @@ import type {
   ContactNote,
   Deal,
   DealNote,
+  EmailSendStatsResponse,
   MonthlyAnalysisPeriodSummary,
   PresentationPolicy,
   RAFile,
@@ -1005,6 +1006,19 @@ const dataProviderWithCustomMethods = {
       );
     }
     return (data as { periods: MonthlyAnalysisPeriodSummary[] }).periods;
+  },
+  async getEmailSendStats(params?: {
+    start?: string;
+    end?: string;
+  }): Promise<EmailSendStatsResponse> {
+    const { data, error } = await supabase.rpc("get_email_send_stats", {
+      p_start: params?.start ?? null,
+      p_end: params?.end ?? null,
+    });
+    if (error || !data) {
+      throw new Error(error?.message ?? "Failed to load email send stats");
+    }
+    return data as EmailSendStatsResponse;
   },
   async expireOverdueQuotes(): Promise<{ affected: number }> {
     const { data, error } = await supabase.rpc("expire_overdue_quotes");

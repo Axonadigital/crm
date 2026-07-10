@@ -13,6 +13,7 @@ import { extractMailContactData } from "./extractMailContactData.ts";
 import { getExpectedAuthorization } from "./getExpectedAuthorization.ts";
 import { getNoteContent } from "./getNoteContent.ts";
 import { extractAndUploadAttachments } from "./extractAndUploadAttachments.ts";
+import { findAndMarkRepliedEmailSend } from "./matchReplyToEmailSend.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 
 const webhookUser = Deno.env.get("POSTMARK_WEBHOOK_USER");
@@ -55,6 +56,39 @@ Deno.serve(async (req) => {
   const allSales = await supabaseAdmin.from("sales").select("email");
   const salesEmails =
     allSales.data?.map((s: { email: string }) => s.email) ?? [];
+
+  // Not a known sales rep — this can't be the BCC/forward-capture flow
+  // below (which requires the sender to be an active sales user), so check
+  // instead whether it's a reply to an automated CRM email (email_sends).
+  // There's no way to thread this by Message-ID across Resend (outbound)
+  // and Postmark (inbound), so we match by recipient address + recency.
+  if (!salesEmails.includes(salesEmail)) {
+    const matched = await findAndMarkRepliedEmailSend(salesEmail);
+    // We already know the contact from the matched email_sends row, so we
+    // insert the note directly rather than going through addNoteToContact's
+    // find-or-create-by-email flow (which is built for the sales-rep BCC
+    // capture case, not "we already know the contact_id" case).
+    if (matched?.contact_id) {
+      const attachments = await extractAndUploadAttachments(Attachments);
+      const { error: noteError } = await supabaseAdmin
+        .from("contact_notes")
+        .insert({
+          contact_id: matched.contact_id,
+          text: getNoteContent(Subject, TextBody),
+          sales_id: matched.sales_id,
+          attachments,
+        });
+      if (noteError) {
+        console.warn("Failed to add reply note to contact:", noteError);
+      } else {
+        await supabaseAdmin
+          .from("contacts")
+          .update({ last_seen: new Date().toISOString() })
+          .eq("id", matched.contact_id);
+      }
+    }
+    return new Response("OK");
+  }
 
   // If we have an INBOUND_EMAIL and the email is sent to the inbound email address, and the sender is a known sales email,
   // then we can try to extract the real recipient email from the body of the email
