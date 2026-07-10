@@ -770,6 +770,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/email-stats/EmailStatsPage.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/deals/stages.ts",
           "type": "registry:component"
         },
