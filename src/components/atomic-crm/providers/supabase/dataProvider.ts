@@ -12,6 +12,7 @@ import type {
   Deal,
   DealNote,
   EmailSendStatsResponse,
+  FortnoxStatus,
   MonthlyAnalysisPeriodSummary,
   PresentationPolicy,
   RAFile,
@@ -516,6 +517,39 @@ const dataProviderWithCustomMethods = {
       throw new Error("Failed to send quote for signing");
     }
     return data;
+  },
+  /**
+   * Fortnox connection status. The edge function probes Fortnox live rather
+   * than just reading our token row, so a grant revoked inside Fortnox shows
+   * up here instead of failing silently at the next invoice sync.
+   */
+  async getFortnoxStatus(): Promise<FortnoxStatus> {
+    const { data, error } = await supabase.functions.invoke("fortnox_connect", {
+      method: "POST",
+      body: { action: "status" },
+    });
+    if (error || !data) {
+      throw new Error("Failed to read Fortnox status");
+    }
+    return data as FortnoxStatus;
+  },
+  /**
+   * Returns the one-time Fortnox consent URL. Only ever needed once: it creates
+   * a service account, after which the backend mints its own tokens.
+   * `reconnect` is required to replace an existing connection — completing the
+   * flow overwrites it, so it must never happen by accident.
+   */
+  async startFortnoxAuthorization(
+    reconnect = false,
+  ): Promise<{ authorization_url: string }> {
+    const { data, error } = await supabase.functions.invoke("fortnox_connect", {
+      method: "POST",
+      body: { action: "authorize", reconnect },
+    });
+    if (error || !data?.authorization_url) {
+      throw new Error("Failed to start Fortnox authorization");
+    }
+    return data as { authorization_url: string };
   },
   /**
    * Save edits to a quote's generated_sections via the single backend

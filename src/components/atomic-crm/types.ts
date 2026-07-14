@@ -1176,3 +1176,20 @@ export type CustomerPortfolioViewModel = {
   };
   trends: CustomerPortfolioTrendPoint[];
 };
+
+/**
+ * Live Fortnox connection status, as reported by the `fortnox_connect` edge
+ * function. `connected` reflects an actual probe of Fortnox, not just the
+ * presence of a stored token — a grant revoked inside Fortnox reads as
+ * disconnected with `error` set.
+ */
+export type FortnoxStatus = {
+  connected: boolean;
+  company_name?: string | null;
+  org_number?: string | null;
+  scopes?: string | null;
+  connected_at?: string | null;
+  error?: string | null;
+  /** "service_account" needs no re-auth; "refresh_token" expires after 45 days. */
+  auth_mode?: "service_account" | "refresh_token";
+};

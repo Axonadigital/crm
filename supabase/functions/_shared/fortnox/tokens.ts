@@ -16,7 +16,8 @@
 import { HttpError } from "../http.ts";
 import { supabaseAdmin } from "../supabaseAdmin.ts";
 import { FortnoxClient } from "./client.ts";
-import { FortnoxError } from "./errors.ts";
+import { FortnoxError, parseFortnoxError } from "./errors.ts";
+import { createSingleFlight } from "./singleFlight.ts";
 import {
   accessTokenExpiresAt,
   authorizationCodeBody,
@@ -40,6 +41,7 @@ export type FortnoxConnection = {
   refresh_token: string | null;
   scopes: string | null;
   connected_at: string | null;
+  connected_by: number | null;
   token_claims: Record<string, unknown> | null;
 };
 
@@ -84,10 +86,14 @@ async function postToken(
   const rawBody = await response.text();
 
   if (!response.ok) {
+    // Deliberately does NOT carry the raw body: OAuth providers routinely echo
+    // the submitted code or refresh token back in error_description, and this
+    // error ends up in the function logs.
+    const { message, code } = parseFortnoxError(rawBody);
     throw new FortnoxError(
       response.status,
-      `Fortnox token request failed: ${rawBody.slice(0, 300)}`,
-      { body: rawBody.slice(0, 500) },
+      `Fortnox token request failed: ${message}`,
+      { code },
     );
   }
 
@@ -113,6 +119,7 @@ export async function getConnection(): Promise<FortnoxConnection | null> {
 async function persistTokens(
   token: FortnoxTokenResponse,
   existing: FortnoxConnection | null,
+  connectedBySaleId?: number | null,
 ): Promise<FortnoxConnection> {
   const claims = decodeJwtPayload(token.access_token);
   const tenantId = extractTenantId(claims) ?? existing?.tenant_id ?? null;
@@ -134,6 +141,7 @@ async function persistTokens(
         scopes: token.scope ?? existing?.scopes ?? null,
         token_claims: claims,
         connected_at: existing?.connected_at ?? new Date().toISOString(),
+        connected_by: connectedBySaleId ?? existing?.connected_by ?? null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "provider" },
@@ -156,10 +164,11 @@ async function persistTokens(
  */
 export async function exchangeAuthorizationCode(
   code: string,
+  connectedBySaleId?: number | null,
 ): Promise<FortnoxConnection> {
   const { redirectUri } = getFortnoxCredentials();
   const token = await postToken(authorizationCodeBody(code, redirectUri));
-  return persistTokens(token, await getConnection());
+  return persistTokens(token, await getConnection(), connectedBySaleId);
 }
 
 async function mintAccessToken(
@@ -184,6 +193,13 @@ async function mintAccessToken(
   );
 }
 
+/**
+ * Collapses concurrent refreshes into one. Critical in the refresh_token
+ * fallback mode: Fortnox invalidates the old refresh token on every use, so a
+ * parallel refresh would send an already-dead token and get invalid_grant.
+ */
+const refreshSingleFlight = createSingleFlight<FortnoxConnection>();
+
 export async function getFortnoxAccessToken(
   options: { forceRefresh?: boolean } = {},
 ): Promise<string> {
@@ -205,7 +221,9 @@ export async function getFortnoxAccessToken(
     return connection.access_token;
   }
 
-  const refreshed = await mintAccessToken(connection);
+  const refreshed = await refreshSingleFlight(() =>
+    mintAccessToken(connection),
+  );
 
   if (!refreshed.access_token) {
     throw new HttpError(500, "Fortnox returned no access token", {

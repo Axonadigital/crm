@@ -178,6 +178,36 @@ describe("FortnoxClient.request", () => {
     expect(getAccessToken).toHaveBeenCalledWith({ forceRefresh: true });
   });
 
+  it("still uses the refreshed token when the 401 lands on the last attempt", async () => {
+    // Regression: the refresh retry used to consume the last attempt, so the
+    // loop exited without ever calling Fortnox with the new token.
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("boom", { status: 500 }))
+      .mockResolvedValueOnce(new Response("expired", { status: 401 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ ok: true }),
+      ) as unknown as typeof fetch;
+
+    const { client } = makeClient(fetchImpl, { maxAttempts: 2 });
+
+    await expect(client.get("/3/invoices")).resolves.toEqual({ ok: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("surfaces a second 401 instead of retrying forever", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("expired", { status: 401 }),
+    ) as unknown as typeof fetch;
+
+    const { client } = makeClient(fetchImpl);
+
+    await expect(client.get("/3/invoices")).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("gives up after maxAttempts on persistent 500s", async () => {
     const fetchImpl = vi.fn(
       async () => new Response("boom", { status: 500 }),

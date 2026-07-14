@@ -1,6 +1,7 @@
 import { EditBase, Form, useNotify } from "ra-core";
 import { useMemo } from "react";
 
+import { FortnoxIntegrationCard } from "./FortnoxIntegrationCard";
 import {
   SettingsFormFields,
   transformSettingsFormValues,
@@ -15,26 +16,29 @@ export const SettingsPage = () => {
   const notify = useNotify();
 
   return (
-    <EditBase
-      resource="configuration"
-      id={1}
-      mutationMode="pessimistic"
-      redirect={false}
-      transform={transformSettingsFormValues}
-      mutationOptions={{
-        onSuccess: (data: any) => {
-          updateConfiguration(data.config);
-          notify("crm.settings.saved");
-        },
-        onError: () => {
-          notify("crm.settings.save_error", {
-            type: "error",
-          });
-        },
-      }}
-    >
-      <SettingsForm />
-    </EditBase>
+    <div className="space-y-6">
+      <EditBase
+        resource="configuration"
+        id={1}
+        mutationMode="pessimistic"
+        redirect={false}
+        transform={transformSettingsFormValues}
+        mutationOptions={{
+          onSuccess: (data: any) => {
+            updateConfiguration(data.config);
+            notify("crm.settings.saved");
+          },
+          onError: () => {
+            notify("crm.settings.save_error", {
+              type: "error",
+            });
+          },
+        }}
+      >
+        <SettingsForm />
+      </EditBase>
+      <FortnoxIntegrationCard />
+    </div>
   );
 };
 

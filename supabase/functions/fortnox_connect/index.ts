@@ -1,20 +1,25 @@
 /**
  * Fortnox connection management, called from the CRM Settings page.
  *
- *   { action: "status" }    -> is Fortnox connected, and as which company
- *   { action: "authorize" } -> one-time consent URL (opens Fortnox login)
+ *   { action: "status" }                      -> is Fortnox connected, and to which company
+ *   { action: "authorize", reconnect?: bool } -> one-time consent URL
+ *
+ * ADMIN ONLY. The consent URL grants access to our books, and completing the
+ * flow overwrites whatever connection is stored — a non-admin employee could
+ * otherwise point the CRM's accounting integration at a Fortnox account they
+ * control. Same `sales.administrator` gate as the users function.
  *
  * The consent URL is only ever needed once: it creates a service account, after
- * which tokens are minted server-side with client_credentials. Requires a
- * signed-in CRM user — this hands out a URL that grants access to our books.
+ * which tokens are minted server-side with client_credentials.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { OptionsMiddleware } from "../_shared/cors.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
-import { createJsonResponse, createErrorResponse } from "../_shared/utils.ts";
+import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import {
   errorResponseFromUnknown,
   getEnumField,
+  getOptionalBooleanField,
   HttpError,
   parseRequiredJsonBody,
 } from "../_shared/http.ts";
@@ -34,19 +39,38 @@ type CompanyInformationResponse = {
   };
 };
 
-async function requireUser(req: Request) {
+type CallerSale = { id: number; administrator: boolean };
+
+/** Resolves the caller to a sales row and rejects anyone who is not an admin. */
+async function requireAdminSale(req: Request): Promise<CallerSale> {
   const token = (req.headers.get("authorization") || "").replace("Bearer ", "");
   if (!token) throw new HttpError(401, "Missing authorization token");
 
   const { data, error } = await supabaseAdmin.auth.getUser(token);
   if (error || !data?.user) throw new HttpError(401, "Unauthorized");
 
-  return data.user;
+  const { data: sale } = await supabaseAdmin
+    .from("sales")
+    .select("id, administrator")
+    .eq("user_id", data.user.id)
+    .maybeSingle();
+
+  if (!sale?.administrator) {
+    throw new HttpError(
+      403,
+      "Fortnox can only be managed by an administrator",
+      {
+        code: "fortnox_admin_required",
+      },
+    );
+  }
+
+  return sale as CallerSale;
 }
 
 /**
  * Verifies the stored grant actually works by asking Fortnox who we are.
- * A stored row means nothing if the grant was revoked in Fortnox.
+ * A stored row means nothing if the grant was revoked inside Fortnox.
  */
 async function probeCompany(): Promise<{
   name?: string;
@@ -74,18 +98,19 @@ Deno.serve((req: Request) =>
     }
 
     try {
-      const user = await requireUser(req);
+      const sale = await requireAdminSale(req);
       const body = await parseRequiredJsonBody(req);
       const action = getEnumField(body, "action", ["status", "authorize"], {
         required: true,
       });
 
-      if (action === "status") {
-        const connection = await getConnection();
+      const connection = await getConnection();
+      const hasStoredGrant = Boolean(
+        connection?.access_token || connection?.refresh_token,
+      );
 
-        if (!connection?.access_token && !connection?.refresh_token) {
-          return createJsonResponse({ connected: false });
-        }
+      if (action === "status") {
+        if (!hasStoredGrant) return createJsonResponse({ connected: false });
 
         const company = await probeCompany();
 
@@ -93,22 +118,37 @@ Deno.serve((req: Request) =>
           connected: !company.error,
           company_name: company.name ?? null,
           org_number: company.orgNumber ?? null,
-          scopes: connection.scopes,
-          connected_at: connection.connected_at,
-          // Surfaced so a broken grant is visible in the UI instead of failing
-          // silently at the first invoice sync.
+          scopes: connection?.scopes ?? null,
+          connected_at: connection?.connected_at ?? null,
+          // Surfaced so a revoked grant is visible in the UI instead of failing
+          // silently at the next invoice sync.
           error: company.error ?? null,
-          auth_mode: connection.tenant_id ? "service_account" : "refresh_token",
+          auth_mode: connection?.tenant_id
+            ? "service_account"
+            : "refresh_token",
         });
+      }
+
+      // Completing the consent flow overwrites the stored connection, so a
+      // second authorize must be a deliberate "reconnect", never a stray click.
+      const reconnect = getOptionalBooleanField(body, "reconnect") ?? false;
+      if (hasStoredGrant && !reconnect) {
+        throw new HttpError(
+          409,
+          "Fortnox is already connected. Pass reconnect: true to replace the connection.",
+          { code: "fortnox_already_connected" },
+        );
       }
 
       const { clientId, redirectUri } = getFortnoxCredentials();
 
-      const { data: sale } = await supabaseAdmin
-        .from("sales")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // Housekeeping: consent states are single-use and short-lived, so anything
+      // older than an hour is dead weight.
+      await supabaseAdmin
+        .from("integration_oauth_states")
+        .delete()
+        .eq("provider", FORTNOX_PROVIDER)
+        .lt("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
 
       const state = crypto.randomUUID();
       const { error: stateError } = await supabaseAdmin
@@ -116,7 +156,7 @@ Deno.serve((req: Request) =>
         .insert({
           state,
           provider: FORTNOX_PROVIDER,
-          created_by: sale?.id ?? null,
+          created_by: sale.id,
         });
 
       if (stateError) {

@@ -160,10 +160,13 @@ export class FortnoxClient {
       const { message, code } = parseFortnoxError(rawBody);
 
       // An expired or revoked access token: mint a fresh one and retry once.
-      // A second 401 means the grant itself is broken — surface it.
+      // A second 401 means the grant itself is broken and falls through below.
       if (response.status === 401 && !refreshedOnce) {
         refreshedOnce = true;
         await this.getAccessToken({ forceRefresh: true });
+        // The refresh retry must not eat the retry budget, otherwise a 401 on
+        // the last attempt would end the loop without ever using the new token.
+        attempt--;
         continue;
       }
 
