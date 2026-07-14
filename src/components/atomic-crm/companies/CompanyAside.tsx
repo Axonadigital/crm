@@ -46,6 +46,7 @@ import {
   getNextActionTypeLabel,
 } from "./followupUtils";
 import { getLeadStatusColor } from "./leadStatusUtils";
+import { CompanyInvoiceSummary } from "../fortnox/CompanyInvoiceSummary";
 import { FortnoxCustomerButton } from "../fortnox/FortnoxCustomerButton";
 
 interface CompanyAsideProps {
@@ -68,6 +69,8 @@ export const CompanyAside = ({ link = "edit" }: CompanyAsideProps) => {
       </div>
 
       <FortnoxCustomerButton />
+
+      <CompanyInvoiceSummary companyId={record.id} />
 
       <FollowUpSection record={record} />
 

@@ -571,6 +571,20 @@ const dataProviderWithCustomMethods = {
     }
     return (data ?? []) as FortnoxInvoice[];
   },
+  /** The same mirror, scoped to one company — for the invoice tab on a customer card. */
+  async getFortnoxInvoicesByCompany(
+    companyId: number,
+  ): Promise<FortnoxInvoice[]> {
+    const { data, error } = await supabase
+      .from("fortnox_invoice_list")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("invoice_date", { ascending: false, nullsFirst: false });
+    if (error) {
+      throw new Error("Failed to load invoices for company");
+    }
+    return (data ?? []) as FortnoxInvoice[];
+  },
   /** Pulls fresh invoice data from Fortnox now, instead of waiting for the 15-minute cron. */
   async syncFortnoxInvoices(full = false): Promise<{
     synced: number;

@@ -10,7 +10,6 @@ import { useDataProvider, useNotify } from "ra-core";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,9 +23,8 @@ import {
 } from "@/components/ui/table";
 
 import type { CrmDataProvider } from "../providers/types";
-import type { FortnoxInvoice } from "../types";
+import { InvoiceStatusBadge } from "./InvoiceStatusBadge";
 import {
-  daysOverdue,
   formatCurrency,
   formatDate,
   formatSyncedAt,
@@ -44,25 +42,6 @@ const CUTS: { key: Cut; label: string }[] = [
   { key: "paid", label: "Betalda" },
   { key: "cancelled", label: "Makulerade" },
 ];
-
-const StatusBadge = ({ invoice }: { invoice: FortnoxInvoice }) => {
-  const overdue = daysOverdue(invoice.due_date);
-
-  if (invoice.status === "overdue") {
-    return (
-      <Badge variant="destructive">
-        Förfallen{overdue ? ` · ${overdue} d` : ""}
-      </Badge>
-    );
-  }
-  if (invoice.status === "paid") {
-    return <Badge variant="outline">Betald</Badge>;
-  }
-  if (invoice.status === "cancelled") {
-    return <Badge variant="secondary">Makulerad</Badge>;
-  }
-  return <Badge variant="secondary">Obetald</Badge>;
-};
 
 const StatCard = ({
   label,
@@ -267,12 +246,7 @@ export const InvoicesPage = () => {
                           )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        <StatusBadge invoice={invoice} />
-                        {!invoice.sent && invoice.status !== "cancelled" ? (
-                          <Badge variant="outline">Ej skickad</Badge>
-                        ) : null}
-                      </div>
+                      <InvoiceStatusBadge invoice={invoice} />
                     </TableCell>
                     <TableCell className="text-right">
                       {!invoice.sent && invoice.status !== "cancelled" ? (
