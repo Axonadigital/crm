@@ -203,3 +203,11 @@ verify_jwt = false
 # matching how the other functions in this project handle auth.
 [functions.fortnox_connect]
 verify_jwt = false
+# Called by pg_cron with x-cron-secret, which is not a JWT. Auth is done in code:
+# cron secret OR an admin CRM user.
+[functions.fortnox_sync_invoices]
+verify_jwt = false
+[functions.fortnox_customers]
+verify_jwt = false
+[functions.fortnox_invoices]
+verify_jwt = false

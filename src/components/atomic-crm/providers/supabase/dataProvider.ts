@@ -12,6 +12,8 @@ import type {
   Deal,
   DealNote,
   EmailSendStatsResponse,
+  FortnoxInvoice,
+  FortnoxInvoiceStats,
   FortnoxStatus,
   MonthlyAnalysisPeriodSummary,
   PresentationPolicy,
@@ -61,6 +63,23 @@ const processCompanyLogo = async (params: any) => {
       logo,
     },
   };
+};
+
+/**
+ * Edge functions return a human-readable `message` (e.g. "Företaget saknar
+ * uppgifter som krävs för fakturering: org_number"). supabase-js hides it
+ * inside the error's Response, so dig it out — otherwise the user sees a
+ * generic failure and has no idea what to fix.
+ */
+const extractFunctionError = async (error: unknown): Promise<string | null> => {
+  const context = (error as { context?: Response })?.context;
+  if (!context || typeof context.json !== "function") return null;
+  try {
+    const body = await context.json();
+    return typeof body?.message === "string" ? body.message : null;
+  } catch {
+    return null;
+  }
 };
 
 const dataProviderWithCustomMethods = {
@@ -515,6 +534,109 @@ const dataProviderWithCustomMethods = {
     );
     if (error || !data) {
       throw new Error("Failed to send quote for signing");
+    }
+    return data;
+  },
+  /**
+   * Invoice KPIs from the mirror (unpaid / overdue / paid / not yet sent).
+   * Reads the `fortnox_invoice_stats` view, so the numbers can never drift from
+   * the invoice rows they summarise.
+   */
+  async getFortnoxInvoiceStats(): Promise<FortnoxInvoiceStats> {
+    const { data, error } = await supabase
+      .from("fortnox_invoice_stats")
+      .select("*")
+      .single();
+    if (error) {
+      throw new Error("Failed to load Fortnox invoice stats");
+    }
+    return data as FortnoxInvoiceStats;
+  },
+  /**
+   * The invoice mirror. Reads `fortnox_invoice_list`, not the table: `status`
+   * (paid / overdue / unpaid) is derived at read time so an invoice goes overdue
+   * the moment the clock says so, without a sync.
+   *
+   * Read directly rather than through getList, because this resource's primary
+   * key is `document_number` and react-admin insists on `id`.
+   */
+  async getFortnoxInvoices(): Promise<FortnoxInvoice[]> {
+    const { data, error } = await supabase
+      .from("fortnox_invoice_list")
+      .select("*")
+      .order("invoice_date", { ascending: false, nullsFirst: false })
+      .limit(500);
+    if (error) {
+      throw new Error("Failed to load Fortnox invoices");
+    }
+    return (data ?? []) as FortnoxInvoice[];
+  },
+  /** Pulls fresh invoice data from Fortnox now, instead of waiting for the 15-minute cron. */
+  async syncFortnoxInvoices(full = false): Promise<{
+    synced: number;
+    mode: "delta" | "full";
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_sync_invoices",
+      { method: "POST", body: { full } },
+    );
+    if (error || !data) {
+      throw new Error("Failed to sync Fortnox invoices");
+    }
+    return data;
+  },
+  /** Creates or updates the company as a customer in Fortnox. Matches on org number to avoid duplicates. */
+  async syncCompanyToFortnox(companyId: Identifier): Promise<{
+    customer_number: string;
+    action: "created" | "linked" | "updated";
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_customers",
+      { method: "POST", body: { company_id: Number(companyId) } },
+    );
+    if (error || !data) {
+      throw new Error(
+        (await extractFunctionError(error)) ??
+          "Failed to create the customer in Fortnox",
+      );
+    }
+    return data;
+  },
+  /**
+   * Creates an UNBOOKED, UNSENT draft invoice in Fortnox from a quote.
+   * Cannot run twice for the same quote — the database enforces it.
+   */
+  async createFortnoxInvoiceFromQuote(quoteId: Identifier): Promise<{
+    document_number: number;
+    customer_number: string;
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_invoices",
+      {
+        method: "POST",
+        body: { action: "create_from_quote", quote_id: Number(quoteId) },
+      },
+    );
+    if (error || !data) {
+      throw new Error(
+        (await extractFunctionError(error)) ?? "Failed to create the invoice",
+      );
+    }
+    return data;
+  },
+  /** Emails the invoice to the customer via Fortnox and flips its Sent flag. */
+  async sendFortnoxInvoice(documentNumber: number): Promise<{ sent: boolean }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_invoices",
+      {
+        method: "POST",
+        body: { action: "send", document_number: documentNumber },
+      },
+    );
+    if (error || !data) {
+      throw new Error(
+        (await extractFunctionError(error)) ?? "Failed to send the invoice",
+      );
     }
     return data;
   },

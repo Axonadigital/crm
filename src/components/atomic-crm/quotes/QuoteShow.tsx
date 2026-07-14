@@ -28,6 +28,8 @@ import { DeleteWithConfirmButton } from "@/components/admin/delete-with-confirm-
 import { ReferenceField } from "@/components/admin/reference-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+
+import { InvoiceQuoteButton } from "../fortnox/InvoiceQuoteButton";
 import {
   Dialog,
   DialogContent,
@@ -225,6 +227,7 @@ const QuoteShowMobileWrapper = () => {
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2 mb-4">
           <DuplicateQuoteButton />
+          <InvoiceQuoteButton />
           {(record.status === "draft" || record.status === "generated") && (
             <GenerateTextButton />
           )}

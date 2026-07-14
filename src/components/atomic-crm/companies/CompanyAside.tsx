@@ -46,6 +46,7 @@ import {
   getNextActionTypeLabel,
 } from "./followupUtils";
 import { getLeadStatusColor } from "./leadStatusUtils";
+import { FortnoxCustomerButton } from "../fortnox/FortnoxCustomerButton";
 
 interface CompanyAsideProps {
   link?: string;
@@ -65,6 +66,8 @@ export const CompanyAside = ({ link = "edit" }: CompanyAsideProps) => {
           <ShowButton label={translate("resources.companies.action.show")} />
         )}
       </div>
+
+      <FortnoxCustomerButton />
 
       <FollowUpSection record={record} />
 

@@ -1193,3 +1193,43 @@ export type FortnoxStatus = {
   /** "service_account" needs no re-auth; "refresh_token" expires after 45 days. */
   auth_mode?: "service_account" | "refresh_token";
 };
+
+/** A Fortnox invoice, mirrored into the CRM. Read-only — Fortnox owns it. */
+export type FortnoxInvoice = {
+  document_number: number;
+  company_id: number | null;
+  deal_id: number | null;
+  quote_id: number | null;
+  customer_number: string | null;
+  customer_name: string | null;
+  organisation_number: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  final_pay_date: string | null;
+  currency: string | null;
+  total: number | null;
+  total_vat: number | null;
+  balance: number | null;
+  booked: boolean;
+  sent: boolean;
+  cancelled: boolean;
+  invoice_type: string | null;
+  ocr: string | null;
+  reminders: number | null;
+  /** Derived in the database so every view agrees. */
+  status: "cancelled" | "paid" | "overdue" | "unpaid";
+  synced_at: string;
+};
+
+export type FortnoxInvoiceStats = {
+  total_invoices: number;
+  unpaid_count: number;
+  unpaid_amount: number;
+  overdue_count: number;
+  overdue_amount: number;
+  paid_count: number;
+  paid_amount: number;
+  unsent_count: number;
+  unsent_amount: number;
+  last_synced_at: string | null;
+};
