@@ -1,0 +1,166 @@
+/**
+ * Mapping between Fortnox invoices and the `fortnox_invoices` mirror.
+ *
+ * Fortnox is loose about types: numbers come back as numbers or as strings,
+ * booleans are real booleans, dates are "YYYY-MM-DD" or "" (never null). Every
+ * value is normalised here so the rest of the code never has to think about it.
+ */
+
+export type FortnoxInvoiceListItem = Record<string, unknown>;
+
+export type FortnoxInvoiceRow = {
+  document_number: number;
+  customer_number: string | null;
+  customer_name: string | null;
+  organisation_number: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  final_pay_date: string | null;
+  currency: string | null;
+  total: number | null;
+  total_vat: number | null;
+  balance: number | null;
+  booked: boolean;
+  sent: boolean;
+  cancelled: boolean;
+  invoice_type: string | null;
+  ocr: string | null;
+  reminders: number | null;
+  external_reference_1: string | null;
+  external_reference_2: string | null;
+  raw: FortnoxInvoiceListItem;
+  synced_at: string;
+};
+
+/** CRM ids we stamp onto invoices we create, so the link survives both ways. */
+const QUOTE_REF_PREFIX = "crm-quote-";
+const DEAL_REF_PREFIX = "crm-deal-";
+
+export function quoteReference(quoteId: number | string): string {
+  return `${QUOTE_REF_PREFIX}${quoteId}`;
+}
+
+export function dealReference(dealId: number | string): string {
+  return `${DEAL_REF_PREFIX}${dealId}`;
+}
+
+function parseRef(value: unknown, prefix: string): number | null {
+  if (typeof value !== "string" || !value.startsWith(prefix)) return null;
+  const id = Number(value.slice(prefix.length));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+export function parseQuoteReference(value: unknown): number | null {
+  return parseRef(value, QUOTE_REF_PREFIX);
+}
+
+export function parseDealReference(value: unknown): number | null {
+  return parseRef(value, DEAL_REF_PREFIX);
+}
+
+export function toNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export function toDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function toText(value: unknown): string | null {
+  if (typeof value === "string") return value.trim() === "" ? null : value;
+  if (typeof value === "number") return String(value);
+  return null;
+}
+
+function toBool(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  // Fortnox occasionally returns "true"/"false" as strings.
+  return value === "true";
+}
+
+/**
+ * Normalises a Swedish org number so 556677-8899 and 5566778899 match.
+ * Both forms occur: Fortnox stores what was typed, the CRM stores what was
+ * scraped.
+ */
+export function normalizeOrgNumber(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("16")) {
+    // Some sources prefix the century.
+    return digits.slice(2);
+  }
+  return digits.length === 10 ? digits : null;
+}
+
+export function mapInvoice(
+  raw: FortnoxInvoiceListItem,
+  nowIso: string,
+): FortnoxInvoiceRow | null {
+  const documentNumber = toNumber(raw.DocumentNumber);
+  if (documentNumber === null) return null;
+
+  return {
+    document_number: documentNumber,
+    customer_number: toText(raw.CustomerNumber),
+    customer_name: toText(raw.CustomerName),
+    organisation_number: toText(raw.OrganisationNumber),
+    invoice_date: toDate(raw.InvoiceDate),
+    due_date: toDate(raw.DueDate),
+    final_pay_date: toDate(raw.FinalPayDate),
+    currency: toText(raw.Currency),
+    total: toNumber(raw.Total),
+    total_vat: toNumber(raw.TotalVAT),
+    balance: toNumber(raw.Balance),
+    booked: toBool(raw.Booked),
+    sent: toBool(raw.Sent),
+    cancelled: toBool(raw.Cancelled),
+    invoice_type: toText(raw.InvoiceType),
+    ocr: toText(raw.OCR),
+    reminders: toNumber(raw.Reminders),
+    external_reference_1: toText(raw.ExternalInvoiceReference1),
+    external_reference_2: toText(raw.ExternalInvoiceReference2),
+    raw,
+    synced_at: nowIso,
+  };
+}
+
+/**
+ * The same rules the `status` column computes in Postgres. Kept here so tests
+ * pin the behaviour, and so callers (Discord alerts, etc.) can reason about a
+ * row before it is written.
+ */
+export type InvoiceStatus = "cancelled" | "paid" | "overdue" | "unpaid";
+
+export function deriveStatus(
+  row: Pick<FortnoxInvoiceRow, "cancelled" | "balance" | "due_date">,
+  today: string,
+): InvoiceStatus {
+  if (row.cancelled) return "cancelled";
+  if ((row.balance ?? 0) <= 0) return "paid";
+  if (row.due_date !== null && row.due_date < today) return "overdue";
+  return "unpaid";
+}
+
+/**
+ * Fortnox wants `lastmodified` as "YYYY-MM-DD HH:MM". We rewind the watermark a
+ * little on every run: the filter has minute granularity, and an invoice
+ * modified in the same minute the sync started would otherwise be missed
+ * forever.
+ */
+export const SYNC_OVERLAP_MS = 5 * 60 * 1000;
+
+export function formatLastModified(iso: string): string {
+  const date = new Date(Date.parse(iso) - SYNC_OVERLAP_MS);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}` +
+    ` ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`
+  );
+}

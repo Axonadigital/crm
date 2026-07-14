@@ -190,6 +190,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/settings/FortnoxIntegrationCard.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/sequences/sequenceConstants.ts",
           "type": "registry:component"
         },
@@ -727,6 +731,38 @@
         },
         {
           "path": "src/components/atomic-crm/layout/AppSidebar.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/useCompanyInvoices.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/invoiceFormat.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/InvoicesPage.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/InvoiceStatusBadge.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/InvoiceQuoteButton.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/FortnoxCustomerButton.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/CompanyInvoicesTab.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/CompanyInvoiceSummary.tsx",
           "type": "registry:component"
         },
         {

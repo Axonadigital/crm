@@ -8,6 +8,7 @@ import {
   Mail,
   Phone,
   Radar,
+  Receipt,
   Users,
 } from "lucide-react";
 import { Link, useMatch } from "react-router";
@@ -66,6 +67,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Företag", to: "/companies", icon: Building2 },
       { label: "Deals", to: "/deals", icon: Handshake },
       { label: "Offerter", to: "/quotes", icon: FileText },
+      { label: "Fakturor", to: "/invoices", icon: Receipt },
     ],
   },
   {

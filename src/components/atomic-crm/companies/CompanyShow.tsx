@@ -44,6 +44,8 @@ import {
   CompanyInfo,
   ContextInfo,
 } from "./CompanyAside";
+import { CompanyInvoicesTab } from "../fortnox/CompanyInvoicesTab";
+import { useCompanyInvoices } from "../fortnox/useCompanyInvoices";
 import { CompanyAvatar } from "./CompanyAvatar";
 import { CompanyEditSheet } from "./CompanyEditSheet";
 import { CallLogModal } from "./CallLogModal";
@@ -77,11 +79,17 @@ const CompanyShowContentMobile = () => {
     { enabled: !!record?.id },
   );
   const isCustomer = useIsCustomer(record);
+  const { invoices } = useCompanyInvoices(record?.id);
 
   if (isPending || !record) return null;
 
   const hasDeals = !!record.nb_deals;
   const hasQuotes = nbQuotes > 0;
+  const hasInvoices = invoices.length > 0;
+  const mobileTabCount = 3 + (hasInvoices ? 1 : 0) + (isCustomer ? 1 : 0);
+  const mobileGridCols =
+    { 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" }[mobileTabCount] ??
+    "grid-cols-3";
 
   const handleTabChange = (value: string) => {
     if (value === currentTab) return;
@@ -136,7 +144,7 @@ const CompanyShowContentMobile = () => {
           className="w-full"
         >
           <TabsList
-            className={`grid w-full ${isCustomer ? "grid-cols-4" : "grid-cols-3"} h-10 [&>*]:min-w-0 [&>*]:truncate [&>*]:px-1 sm:[&>*]:px-2 [&>*]:text-xs sm:[&>*]:text-sm`}
+            className={`grid w-full ${mobileGridCols} h-10 [&>*]:min-w-0 [&>*]:truncate [&>*]:px-1 sm:[&>*]:px-2 [&>*]:text-xs sm:[&>*]:text-sm`}
           >
             <TabsTrigger value="activity">
               {translate("crm.common.activity")}
@@ -148,6 +156,9 @@ const CompanyShowContentMobile = () => {
             <TabsTrigger value="info">
               {translate("crm.common.details")}
             </TabsTrigger>
+            {hasInvoices ? (
+              <TabsTrigger value="invoices">Fakturor</TabsTrigger>
+            ) : null}
             {isCustomer ? (
               <TabsTrigger value="customer">Kund</TabsTrigger>
             ) : null}
@@ -218,6 +229,12 @@ const CompanyShowContentMobile = () => {
             </div>
           </TabsContent>
 
+          {hasInvoices ? (
+            <TabsContent value="invoices" className="mt-2">
+              <CompanyInvoicesTab />
+            </TabsContent>
+          ) : null}
+
           {isCustomer ? (
             <TabsContent value="customer" className="mt-2">
               <CustomerDetailsTab />
@@ -247,6 +264,8 @@ const CompanyShowContent = () => {
     { enabled: !!record?.id },
   );
   const isCustomer = useIsCustomer(record);
+  const { invoices } = useCompanyInvoices(record?.id);
+  const nbInvoices = invoices.length;
 
   const handleTabChange = (value: string) => {
     if (value === currentTab) return;
@@ -261,12 +280,21 @@ const CompanyShowContent = () => {
 
   const hasDeals = !!record.nb_deals;
   const hasQuotes = nbQuotes > 0;
+  const hasInvoices = nbInvoices > 0;
   const tabCount =
-    3 + (hasDeals ? 1 : 0) + (hasQuotes ? 1 : 0) + (isCustomer ? 1 : 0);
+    3 +
+    (hasDeals ? 1 : 0) +
+    (hasQuotes ? 1 : 0) +
+    (hasInvoices ? 1 : 0) +
+    (isCustomer ? 1 : 0);
   const gridColsClass =
-    { 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5", 6: "grid-cols-6" }[
-      tabCount
-    ] ?? "grid-cols-3";
+    {
+      3: "grid-cols-3",
+      4: "grid-cols-4",
+      5: "grid-cols-5",
+      6: "grid-cols-6",
+      7: "grid-cols-7",
+    }[tabCount] ?? "grid-cols-3";
 
   return (
     <div className="mt-2 flex pb-2 gap-8">
@@ -304,6 +332,11 @@ const CompanyShowContent = () => {
                       smart_count: nbQuotes,
                       _: `${nbQuotes} Quotes`,
                     })}
+                  </TabsTrigger>
+                ) : null}
+                {hasInvoices ? (
+                  <TabsTrigger value="invoices">
+                    {nbInvoices} Fakturor
                   </TabsTrigger>
                 ) : null}
                 {isCustomer ? (
@@ -365,6 +398,11 @@ const CompanyShowContent = () => {
                   </ReferenceManyField>
                 ) : null}
               </TabsContent>
+              {hasInvoices ? (
+                <TabsContent value="invoices">
+                  <CompanyInvoicesTab />
+                </TabsContent>
+              ) : null}
               {isCustomer ? (
                 <TabsContent value="customer" className="pt-2">
                   <CustomerDetailsTab />
