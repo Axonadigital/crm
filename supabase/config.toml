@@ -195,3 +195,11 @@ verify_jwt = false
 verify_jwt = false
 [functions.get_monthly_report_pdf]
 verify_jwt = false
+# Fortnox redirects the browser here with ?code=&state=; a browser navigation
+# carries no JWT. The single-use state row is what authenticates the call.
+[functions.fortnox_callback]
+verify_jwt = false
+# fortnox_connect verifies the CRM user itself (supabaseAdmin.auth.getUser),
+# matching how the other functions in this project handle auth.
+[functions.fortnox_connect]
+verify_jwt = false
