@@ -149,13 +149,16 @@ Deno.serve(async (req: Request) =>
         quote_number: string | null;
         contact_id: number | null;
         company_id: number | null;
+        fortnox_offer_number: number | null;
       } | null = null;
       let quoteError: unknown = null;
 
       if (submissionId) {
         const result = await supabase
           .from("quotes")
-          .select("id, status, deal_id, quote_number, contact_id, company_id")
+          .select(
+            "id, status, deal_id, quote_number, contact_id, company_id, fortnox_offer_number",
+          )
           .eq("docuseal_submission_id", submissionId)
           .single();
         quote = result.data;
@@ -166,7 +169,9 @@ Deno.serve(async (req: Request) =>
         for (const slug of candidateSlugs) {
           const slugResult = await supabase
             .from("quotes")
-            .select("id, status, deal_id, quote_number, contact_id, company_id")
+            .select(
+            "id, status, deal_id, quote_number, contact_id, company_id, fortnox_offer_number",
+          )
             .ilike("docuseal_signing_url", `%/s/${slug}`)
             .single();
 
@@ -287,6 +292,54 @@ Deno.serve(async (req: Request) =>
             .from("deals")
             .update({ stage: "won" })
             .eq("id", quote.deal_id);
+        }
+
+        // 1b. Turn the signature into an invoice draft in Fortnox.
+        //
+        // This is the step whose absence killed the quote system in April: a
+        // signed quote led nowhere, and the offer had to be rebuilt by hand in
+        // Fortnox anyway. A classic offer converts through Fortnox itself
+        // (createinvoice), which carries every article, VAT rate and account
+        // over untouched; a premium quote is built from its line items.
+        //
+        // Never fatal: the signature is recorded either way, and the invoice can
+        // be created by hand. Failing the webhook would make DocuSeal retry and
+        // re-run everything above.
+        try {
+          const invoiceAction = quote.fortnox_offer_number
+            ? {
+                action: "create_from_offer",
+                offer_number: quote.fortnox_offer_number,
+              }
+            : { action: "create_from_quote", quote_id: quote.id };
+
+          const invoiceResult = await fetch(
+            `${Deno.env.get("SUPABASE_URL")}/functions/v1/fortnox_invoices`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(invoiceAction),
+            },
+          );
+
+          if (!invoiceResult.ok) {
+            console.error("docuseal_webhook: invoice draft failed", {
+              quoteId: quote.id,
+              offerNumber: quote.fortnox_offer_number,
+              status: invoiceResult.status,
+            });
+          }
+        } catch (invoiceError) {
+          console.error("docuseal_webhook: invoice draft threw", {
+            quoteId: quote.id,
+            message:
+              invoiceError instanceof Error
+                ? invoiceError.message
+                : String(invoiceError),
+          });
         }
 
         // 2. Discord notification handled by database trigger on deals.stage change

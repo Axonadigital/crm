@@ -211,3 +211,8 @@ verify_jwt = false
 verify_jwt = false
 [functions.fortnox_invoices]
 verify_jwt = false
+# Called by pg_cron with x-cron-secret; auth is done in code.
+[functions.fortnox_sync_offers]
+verify_jwt = false
+[functions.fortnox_send_offer]
+verify_jwt = false

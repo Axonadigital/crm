@@ -73,6 +73,27 @@ create policy "Authenticated users can read fortnox offers"
   on public.fortnox_offers for select to authenticated using (true);
 
 -- ---------------------------------------------------------------------------
+-- A CRM quote is the single place we write down what is being sold. It can be
+-- delivered two ways, for two different moments in a sale:
+--
+--   "målande"  — Axona's own premium PDF, for a customer who has not decided.
+--                Its job is to persuade.
+--   "klassisk" — pushed to Fortnox as an offer, for a customer who has decided.
+--                Its job is to be signed, and it becomes the invoice.
+--
+-- Same quote, same rows, no retyping. fortnox_offer_number links the two.
+-- ---------------------------------------------------------------------------
+alter table public.quotes
+  add column if not exists fortnox_offer_number bigint;
+
+comment on column public.quotes.fortnox_offer_number is
+  'The Fortnox offer created from this quote (the "klassisk" delivery). Null until the quote is sent that way.';
+
+create unique index if not exists quotes_fortnox_offer_number_key
+  on public.quotes (fortnox_offer_number)
+  where fortnox_offer_number is not null;
+
+-- ---------------------------------------------------------------------------
 -- The link from a deal to its offer and its invoice.
 -- ---------------------------------------------------------------------------
 alter table public.deals

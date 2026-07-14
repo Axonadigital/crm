@@ -41,9 +41,23 @@ type FortnoxInvoiceResponse = {
   Invoice?: Record<string, unknown> & { DocumentNumber?: string | number };
 };
 
+/**
+ * A signed-in CRM user, or the service role — docuseal_webhook calls this
+ * function to turn a signed offer into an invoice, and it has no user.
+ */
 async function requireUser(req: Request) {
   const token = (req.headers.get("authorization") || "").replace("Bearer ", "");
   if (!token) throw new HttpError(401, "Missing authorization token");
+
+  try {
+    const payloadB64 = token.split(".")[1];
+    if (payloadB64) {
+      const payload = JSON.parse(atob(payloadB64));
+      if (payload.role === "service_role") return;
+    }
+  } catch {
+    /* not a JWT — fall through to the user check */
+  }
 
   const { data, error } = await supabaseAdmin.auth.getUser(token);
   if (error || !data?.user) throw new HttpError(401, "Unauthorized");
@@ -52,7 +66,11 @@ async function requireUser(req: Request) {
 /** Writes the freshly created invoice into the mirror so the UI updates now, not in 15 minutes. */
 async function mirrorInvoice(
   raw: Record<string, unknown>,
-  links: { company_id: number; quote_id: number; deal_id: number | null },
+  links: {
+    company_id: number | null;
+    quote_id: number | null;
+    deal_id: number | null;
+  },
 ) {
   const row = mapInvoice(raw, new Date().toISOString());
   if (!row) return;
@@ -171,6 +189,76 @@ async function createFromQuote(quoteId: number) {
   };
 }
 
+/**
+ * Turns a signed Fortnox offer into an invoice, using Fortnox's own conversion.
+ * Every row, article, VAT rate and account carries over untouched — which is the
+ * whole reason the customer-facing document is a Fortnox offer in the first
+ * place.
+ *
+ * Idempotent: the unique index on fortnox_offers.fortnox_invoice_number means a
+ * replayed webhook cannot invoice the same offer twice.
+ */
+async function createFromOffer(offerNumber: number) {
+  const { data: offer, error } = await supabaseAdmin
+    .from("fortnox_offers")
+    .select("document_number, company_id, deal_id, fortnox_invoice_number")
+    .eq("document_number", offerNumber)
+    .maybeSingle();
+
+  if (error || !offer) throw new HttpError(404, "Offerten hittades inte");
+
+  if (offer.fortnox_invoice_number) {
+    return {
+      document_number: offer.fortnox_invoice_number,
+      already_invoiced: true,
+    };
+  }
+
+  const client = createFortnoxClient();
+  const created = await client.put<FortnoxInvoiceResponse>(
+    `/3/offers/${offerNumber}/createinvoice`,
+  );
+
+  const documentNumber = Number(created.Invoice?.DocumentNumber);
+  if (!Number.isInteger(documentNumber) || documentNumber <= 0) {
+    throw new HttpError(502, "Fortnox returnerade inget fakturanummer", {
+      code: "fortnox_no_document_number",
+    });
+  }
+
+  // Conditional: a replayed webhook loses the race and leaves the first invoice
+  // alone. A no-op UPDATE is not an error in PostgREST, so check the row count.
+  const { data: linked } = await supabaseAdmin
+    .from("fortnox_offers")
+    .update({ fortnox_invoice_number: documentNumber })
+    .eq("document_number", offerNumber)
+    .is("fortnox_invoice_number", null)
+    .select("document_number");
+
+  if (!linked || linked.length === 0) {
+    console.warn("fortnox_invoices: offer was invoiced concurrently", {
+      offerNumber,
+      documentNumber,
+    });
+  }
+
+  if (offer.deal_id) {
+    await supabaseAdmin
+      .from("deals")
+      .update({ fortnox_invoice_number: documentNumber })
+      .eq("id", offer.deal_id)
+      .is("fortnox_invoice_number", null);
+  }
+
+  await mirrorInvoice(created.Invoice ?? {}, {
+    company_id: offer.company_id,
+    quote_id: null,
+    deal_id: offer.deal_id ?? null,
+  });
+
+  return { document_number: documentNumber, booked: false, sent: false };
+}
+
 async function sendInvoice(documentNumber: number) {
   const client = createFortnoxClient();
 
@@ -222,7 +310,7 @@ Deno.serve((req: Request) =>
       const action = getEnumField(
         body,
         "action",
-        ["create_from_quote", "send"],
+        ["create_from_quote", "create_from_offer", "send"],
         {
           required: true,
         },
@@ -233,6 +321,13 @@ Deno.serve((req: Request) =>
           required: true,
         })!;
         return createJsonResponse(await createFromQuote(quoteId));
+      }
+
+      if (action === "create_from_offer") {
+        const offerNumber = getPositiveIntegerField(body, "offer_number", {
+          required: true,
+        })!;
+        return createJsonResponse(await createFromOffer(offerNumber));
       }
 
       const documentNumber = getPositiveIntegerField(body, "document_number", {
