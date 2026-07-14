@@ -48,7 +48,8 @@ export const CompanyInvoiceSummary = ({
       {unsentCount > 0 ? (
         <div className="flex items-center gap-1 text-amber-700 dark:text-amber-500">
           <Send className="h-3 w-3" />
-          {unsentCount} faktura{unsentCount > 1 ? "or" : ""} har aldrig skickats
+          {unsentCount} obetald{unsentCount > 1 ? "a" : ""} har inte gått ut via
+          Fortnox
         </div>
       ) : null}
     </div>

@@ -1,14 +1,16 @@
 import { Badge } from "@/components/ui/badge";
 
 import type { FortnoxInvoice } from "../types";
-import { daysOverdue } from "./invoiceFormat";
+import { daysOverdue, isUnsentAndActionable } from "./invoiceFormat";
 
 /**
  * The one place invoice status is rendered. Used on the Fakturor page and on
  * the customer card, so the two can never tell different stories.
  *
- * "Ej skickad" is deliberately a separate badge, not a status: an invoice the
- * customer never received is still unpaid, and the two facts matter separately.
+ * The send badge says "via Fortnox" on purpose. Fortnox's `Sent` flag only
+ * knows about its own sender — an invoice emailed by hand looks unsent forever,
+ * which is why 5 of the 7 "unsent" invoices in the tenant were already paid.
+ * It is shown only where it is actionable: on an unpaid invoice.
  */
 export const InvoiceStatusBadge = ({
   invoice,
@@ -35,8 +37,8 @@ export const InvoiceStatusBadge = ({
         <Badge variant="secondary">Obetald</Badge>
       )}
 
-      {showSent && !invoice.sent && invoice.status !== "cancelled" ? (
-        <Badge variant="outline">Ej skickad</Badge>
+      {showSent && isUnsentAndActionable(invoice) ? (
+        <Badge variant="outline">Ej skickad via Fortnox</Badge>
       ) : null}
     </div>
   );

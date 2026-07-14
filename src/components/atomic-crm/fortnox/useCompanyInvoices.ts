@@ -4,6 +4,7 @@ import type { Identifier } from "ra-core";
 
 import type { CrmDataProvider } from "../providers/types";
 import type { FortnoxInvoice } from "../types";
+import { isUnsentAndActionable } from "./invoiceFormat";
 
 export type CompanyInvoiceSummary = {
   invoices: FortnoxInvoice[];
@@ -47,7 +48,9 @@ export const useCompanyInvoices = (
     ),
     overdueAmount: sumBalance(overdue),
     overdueCount: overdue.length,
-    unsentCount: active.filter((invoice) => !invoice.sent).length,
+    // Only unpaid invoices count: Fortnox's Sent flag knows nothing about
+    // invoices we emailed by hand, so on a paid invoice it means nothing.
+    unsentCount: active.filter(isUnsentAndActionable).length,
     isPending,
   };
 };

@@ -43,6 +43,22 @@ export const daysOverdue = (
   return diff > 0 ? diff : null;
 };
 
+/**
+ * Whether the "not sent through Fortnox" flag is worth showing at all.
+ *
+ * Fortnox's `Sent` means "sent through Fortnox's own sender" — not "the customer
+ * received it". Verified on the live tenant: 5 of 7 unsent invoices were fully
+ * paid, because Axona had been emailing the PDF themselves. On a paid or
+ * cancelled invoice the flag says nothing; on an unpaid one it is a useful hint
+ * that the invoice may never have gone out.
+ */
+export const isUnsentAndActionable = (invoice: {
+  sent: boolean;
+  status: InvoiceStatus;
+}): boolean =>
+  !invoice.sent &&
+  (invoice.status === "unpaid" || invoice.status === "overdue");
+
 export const formatSyncedAt = (value: string | null | undefined) => {
   if (!value) return "aldrig";
   const minutes = Math.round((Date.now() - Date.parse(value)) / 60000);

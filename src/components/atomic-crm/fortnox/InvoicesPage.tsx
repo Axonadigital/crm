@@ -29,6 +29,7 @@ import {
   formatDate,
   formatSyncedAt,
   type InvoiceStatus,
+  isUnsentAndActionable,
   STATUS_LABELS,
 } from "./invoiceFormat";
 
@@ -38,7 +39,7 @@ const CUTS: { key: Cut; label: string }[] = [
   { key: "all", label: "Alla" },
   { key: "unpaid", label: "Obetalda" },
   { key: "overdue", label: "Förfallna" },
-  { key: "unsent", label: "Ej utskickade" },
+  { key: "unsent", label: "Ej skickade via Fortnox" },
   { key: "paid", label: "Betalda" },
   { key: "cancelled", label: "Makulerade" },
 ];
@@ -122,7 +123,7 @@ export const InvoicesPage = () => {
     const rows = invoices ?? [];
     if (cut === "all") return rows;
     if (cut === "unsent") {
-      return rows.filter((row) => !row.sent && row.status !== "cancelled");
+      return rows.filter(isUnsentAndActionable);
     }
     return rows.filter((row) => row.status === cut);
   }, [invoices, cut]);
@@ -160,9 +161,9 @@ export const InvoicesPage = () => {
           icon={AlertTriangle}
         />
         <StatCard
-          label="Ej utskickade"
+          label="Ej skickade via Fortnox"
           value={String(stats?.unsent_count ?? 0)}
-          sub={formatCurrency(stats?.unsent_amount)}
+          sub="obetalda som inte gått ut via Fortnox"
           icon={Send}
         />
         <StatCard
@@ -249,7 +250,7 @@ export const InvoicesPage = () => {
                       <InvoiceStatusBadge invoice={invoice} />
                     </TableCell>
                     <TableCell className="text-right">
-                      {!invoice.sent && invoice.status !== "cancelled" ? (
+                      {isUnsentAndActionable(invoice) ? (
                         <Button
                           size="sm"
                           variant="outline"

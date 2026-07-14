@@ -734,6 +734,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/useCompanyInvoices.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/invoiceFormat.ts",
           "type": "registry:component"
         },
@@ -742,11 +746,23 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/InvoiceStatusBadge.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/InvoiceQuoteButton.tsx",
           "type": "registry:component"
         },
         {
           "path": "src/components/atomic-crm/fortnox/FortnoxCustomerButton.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/CompanyInvoicesTab.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/CompanyInvoiceSummary.tsx",
           "type": "registry:component"
         },
         {

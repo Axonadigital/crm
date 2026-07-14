@@ -17,7 +17,11 @@ import {
 import type { CrmDataProvider } from "../providers/types";
 import type { Company } from "../types";
 import { InvoiceStatusBadge } from "./InvoiceStatusBadge";
-import { formatCurrency, formatDate } from "./invoiceFormat";
+import {
+  formatCurrency,
+  formatDate,
+  isUnsentAndActionable,
+} from "./invoiceFormat";
 import { useCompanyInvoices } from "./useCompanyInvoices";
 
 /**
@@ -63,7 +67,7 @@ export const CompanyInvoicesTab = () => {
             {overdueCount} förfallen{overdueCount > 1 ? "a" : ""} faktura
             {overdueCount > 1 ? "or" : ""} på {formatCurrency(overdueAmount)}
             {unsentCount > 0
-              ? ` · ${unsentCount} faktura${unsentCount > 1 ? "or" : ""} har aldrig skickats till kunden`
+              ? ` · ${unsentCount} av dem har inte gått ut via Fortnox utskick`
               : ""}
             .
           </AlertDescription>
@@ -106,7 +110,7 @@ export const CompanyInvoicesTab = () => {
                   <InvoiceStatusBadge invoice={invoice} />
                 </TableCell>
                 <TableCell className="text-right">
-                  {!invoice.sent && invoice.status !== "cancelled" ? (
+                  {isUnsentAndActionable(invoice) ? (
                     <Button
                       size="sm"
                       variant="outline"
