@@ -221,6 +221,41 @@ describe("FortnoxClient.request", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it("sends NO Accept header when fetching a PDF", async () => {
+    // Fortnox answers 400 "Invalid response type" (code 1000030) to any Accept
+    // header on its PDF endpoints — including Accept: application/pdf. Verified
+    // against the live tenant. Reintroducing the header breaks every offer and
+    // invoice PDF, so pin it.
+    const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
+    const fetchImpl = vi.fn(
+      async () => new Response(pdf, { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const { client } = makeClient(fetchImpl);
+    const result = await client.getPdf("/3/offers/231/preview");
+
+    expect(result).toBeInstanceOf(Uint8Array);
+    expect(Array.from(result)).toEqual([0x25, 0x50, 0x44, 0x46]);
+
+    const headers = (vi.mocked(fetchImpl).mock.calls[0][1] as RequestInit)
+      .headers as Record<string, string>;
+    expect(headers.Accept).toBeUndefined();
+    expect(headers.Authorization).toBe("Bearer token-1");
+  });
+
+  it("still sends Accept: application/json for normal calls", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ ok: true }),
+    ) as unknown as typeof fetch;
+
+    const { client } = makeClient(fetchImpl);
+    await client.get("/3/offers");
+
+    const headers = (vi.mocked(fetchImpl).mock.calls[0][1] as RequestInit)
+      .headers as Record<string, string>;
+    expect(headers.Accept).toBe("application/json");
+  });
+
   it("retries network failures", async () => {
     const fetchImpl = vi
       .fn()

@@ -27,6 +27,13 @@ export type FortnoxRequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   query?: FortnoxQuery;
   body?: unknown;
+  /**
+   * Fortnox's PDF endpoints (offer/invoice preview and print) reject ANY Accept
+   * header with `400 Invalid response type` (code 1000030) — including
+   * `Accept: application/pdf`. They only answer when no Accept is sent at all.
+   * Verified against the live tenant.
+   */
+  binary?: boolean;
 };
 
 export type AccessTokenProvider = (options?: {
@@ -129,7 +136,9 @@ export class FortnoxClient {
           method,
           headers: {
             Authorization: `Bearer ${accessToken}`,
-            Accept: "application/json",
+            // Deliberately omitted for binary: any Accept header makes Fortnox's
+            // PDF endpoints fail with 400 Invalid response type.
+            ...(options.binary ? {} : { Accept: "application/json" }),
             ...(options.body !== undefined
               ? { "Content-Type": "application/json" }
               : {}),
@@ -150,6 +159,9 @@ export class FortnoxClient {
       }
 
       if (response.ok) {
+        if (options.binary) {
+          return new Uint8Array(await response.arrayBuffer()) as T;
+        }
         if (response.status === 204) return undefined as T;
         const text = await response.text();
         if (text.trim().length === 0) return undefined as T;
@@ -207,6 +219,18 @@ export class FortnoxClient {
 
   get<T>(path: string, query?: FortnoxQuery): Promise<T> {
     return this.request<T>(path, { method: "GET", query });
+  }
+
+  /**
+   * Fetches a PDF (offer/invoice preview or print). Sends no Accept header —
+   * see FortnoxRequestOptions.binary for why.
+   */
+  getPdf(path: string, query?: FortnoxQuery): Promise<Uint8Array> {
+    return this.request<Uint8Array>(path, {
+      method: "GET",
+      query,
+      binary: true,
+    });
   }
 
   post<T>(path: string, body: unknown, query?: FortnoxQuery): Promise<T> {
