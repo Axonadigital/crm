@@ -625,6 +625,9 @@ export const englishCrmMessages = {
       sections: {
         branding: "Branding",
         seller_company: "Company Info",
+        proposal_automation: "Proposal Automation",
+        revenue_goals: "Revenue Goals",
+        monthly_report: "Monthly Report",
       },
       seller_company: {
         description: "Your company details shown on quotes and invoices.",

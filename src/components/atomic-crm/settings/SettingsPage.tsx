@@ -16,7 +16,8 @@ export const SettingsPage = () => {
   const notify = useNotify();
 
   return (
-    <div className="space-y-6">
+    // pb-24 clears the fixed save bar so the last card (Fortnox) stays reachable.
+    <div className="space-y-6 pb-24">
       <EditBase
         resource="configuration"
         id={1}
