@@ -773,7 +773,7 @@ export const SettingsFormFields = ({
 
   // Desktop layout — left nav + Cards
   return (
-    <div className="flex gap-8 mt-4 pb-20">
+    <div className="flex gap-8 mt-4">
       {/* Left navigation */}
       <nav className="hidden md:block w-48 shrink-0">
         <div className="sticky top-4 space-y-1">
@@ -791,7 +791,10 @@ export const SettingsFormFields = ({
               }}
               className="block w-full text-left px-3 py-1 text-sm rounded-md hover:text-foreground hover:bg-muted transition-colors"
             >
-              {translate(section.label, { smart_count: 2 })}
+              {translate(section.label, {
+                smart_count: 2,
+                _: section.fallback,
+              })}
             </button>
           ))}
         </div>
