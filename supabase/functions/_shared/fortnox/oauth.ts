@@ -23,6 +23,11 @@ export const FORTNOX_SCOPES = [
   "article",
   "payment",
   "offer",
+  // Ekonomi-statistik (2026-07): leverantörsfakturor för kostnader/abonnemang,
+  // bokföring för faktiskt resultat per konto. Kräver omauktorisering — scopes
+  // följer inte med i befintlig grant.
+  "supplierinvoice",
+  "bookkeeping",
 ] as const;
 
 export type FortnoxTokenResponse = {
