@@ -25,6 +25,7 @@ import {
 import type { CrmDataProvider } from "../providers/types";
 import { InvoiceStatusBadge } from "./InvoiceStatusBadge";
 import {
+  exVatAmount,
   formatCurrency,
   formatDate,
   formatSyncedAt,
@@ -148,15 +149,15 @@ export const InvoicesPage = () => {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Obetalt"
+          label="Obetalt (ink moms)"
           value={formatCurrency(stats?.unpaid_amount)}
-          sub={`${stats?.unpaid_count ?? 0} fakturor`}
+          sub={`${formatCurrency(exVatAmount(stats?.unpaid_amount))} ex moms · ${stats?.unpaid_count ?? 0} fakturor`}
           icon={Clock}
         />
         <StatCard
-          label="Förfallet"
+          label="Förfallet (ink moms)"
           value={formatCurrency(stats?.overdue_amount)}
-          sub={`${stats?.overdue_count ?? 0} fakturor`}
+          sub={`${formatCurrency(exVatAmount(stats?.overdue_amount))} ex moms · ${stats?.overdue_count ?? 0} fakturor`}
           tone={stats?.overdue_count ? "danger" : undefined}
           icon={AlertTriangle}
         />
@@ -167,9 +168,9 @@ export const InvoicesPage = () => {
           icon={Send}
         />
         <StatCard
-          label="Betalt"
+          label="Betalt (ink moms)"
           value={formatCurrency(stats?.paid_amount)}
-          sub={`${stats?.paid_count ?? 0} fakturor`}
+          sub={`${formatCurrency(exVatAmount(stats?.paid_amount))} ex moms · ${stats?.paid_count ?? 0} fakturor`}
           icon={CheckCircle2}
         />
       </div>
@@ -207,7 +208,8 @@ export const InvoicesPage = () => {
                   <TableHead>Kund</TableHead>
                   <TableHead>Fakturadatum</TableHead>
                   <TableHead>Förfaller</TableHead>
-                  <TableHead className="text-right">Belopp</TableHead>
+                  <TableHead className="text-right">Ex moms</TableHead>
+                  <TableHead className="text-right">Ink moms</TableHead>
                   <TableHead className="text-right">Kvar att betala</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead />
@@ -235,6 +237,12 @@ export const InvoicesPage = () => {
                     </TableCell>
                     <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
                     <TableCell>{formatDate(invoice.due_date)}</TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(
+                        exVatAmount(invoice.total, invoice.total_vat),
+                        invoice.currency ?? "SEK",
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(invoice.total, invoice.currency ?? "SEK")}
                     </TableCell>

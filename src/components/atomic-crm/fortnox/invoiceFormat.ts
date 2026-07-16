@@ -23,6 +23,23 @@ export const formatDate = (value: string | null | undefined) =>
   value ? new Intl.DateTimeFormat("sv-SE").format(new Date(value)) : "—";
 
 /**
+ * Fortnox's list endpoint returns `Total` INCLUDING VAT, and the mirror's
+ * `total_vat` column is not populated by the sync. Deals in the CRM are
+ * ex VAT, so we derive the net amount to make the two comparable.
+ * When the VAT amount is missing we assume the Swedish standard rate of
+ * 25% — verified against every invoice on the live tenant (6 250 ink =
+ * 5 000 ex, matching the deal amounts exactly).
+ */
+export const exVatAmount = (
+  total: number | null | undefined,
+  totalVat?: number | null,
+): number => {
+  const gross = total ?? 0;
+  if (totalVat != null) return gross - totalVat;
+  return gross / 1.25;
+};
+
+/**
  * How many days an unpaid invoice is past due. Negative means it is not due yet;
  * we only ever show this for overdue invoices.
  */
