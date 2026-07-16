@@ -1,6 +1,36 @@
 import { describe, expect, it } from "vitest";
 
-import { daysOverdue, isUnsentAndActionable } from "./invoiceFormat";
+import {
+  daysOverdue,
+  exVatAmount,
+  isUnsentAndActionable,
+} from "./invoiceFormat";
+
+describe("exVatAmount", () => {
+  // The mirror never gets `total_vat` from Fortnox's list endpoint, so the
+  // 25% fallback is what actually runs in production. Verified against the
+  // live tenant: every invoice divided by 1.25 lands exactly on the ex-VAT
+  // deal amount (6 250 ink → 5 000 ex).
+  it("assumes 25% VAT when the VAT amount is missing", () => {
+    expect(exVatAmount(6250)).toBe(5000);
+    expect(exVatAmount(6250, null)).toBe(5000);
+  });
+
+  it("subtracts the exact VAT amount when Fortnox provides it", () => {
+    expect(exVatAmount(6250, 1250)).toBe(5000);
+    // A 12% VAT invoice must NOT be divided by 1.25.
+    expect(exVatAmount(5600, 600)).toBe(5000);
+  });
+
+  it("handles credit invoices (negative totals)", () => {
+    expect(exVatAmount(-12500)).toBe(-10000);
+  });
+
+  it("returns 0 for a missing total", () => {
+    expect(exVatAmount(null)).toBe(0);
+    expect(exVatAmount(undefined)).toBe(0);
+  });
+});
 
 describe("isUnsentAndActionable", () => {
   // Fortnox's `Sent` flag means "sent through Fortnox", not "the customer got
