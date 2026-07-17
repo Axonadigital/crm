@@ -76,6 +76,7 @@ import { MobileSequencesList } from "../sequences/MobileSequencesList";
 import { MobileEmailTemplatesList } from "../templates/MobileEmailTemplatesList";
 import { CustomerVisibilityPage } from "../customer-visibility/CustomerVisibilityPage";
 import { EmailStatsPage } from "../email-stats/EmailStatsPage";
+import { CustomerCoveragePage } from "../fortnox/CustomerCoveragePage";
 import { EconomyPage } from "../fortnox/EconomyPage";
 import { LiquidityPage } from "../fortnox/LiquidityPage";
 import { InvoicesPage } from "../fortnox/InvoicesPage";
@@ -274,6 +275,10 @@ const DesktopAdmin = (props: CoreAdminProps) => {
         <Route path={InvoicesPage.path} element={<InvoicesPage />} />
         <Route path={EconomyPage.path} element={<EconomyPage />} />
         <Route path={LiquidityPage.path} element={<LiquidityPage />} />
+        <Route
+          path={CustomerCoveragePage.path}
+          element={<CustomerCoveragePage />}
+        />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
       <Resource name="quotes" {...quotes} />
@@ -366,6 +371,10 @@ const MobileAdmin = (props: CoreAdminProps) => {
           <Route path={InvoicesPage.path} element={<InvoicesPage />} />
           <Route path={EconomyPage.path} element={<EconomyPage />} />
           <Route path={LiquidityPage.path} element={<LiquidityPage />} />
+          <Route
+            path={CustomerCoveragePage.path}
+            element={<CustomerCoveragePage />}
+          />
         </CustomRoutes>
         <Resource
           name="contacts"

@@ -1320,6 +1320,28 @@ export type FortnoxNamedSubscription = {
 };
 
 /**
+ * One won-deal customer's billing coverage — the row behind the Kundtäckning
+ * page and the "pengar att hämta" widget. Answers, per company: are they set up
+ * for billing, invoiced, recurring, and on a contract?
+ */
+export type CustomerCoverage = {
+  company_id: Identifier;
+  company_name: string | null;
+  /** Linked as a Fortnox customer (fortnox_customer_number set). */
+  is_fortnox_customer: boolean;
+  /** Has at least one invoice mirrored against this company. */
+  has_invoice: boolean;
+  won_deal_count: number;
+  /** Sum of one-time deal amounts (kronor). */
+  won_amount: number;
+  /** Recurring revenue from this company, normalised to per-month (kronor). */
+  recurring_monthly: number;
+  has_recurring: boolean;
+  /** A recurring deal here already has a Fortnox contract. */
+  has_contract: boolean;
+};
+
+/**
  * A won, active deal carrying recurring revenue — the income side of the
  * Likviditet page. `recurring_amount` is in whole kronor at
  * `recurring_interval` cadence.

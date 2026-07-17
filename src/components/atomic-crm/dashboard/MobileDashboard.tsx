@@ -5,8 +5,10 @@ import type { Contact, ContactNote } from "../types";
 import { CallStatsWidget } from "./CallStatsWidget";
 import { DashboardActivityLog } from "./DashboardActivityLog";
 import { DashboardStepper } from "./DashboardStepper";
+import { FinancialKpiRow } from "./FinancialKpiRow";
 import { FollowUpsDueToday } from "./FollowUpsDueToday";
 import { KpiSummaryRow } from "./KpiSummaryRow";
+import { MoneyToCollect } from "./MoneyToCollect";
 import { LeadsMissingNextStep } from "./LeadsMissingNextStep";
 import { PipelineDonut } from "./PipelineDonut";
 import { RevenueGoalsTracker } from "./RevenueGoalsTracker";
@@ -105,6 +107,12 @@ export const MobileDashboard = () => {
             <KpiSummaryRow />
           </WidgetErrorBoundary>
         ) : null}
+        <WidgetErrorBoundary>
+          <FinancialKpiRow />
+        </WidgetErrorBoundary>
+        <WidgetErrorBoundary>
+          <MoneyToCollect />
+        </WidgetErrorBoundary>
         {totalDeal ? (
           <>
             <WidgetErrorBoundary>
