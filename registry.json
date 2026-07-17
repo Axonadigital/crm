@@ -742,6 +742,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/economyFormat.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/InvoicesPage.tsx",
           "type": "registry:component"
         },
@@ -755,6 +759,10 @@
         },
         {
           "path": "src/components/atomic-crm/fortnox/FortnoxCustomerButton.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/EconomyPage.tsx",
           "type": "registry:component"
         },
         {

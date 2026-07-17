@@ -1233,3 +1233,43 @@ export type FortnoxInvoiceStats = {
   unsent_amount: number;
   last_synced_at: string | null;
 };
+
+export type FortnoxSupplierInvoice = {
+  given_number: number;
+  supplier_number: string | null;
+  supplier_name: string | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  final_pay_date: string | null;
+  currency: string | null;
+  total: number | null;
+  vat: number | null;
+  balance: number | null;
+  booked: boolean;
+  cancelled: boolean;
+  credit: boolean;
+  /** Derived in the database so every view agrees. */
+  status: "cancelled" | "paid" | "overdue" | "unpaid";
+  synced_at: string;
+};
+
+export type FortnoxCostMonth = {
+  month: string;
+  invoice_count: number;
+  total_cost: number;
+  total_cost_ex_vat: number;
+};
+
+export type FortnoxRecurringSupplier = {
+  supplier_number: string | null;
+  supplier_name: string | null;
+  invoice_count: number;
+  month_count: number;
+  avg_total: number;
+  min_total: number;
+  max_total: number;
+  first_invoice_date: string | null;
+  last_invoice_date: string | null;
+  sum_total: number;
+};
