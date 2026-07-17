@@ -1316,3 +1316,18 @@ export type FortnoxNamedSubscription = {
   last_invoice_date: string | null;
   sum_total: number;
 };
+
+/**
+ * A won, active deal carrying recurring revenue — the income side of the
+ * Likviditet page. `recurring_amount` is in whole kronor at
+ * `recurring_interval` cadence.
+ */
+export type RecurringRevenueDeal = {
+  id: Identifier;
+  name: string;
+  company_id: Identifier | null;
+  company_name: string | null;
+  amount: number;
+  recurring_amount: number;
+  recurring_interval: "monthly" | "quarterly" | "yearly" | null;
+};

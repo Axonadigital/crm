@@ -24,6 +24,7 @@ import type {
   MonthlyAnalysisPeriodSummary,
   PresentationPolicy,
   RAFile,
+  RecurringRevenueDeal,
   ReportAiContent,
   Sale,
   SalesFormData,
@@ -705,6 +706,49 @@ const dataProviderWithCustomMethods = {
       throw new Error("Failed to sync Fortnox vouchers");
     }
     return data;
+  },
+  /**
+   * Won, active deals with a recurring amount — the recurring-revenue side of
+   * the Likviditet page. Company names are resolved in a second query rather
+   * than an FK embed so a rename of the relationship can't break it.
+   */
+  async getRecurringRevenue(): Promise<RecurringRevenueDeal[]> {
+    const { data, error } = await supabase
+      .from("deals")
+      .select(
+        "id, name, company_id, amount, recurring_amount, recurring_interval",
+      )
+      .eq("stage", "won")
+      .is("archived_at", null)
+      .gt("recurring_amount", 0);
+    if (error) {
+      throw new Error("Failed to load recurring revenue");
+    }
+    const rows = data ?? [];
+
+    const companyIds = [
+      ...new Set(rows.map((r) => r.company_id).filter(Boolean)),
+    ];
+    let names: Record<string, string> = {};
+    if (companyIds.length > 0) {
+      const { data: companies } = await supabase
+        .from("companies")
+        .select("id, name")
+        .in("id", companyIds);
+      names = Object.fromEntries(
+        (companies ?? []).map((c) => [String(c.id), c.name as string]),
+      );
+    }
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      company_id: r.company_id,
+      company_name: r.company_id ? (names[String(r.company_id)] ?? null) : null,
+      amount: r.amount,
+      recurring_amount: r.recurring_amount,
+      recurring_interval: r.recurring_interval,
+    })) as RecurringRevenueDeal[];
   },
   /** Creates or updates the company as a customer in Fortnox. Matches on org number to avoid duplicates. */
   async syncCompanyToFortnox(companyId: Identifier): Promise<{

@@ -738,11 +738,19 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/liquidity.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/invoiceFormat.ts",
           "type": "registry:component"
         },
         {
           "path": "src/components/atomic-crm/fortnox/economyFormat.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/LiquidityPage.tsx",
           "type": "registry:component"
         },
         {

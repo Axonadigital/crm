@@ -77,6 +77,7 @@ import { MobileEmailTemplatesList } from "../templates/MobileEmailTemplatesList"
 import { CustomerVisibilityPage } from "../customer-visibility/CustomerVisibilityPage";
 import { EmailStatsPage } from "../email-stats/EmailStatsPage";
 import { EconomyPage } from "../fortnox/EconomyPage";
+import { LiquidityPage } from "../fortnox/LiquidityPage";
 import { InvoicesPage } from "../fortnox/InvoicesPage";
 
 const defaultStore = localStorageStore(undefined, "CRM");
@@ -272,6 +273,7 @@ const DesktopAdmin = (props: CoreAdminProps) => {
         <Route path="/email-stats" element={<EmailStatsPage />} />
         <Route path={InvoicesPage.path} element={<InvoicesPage />} />
         <Route path={EconomyPage.path} element={<EconomyPage />} />
+        <Route path={LiquidityPage.path} element={<LiquidityPage />} />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
       <Resource name="quotes" {...quotes} />
@@ -363,6 +365,7 @@ const MobileAdmin = (props: CoreAdminProps) => {
           <Route path="/email-stats" element={<EmailStatsPage />} />
           <Route path={InvoicesPage.path} element={<InvoicesPage />} />
           <Route path={EconomyPage.path} element={<EconomyPage />} />
+          <Route path={LiquidityPage.path} element={<LiquidityPage />} />
         </CustomRoutes>
         <Resource
           name="contacts"

@@ -5,6 +5,7 @@ import {
   FileText,
   Handshake,
   LayoutDashboard,
+  LineChart,
   Mail,
   Phone,
   Radar,
@@ -70,6 +71,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Offerter", to: "/quotes", icon: FileText },
       { label: "Fakturor", to: "/invoices", icon: Receipt },
       { label: "Ekonomi", to: "/economy", icon: Wallet },
+      { label: "Likviditet", to: "/liquidity", icon: LineChart },
     ],
   },
   {
