@@ -25,6 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { CompanyAvatar } from "../companies/CompanyAvatar";
+import { ContractDealButton } from "../fortnox/ContractDealButton";
 import MobileHeader from "../layout/MobileHeader";
 import { MobileContent } from "../layout/MobileContent";
 import { MobileBackButton } from "../misc/MobileBackButton";
@@ -99,6 +100,7 @@ const DealShowContent = () => {
                 </>
               ) : (
                 <>
+                  <ContractDealButton />
                   <ArchiveButton record={record} />
                   <EditButton />
                 </>

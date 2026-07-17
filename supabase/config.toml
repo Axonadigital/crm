@@ -217,3 +217,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.fortnox_invoices]
 verify_jwt = false
+[functions.fortnox_contracts]
+verify_jwt = false

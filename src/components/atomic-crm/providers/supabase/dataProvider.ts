@@ -789,6 +789,29 @@ const dataProviderWithCustomMethods = {
     }
     return data;
   },
+  /**
+   * Turns a won recurring deal into a Fortnox contract (avtal) that generates
+   * recurring invoices. Creates the contract only — never books or sends.
+   * Cannot run twice for the same deal (the database enforces it).
+   */
+  async createFortnoxContractFromDeal(dealId: Identifier): Promise<{
+    document_number: number;
+    customer_number: string;
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_contracts",
+      {
+        method: "POST",
+        body: { action: "create_from_deal", deal_id: Number(dealId) },
+      },
+    );
+    if (error || !data) {
+      throw new Error(
+        (await extractFunctionError(error)) ?? "Failed to create the contract",
+      );
+    }
+    return data;
+  },
   /** Emails the invoice to the customer via Fortnox and flips its Sent flag. */
   async sendFortnoxInvoice(documentNumber: number): Promise<{ sent: boolean }> {
     const { data, error } = await supabase.functions.invoke(

@@ -259,6 +259,8 @@ export type Deal = {
   amount: number;
   recurring_amount?: number | null;
   recurring_interval?: "monthly" | "quarterly" | "yearly" | null;
+  /** Fortnox contract (avtal) number, once this recurring deal has one. */
+  fortnox_contract_number?: number | null;
   created_at: string;
   updated_at: string;
   archived_at?: string;
