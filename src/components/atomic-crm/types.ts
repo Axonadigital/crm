@@ -1273,3 +1273,46 @@ export type FortnoxRecurringSupplier = {
   last_invoice_date: string | null;
   sum_total: number;
 };
+
+/**
+ * Ekonomi fas 2 — the real cost picture, mirrored from Fortnox vouchers
+ * (bokföring). On the cash method the voucher stream IS the cost stream, so
+ * these numbers reconcile to Fortnox's own result. See `fortnox_vouchers.sql`.
+ */
+
+/** One month of the result report, straight from the bookkeeping. */
+export type FortnoxResultMonth = {
+  /** First day of the month, ISO date. */
+  month: string;
+  revenue: number;
+  cost: number;
+  /** revenue − cost. Sum over a year equals Fortnox beräknat resultat. */
+  result: number;
+};
+
+/** Net cost per BAS account — "where the money goes". */
+export type FortnoxCostAccount = {
+  account: number;
+  account_description: string | null;
+  cost: number;
+  voucher_count: number;
+};
+
+/**
+ * A recurring named cost — a subscription read by name from the voucher
+ * Description ("CLAUDE.AI SUBSCRIPTION"). Columns mirror
+ * {@link FortnoxRecurringSupplier} so `classifyRecurring` /
+ * `estimatedMonthlyCost` work unchanged.
+ */
+export type FortnoxNamedSubscription = {
+  normalized_name: string;
+  name: string | null;
+  invoice_count: number;
+  month_count: number;
+  avg_total: number;
+  min_total: number;
+  max_total: number;
+  first_invoice_date: string | null;
+  last_invoice_date: string | null;
+  sum_total: number;
+};

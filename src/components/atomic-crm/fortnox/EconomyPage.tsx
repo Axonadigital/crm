@@ -4,10 +4,11 @@ import {
   CalendarClock,
   RefreshCw,
   TrendingDown,
+  TrendingUp,
   Wallet,
 } from "lucide-react";
 import { useDataProvider, useNotify } from "ra-core";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,23 +24,9 @@ import {
 } from "@/components/ui/table";
 
 import type { CrmDataProvider } from "../providers/types";
-import type { FortnoxSupplierInvoice } from "../types";
+import type { FortnoxNamedSubscription } from "../types";
 import { classifyRecurring, estimatedMonthlyCost } from "./economyFormat";
-import {
-  exVatAmount,
-  formatCurrency,
-  formatDate,
-  STATUS_LABELS,
-} from "./invoiceFormat";
-
-type Cut = "all" | FortnoxSupplierInvoice["status"];
-
-const CUTS: { key: Cut; label: string }[] = [
-  { key: "all", label: "Alla" },
-  { key: "unpaid", label: "Obetalda" },
-  { key: "overdue", label: "Förfallna" },
-  { key: "paid", label: "Betalda" },
-];
+import { formatCurrency, formatDate } from "./invoiceFormat";
 
 const StatCard = ({
   label,
@@ -51,7 +38,7 @@ const StatCard = ({
   label: string;
   value: string;
   sub?: string;
-  tone?: "danger";
+  tone?: "danger" | "positive";
   icon: React.ElementType;
 }) => (
   <Card>
@@ -62,13 +49,19 @@ const StatCard = ({
           className={
             tone === "danger"
               ? "h-4 w-4 text-destructive"
-              : "h-4 w-4 text-muted-foreground"
+              : tone === "positive"
+                ? "h-4 w-4 text-emerald-600"
+                : "h-4 w-4 text-muted-foreground"
           }
         />
       </div>
       <div
         className={`mt-2 text-2xl font-semibold ${
-          tone === "danger" ? "text-destructive" : ""
+          tone === "danger"
+            ? "text-destructive"
+            : tone === "positive"
+              ? "text-emerald-600"
+              : ""
         }`}
       >
         {value}
@@ -80,95 +73,102 @@ const StatCard = ({
   </Card>
 );
 
-const STATUS_BADGE_VARIANT: Record<
-  FortnoxSupplierInvoice["status"],
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  paid: "secondary",
-  unpaid: "outline",
-  overdue: "destructive",
-  cancelled: "outline",
+/** A named subscription enriched with its classification + monthly cost. */
+type Subscription = FortnoxNamedSubscription & {
+  kind: ReturnType<typeof classifyRecurring>;
+  monthlyCost: number;
 };
 
 export const EconomyPage = () => {
   const dataProvider = useDataProvider<CrmDataProvider>();
   const notify = useNotify();
   const queryClient = useQueryClient();
-  const [cut, setCut] = useState<Cut>("all");
+  const thisYear = new Date().getFullYear().toString();
 
-  const { data: invoices, isPending } = useQuery({
+  const { data: result, isPending: resultPending } = useQuery({
+    queryKey: ["fortnox", "result-monthly"],
+    queryFn: () => dataProvider.getFortnoxResultMonthly(),
+  });
+
+  const { data: subscriptionsRaw } = useQuery({
+    queryKey: ["fortnox", "named-subscriptions"],
+    queryFn: () => dataProvider.getFortnoxNamedSubscriptions(),
+  });
+
+  const { data: byAccount } = useQuery({
+    queryKey: ["fortnox", "cost-by-account"],
+    queryFn: () => dataProvider.getFortnoxCostByAccount(),
+  });
+
+  const { data: supplierInvoices } = useQuery({
     queryKey: ["fortnox", "supplier-invoices"],
     queryFn: () => dataProvider.getFortnoxSupplierInvoices(),
   });
 
-  const { data: monthly } = useQuery({
-    queryKey: ["fortnox", "cost-monthly"],
-    queryFn: () => dataProvider.getFortnoxCostMonthly(),
-  });
-
-  const { data: recurring } = useQuery({
-    queryKey: ["fortnox", "recurring-suppliers"],
-    queryFn: () => dataProvider.getFortnoxRecurringSuppliers(),
-  });
-
   const { mutate: sync, isPending: isSyncing } = useMutation({
-    mutationFn: () => dataProvider.syncFortnoxSupplierInvoices(),
-    onSuccess: ({ synced }) => {
-      notify(`Synkade ${synced} leverantörsfakturor från Fortnox`, {
-        type: "info",
-      });
+    mutationFn: () => dataProvider.syncFortnoxVouchers(),
+    onSuccess: ({ synced, remaining }) => {
+      notify(
+        remaining > 0
+          ? `Synkade ${synced} verifikationer — ${remaining} kvar, kör igen`
+          : `Synkade ${synced} verifikationer från Fortnox`,
+        { type: "info" },
+      );
       queryClient.invalidateQueries({ queryKey: ["fortnox"] });
     },
     onError: () => notify("Kunde inte synka från Fortnox", { type: "error" }),
   });
 
-  const stats = useMemo(() => {
-    const rows = invoices ?? [];
-    const thisMonth = new Date().toISOString().slice(0, 7);
-    const thisYear = new Date().getFullYear().toString();
+  // Year-to-date totals from the result report. All figures come straight from
+  // the bookkeeping, so revenue − cost reconciles to Fortnox's own result.
+  const totals = useMemo(() => {
+    const rows = (result ?? []).filter((r) => r.month.startsWith(thisYear));
+    return rows.reduce(
+      (acc, r) => ({
+        revenue: acc.revenue + r.revenue,
+        cost: acc.cost + r.cost,
+        result: acc.result + r.result,
+      }),
+      { revenue: 0, cost: 0, result: 0 },
+    );
+  }, [result, thisYear]);
 
-    const active = rows.filter((r) => r.status !== "cancelled");
-    const costThisMonth = active
-      .filter((r) => r.invoice_date?.startsWith(thisMonth))
-      .reduce((sum, r) => sum + (r.total ?? 0), 0);
-    const costThisYear = active
-      .filter((r) => r.invoice_date?.startsWith(thisYear))
-      .reduce((sum, r) => sum + (r.total ?? 0), 0);
-    const unpaidBalance = active
-      .filter((r) => r.status === "unpaid" || r.status === "overdue")
-      .reduce((sum, r) => sum + (r.balance ?? 0), 0);
-    const overdueCount = active.filter((r) => r.status === "overdue").length;
-
-    return { costThisMonth, costThisYear, unpaidBalance, overdueCount };
-  }, [invoices]);
-
-  const subscriptions = useMemo(
+  const subscriptions = useMemo<Subscription[]>(
     () =>
-      (recurring ?? [])
-        .filter((s) => classifyRecurring(s) === "subscription")
-        .map((s) => ({ ...s, monthlyCost: estimatedMonthlyCost(s) }))
+      (subscriptionsRaw ?? [])
+        .map((s) => ({
+          ...s,
+          kind: classifyRecurring(s),
+          monthlyCost: estimatedMonthlyCost(s),
+        }))
         .sort((a, b) => b.monthlyCost - a.monthlyCost),
-    [recurring],
+    [subscriptionsRaw],
   );
 
-  const subscriptionMonthlyTotal = subscriptions.reduce(
+  const fixedSubscriptions = subscriptions.filter(
+    (s) => s.kind === "subscription",
+  );
+  const subscriptionMonthlyTotal = fixedSubscriptions.reduce(
     (sum, s) => sum + s.monthlyCost,
     0,
   );
 
-  const visible = useMemo(() => {
-    const rows = invoices ?? [];
-    if (cut === "all") return rows.filter((r) => r.status !== "cancelled");
-    return rows.filter((row) => row.status === cut);
-  }, [invoices, cut]);
+  const unpaidSupplier = useMemo(() => {
+    const rows = (supplierInvoices ?? []).filter(
+      (r) => r.status === "unpaid" || r.status === "overdue",
+    );
+    const balance = rows.reduce((sum, r) => sum + (r.balance ?? 0), 0);
+    const overdue = rows.filter((r) => r.status === "overdue").length;
+    return { rows, balance, overdue };
+  }, [supplierInvoices]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Ekonomi — kostnader</h1>
+          <h1 className="text-2xl font-semibold">Ekonomi</h1>
           <p className="text-sm text-muted-foreground">
-            Leverantörsfakturor speglade från Fortnox
+            Speglat ur Fortnox bokföring — samma siffror som resultatrapporten
           </p>
         </div>
         <Button variant="outline" onClick={() => sync()} disabled={isSyncing}>
@@ -181,32 +181,26 @@ export const EconomyPage = () => {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Kostnad denna månad (ink moms)"
-          value={formatCurrency(stats.costThisMonth)}
-          sub={`${formatCurrency(exVatAmount(stats.costThisMonth))} ex moms`}
-          icon={TrendingDown}
+          label={`Resultat ${thisYear}`}
+          value={formatCurrency(totals.result)}
+          sub="intäkter − kostnader, ur bokföringen"
+          tone={totals.result >= 0 ? "positive" : "danger"}
+          icon={totals.result >= 0 ? TrendingUp : TrendingDown}
         />
         <StatCard
-          label="Kostnad i år (ink moms)"
-          value={formatCurrency(stats.costThisYear)}
-          sub={`${formatCurrency(exVatAmount(stats.costThisYear))} ex moms`}
+          label={`Intäkter ${thisYear}`}
+          value={formatCurrency(totals.revenue)}
+          icon={TrendingUp}
+        />
+        <StatCard
+          label={`Kostnader ${thisYear}`}
+          value={formatCurrency(totals.cost)}
           icon={Wallet}
-        />
-        <StatCard
-          label="Obetalt till leverantörer"
-          value={formatCurrency(stats.unpaidBalance)}
-          sub={
-            stats.overdueCount > 0
-              ? `${stats.overdueCount} förfallna!`
-              : "inget förfallet"
-          }
-          tone={stats.overdueCount > 0 ? "danger" : undefined}
-          icon={AlertTriangle}
         />
         <StatCard
           label="Abonnemang"
           value={`${formatCurrency(subscriptionMonthlyTotal)}/mån`}
-          sub={`${subscriptions.length} återkommande med fast belopp`}
+          sub={`${fixedSubscriptions.length} med fast belopp`}
           icon={CalendarClock}
         />
       </div>
@@ -215,10 +209,10 @@ export const EconomyPage = () => {
         <Card>
           <CardContent className="p-0">
             <div className="p-4 pb-0">
-              <h2 className="font-semibold">Abonnemang</h2>
+              <h2 className="font-semibold">Abonnemang &amp; återkommande</h2>
               <p className="text-sm text-muted-foreground">
-                Leverantörer som återkommer med samma belopp. Månadskostnaden är
-                uppskattad från fakturahistoriken.
+                Avlästa direkt ur bokföringen och namngivna per leverantör.
+                Fasta belopp är abonnemang; rörliga varierar mellan månaderna.
               </p>
             </div>
             <Table>
@@ -226,16 +220,28 @@ export const EconomyPage = () => {
                 <TableRow>
                   <TableHead>Leverantör</TableHead>
                   <TableHead className="text-right">Per månad</TableHead>
-                  <TableHead className="text-right">Fakturor</TableHead>
-                  <TableHead>Senaste faktura</TableHead>
+                  <TableHead>Typ</TableHead>
+                  <TableHead className="text-right">Antal</TableHead>
+                  <TableHead>Senast</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {subscriptions.map((s) => (
-                  <TableRow key={s.supplier_number ?? s.supplier_name}>
-                    <TableCell>{s.supplier_name ?? "—"}</TableCell>
+                  <TableRow key={s.normalized_name}>
+                    <TableCell className="font-medium">
+                      {s.name ?? s.normalized_name}
+                    </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(s.monthlyCost)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          s.kind === "subscription" ? "secondary" : "outline"
+                        }
+                      >
+                        {s.kind === "subscription" ? "Abonnemang" : "Rörligt"}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       {s.invoice_count}
@@ -249,33 +255,129 @@ export const EconomyPage = () => {
         </Card>
       ) : null}
 
-      {monthly && monthly.length > 0 ? (
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardContent className="p-0">
             <div className="p-4 pb-0">
-              <h2 className="font-semibold">Kostnad per månad</h2>
+              <h2 className="font-semibold">Resultat per månad</h2>
+            </div>
+            {resultPending ? (
+              <div className="space-y-2 p-6">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : (result ?? []).length === 0 ? (
+              <p className="p-6 text-sm text-muted-foreground">
+                Inga verifikationer speglade ännu. Klicka Synka nu.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Månad</TableHead>
+                    <TableHead className="text-right">Intäkter</TableHead>
+                    <TableHead className="text-right">Kostnader</TableHead>
+                    <TableHead className="text-right">Resultat</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...(result ?? [])].reverse().map((m) => (
+                    <TableRow key={m.month}>
+                      <TableCell>{m.month.slice(0, 7)}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(m.revenue)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(m.cost)}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right font-medium ${
+                          m.result < 0 ? "text-destructive" : ""
+                        }`}
+                      >
+                        {formatCurrency(m.result)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-0">
+            <div className="p-4 pb-0">
+              <h2 className="font-semibold">Kostnad per konto</h2>
+              <p className="text-sm text-muted-foreground">
+                Vart pengarna tar vägen (BAS-konto).
+              </p>
+            </div>
+            {(byAccount ?? []).length === 0 ? (
+              <p className="p-6 text-sm text-muted-foreground">—</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Konto</TableHead>
+                    <TableHead>Benämning</TableHead>
+                    <TableHead className="text-right">Kostnad</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(byAccount ?? []).slice(0, 15).map((a) => (
+                    <TableRow key={a.account}>
+                      <TableCell className="font-mono text-xs">
+                        {a.account}
+                      </TableCell>
+                      <TableCell>{a.account_description ?? "—"}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(a.cost)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {unpaidSupplier.rows.length > 0 ? (
+        <Card>
+          <CardContent className="p-0">
+            <div className="flex items-center justify-between p-4 pb-0">
+              <div>
+                <h2 className="font-semibold">Obetalda leverantörsfakturor</h2>
+                <p className="text-sm text-muted-foreground">
+                  Skulder till leverantörer som ännu inte betalats.
+                </p>
+              </div>
+              {unpaidSupplier.overdue > 0 ? (
+                <Badge variant="destructive">
+                  <AlertTriangle className="mr-1 h-3 w-3" />
+                  {unpaidSupplier.overdue} förfallna
+                </Badge>
+              ) : null}
             </div>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Månad</TableHead>
-                  <TableHead className="text-right">Ex moms</TableHead>
-                  <TableHead className="text-right">Ink moms</TableHead>
-                  <TableHead className="text-right">Fakturor</TableHead>
+                  <TableHead>Leverantör</TableHead>
+                  <TableHead>Förfaller</TableHead>
+                  <TableHead className="text-right">Kvar att betala</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...monthly].reverse().map((m) => (
-                  <TableRow key={m.month}>
-                    <TableCell>{m.month.slice(0, 7)}</TableCell>
+                {unpaidSupplier.rows.map((invoice) => (
+                  <TableRow key={invoice.given_number}>
+                    <TableCell>{invoice.supplier_name ?? "—"}</TableCell>
+                    <TableCell>{formatDate(invoice.due_date)}</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(m.total_cost_ex_vat)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(m.total_cost)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {m.invoice_count}
+                      {formatCurrency(
+                        invoice.balance,
+                        invoice.currency ?? "SEK",
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -285,81 +387,10 @@ export const EconomyPage = () => {
         </Card>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        {CUTS.map(({ key, label }) => (
-          <Button
-            key={key}
-            size="sm"
-            variant={cut === key ? "default" : "outline"}
-            onClick={() => setCut(key)}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
-
-      <Card>
-        <CardContent className="overflow-x-auto p-0">
-          {isPending ? (
-            <div className="space-y-2 p-6">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-            </div>
-          ) : visible.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              Inga leverantörsfakturor i den här vyn. Klicka på Synka nu för att
-              hämta från Fortnox.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Leverantör</TableHead>
-                  <TableHead>Fakturanr</TableHead>
-                  <TableHead>Fakturadatum</TableHead>
-                  <TableHead>Förfaller</TableHead>
-                  <TableHead className="text-right">Ex moms</TableHead>
-                  <TableHead className="text-right">Ink moms</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visible.map((invoice) => (
-                  <TableRow key={invoice.given_number}>
-                    <TableCell>{invoice.supplier_name ?? "—"}</TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {invoice.invoice_number ?? invoice.given_number}
-                    </TableCell>
-                    <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
-                    <TableCell>{formatDate(invoice.due_date)}</TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(
-                        exVatAmount(invoice.total, invoice.vat),
-                        invoice.currency ?? "SEK",
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(invoice.total, invoice.currency ?? "SEK")}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={STATUS_BADGE_VARIANT[invoice.status]}>
-                        {STATUS_LABELS[invoice.status]}
-                        {invoice.credit ? " · kredit" : ""}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
       <p className="text-xs text-muted-foreground">
-        Fortnox äger leverantörsfakturorna — CRM:et speglar dem enbart för
-        statistik. Ex moms använder Fortnox momsbelopp när det finns, annars
-        antas 25 %.
+        Fortnox äger bokföringen — CRM:et speglar verifikationerna read-only.
+        Resultatet beräknas som intäkter (konto 3xxx) minus kostnader
+        (4xxx–8xxx) och stämmer med Fortnox resultatrapport.
       </p>
     </div>
   );
