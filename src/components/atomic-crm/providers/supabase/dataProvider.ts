@@ -8,6 +8,7 @@ import {
 } from "ra-core";
 import type {
   CustomerVisibilityDashboardResponse,
+  CustomerCoverage,
   ContactNote,
   Deal,
   DealNote,
@@ -24,6 +25,7 @@ import type {
   MonthlyAnalysisPeriodSummary,
   PresentationPolicy,
   RAFile,
+  RecurringRevenueDeal,
   ReportAiContent,
   Sale,
   SalesFormData,
@@ -706,6 +708,129 @@ const dataProviderWithCustomMethods = {
     }
     return data;
   },
+  /**
+   * Won, active deals with a recurring amount — the recurring-revenue side of
+   * the Likviditet page. Company names are resolved in a second query rather
+   * than an FK embed so a rename of the relationship can't break it.
+   */
+  async getRecurringRevenue(): Promise<RecurringRevenueDeal[]> {
+    const { data, error } = await supabase
+      .from("deals")
+      .select(
+        "id, name, company_id, amount, recurring_amount, recurring_interval",
+      )
+      .eq("stage", "won")
+      .is("archived_at", null)
+      .gt("recurring_amount", 0);
+    if (error) {
+      throw new Error("Failed to load recurring revenue");
+    }
+    const rows = data ?? [];
+
+    const companyIds = [
+      ...new Set(rows.map((r) => r.company_id).filter(Boolean)),
+    ];
+    let names: Record<string, string> = {};
+    if (companyIds.length > 0) {
+      const { data: companies } = await supabase
+        .from("companies")
+        .select("id, name")
+        .in("id", companyIds);
+      names = Object.fromEntries(
+        (companies ?? []).map((c) => [String(c.id), c.name as string]),
+      );
+    }
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      company_id: r.company_id,
+      company_name: r.company_id ? (names[String(r.company_id)] ?? null) : null,
+      amount: r.amount,
+      recurring_amount: r.recurring_amount,
+      recurring_interval: r.recurring_interval,
+    })) as RecurringRevenueDeal[];
+  },
+  /**
+   * Billing coverage per won-deal customer — drives the Kundtäckning page and
+   * the "pengar att hämta" widget. Aggregates won deals by company and joins
+   * the Fortnox-customer link + invoice presence, all from data we already
+   * hold. No deal↔invoice link exists in the data, so "invoiced" is judged at
+   * the company level (has any mirrored invoice) and "billable" by whether the
+   * company is even a Fortnox customer yet.
+   */
+  async getCustomerCoverage(): Promise<CustomerCoverage[]> {
+    const INTERVAL_MONTHS: Record<string, number> = {
+      monthly: 1,
+      quarterly: 3,
+      yearly: 12,
+    };
+    const toMonthly = (amount: number | null, interval: string | null) =>
+      amount ? amount / (interval ? (INTERVAL_MONTHS[interval] ?? 1) : 1) : 0;
+
+    const { data: deals, error } = await supabase
+      .from("deals")
+      .select(
+        "company_id, amount, recurring_amount, recurring_interval, fortnox_contract_number",
+      )
+      .eq("stage", "won")
+      .is("archived_at", null)
+      .not("company_id", "is", null);
+    if (error) {
+      throw new Error("Failed to load customer coverage");
+    }
+    const wonDeals = deals ?? [];
+    const companyIds = [...new Set(wonDeals.map((d) => d.company_id))];
+    if (companyIds.length === 0) return [];
+
+    const [{ data: companies }, { data: invoices }] = await Promise.all([
+      supabase
+        .from("companies")
+        .select("id, name, fortnox_customer_number")
+        .in("id", companyIds),
+      supabase
+        .from("fortnox_invoices")
+        .select("company_id")
+        .in("company_id", companyIds),
+    ]);
+
+    const companyById = new Map(
+      (companies ?? []).map((c) => [String(c.id), c]),
+    );
+    const companiesWithInvoice = new Set(
+      (invoices ?? []).map((i) => String(i.company_id)),
+    );
+
+    const byCompany = new Map<string, CustomerCoverage>();
+    for (const deal of wonDeals) {
+      const key = String(deal.company_id);
+      const company = companyById.get(key);
+      const monthly = toMonthly(deal.recurring_amount, deal.recurring_interval);
+      const existing = byCompany.get(key);
+      if (existing) {
+        existing.won_deal_count += 1;
+        existing.won_amount += deal.amount ?? 0;
+        existing.recurring_monthly += monthly;
+        existing.has_recurring = existing.has_recurring || monthly > 0;
+        existing.has_contract =
+          existing.has_contract || !!deal.fortnox_contract_number;
+      } else {
+        byCompany.set(key, {
+          company_id: deal.company_id,
+          company_name: (company?.name as string) ?? null,
+          is_fortnox_customer: !!company?.fortnox_customer_number,
+          has_invoice: companiesWithInvoice.has(key),
+          won_deal_count: 1,
+          won_amount: deal.amount ?? 0,
+          recurring_monthly: monthly,
+          has_recurring: monthly > 0,
+          has_contract: !!deal.fortnox_contract_number,
+        });
+      }
+    }
+
+    return [...byCompany.values()].sort((a, b) => b.won_amount - a.won_amount);
+  },
   /** Creates or updates the company as a customer in Fortnox. Matches on org number to avoid duplicates. */
   async syncCompanyToFortnox(companyId: Identifier): Promise<{
     customer_number: string;
@@ -741,6 +866,29 @@ const dataProviderWithCustomMethods = {
     if (error || !data) {
       throw new Error(
         (await extractFunctionError(error)) ?? "Failed to create the invoice",
+      );
+    }
+    return data;
+  },
+  /**
+   * Turns a won recurring deal into a Fortnox contract (avtal) that generates
+   * recurring invoices. Creates the contract only — never books or sends.
+   * Cannot run twice for the same deal (the database enforces it).
+   */
+  async createFortnoxContractFromDeal(dealId: Identifier): Promise<{
+    document_number: number;
+    customer_number: string;
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_contracts",
+      {
+        method: "POST",
+        body: { action: "create_from_deal", deal_id: Number(dealId) },
+      },
+    );
+    if (error || !data) {
+      throw new Error(
+        (await extractFunctionError(error)) ?? "Failed to create the contract",
       );
     }
     return data;

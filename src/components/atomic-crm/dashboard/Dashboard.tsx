@@ -4,8 +4,10 @@ import type { Contact, ContactNote } from "../types";
 import { CallStatsWidget } from "./CallStatsWidget";
 import { DashboardActivityLog } from "./DashboardActivityLog";
 import { DashboardStepper } from "./DashboardStepper";
+import { FinancialKpiRow } from "./FinancialKpiRow";
 import { FollowUpsDueToday } from "./FollowUpsDueToday";
 import { KpiSummaryRow } from "./KpiSummaryRow";
+import { MoneyToCollect } from "./MoneyToCollect";
 import { LeadsMissingNextStep } from "./LeadsMissingNextStep";
 import { PipelineDonut } from "./PipelineDonut";
 import { RevenueGoalsTracker } from "./RevenueGoalsTracker";
@@ -61,6 +63,10 @@ export const Dashboard = () => {
         </WidgetErrorBoundary>
       ) : null}
 
+      <WidgetErrorBoundary>
+        <FinancialKpiRow />
+      </WidgetErrorBoundary>
+
       {/* Hero: monthly revenue bars + pipeline distribution donut */}
       {totalDeal ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -88,6 +94,9 @@ export const Dashboard = () => {
         </div>
 
         <div className="flex flex-col gap-6">
+          <WidgetErrorBoundary>
+            <MoneyToCollect />
+          </WidgetErrorBoundary>
           <WidgetErrorBoundary>
             <RevenueGoalsTracker />
           </WidgetErrorBoundary>

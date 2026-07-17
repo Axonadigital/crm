@@ -738,11 +738,19 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/liquidity.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/invoiceFormat.ts",
           "type": "registry:component"
         },
         {
           "path": "src/components/atomic-crm/fortnox/economyFormat.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/LiquidityPage.tsx",
           "type": "registry:component"
         },
         {
@@ -763,6 +771,14 @@
         },
         {
           "path": "src/components/atomic-crm/fortnox/EconomyPage.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/CustomerCoveragePage.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/ContractDealButton.tsx",
           "type": "registry:component"
         },
         {
@@ -938,6 +954,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/dashboard/MoneyToCollect.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/dashboard/MobileDashboard.tsx",
           "type": "registry:component"
         },
@@ -963,6 +983,10 @@
         },
         {
           "path": "src/components/atomic-crm/dashboard/FollowUpsDueToday.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/dashboard/FinancialKpiRow.tsx",
           "type": "registry:component"
         },
         {

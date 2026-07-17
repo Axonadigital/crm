@@ -1,14 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  BellRing,
   CalendarClock,
   RefreshCw,
   TrendingDown,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react";
 import { useDataProvider, useNotify } from "ra-core";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,6 +86,7 @@ export const EconomyPage = () => {
   const notify = useNotify();
   const queryClient = useQueryClient();
   const thisYear = new Date().getFullYear().toString();
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const { data: result, isPending: resultPending } = useQuery({
     queryKey: ["fortnox", "result-monthly"],
@@ -153,6 +156,19 @@ export const EconomyPage = () => {
     0,
   );
 
+  // Newly-recurring costs: a subscription whose first charge landed in the last
+  // ~45 days. The bank (Lunar) flags a brand-new charge; this catches the
+  // moment it turns into a recurring commitment — the point to check it's
+  // intended. Complements, doesn't duplicate, the bank alert.
+  const newlyRecurring = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 45);
+    const cutoffIso = cutoff.toISOString().slice(0, 10);
+    return (subscriptionsRaw ?? []).filter(
+      (s) => s.first_invoice_date != null && s.first_invoice_date >= cutoffIso,
+    );
+  }, [subscriptionsRaw]);
+
   const unpaidSupplier = useMemo(() => {
     const rows = (supplierInvoices ?? []).filter(
       (r) => r.status === "unpaid" || r.status === "overdue",
@@ -178,6 +194,33 @@ export const EconomyPage = () => {
           Synka nu
         </Button>
       </div>
+
+      {newlyRecurring.length > 0 && !bannerDismissed ? (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <BellRing className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="flex-1 text-sm">
+            <p className="font-medium">
+              {newlyRecurring.length === 1
+                ? "Ny återkommande kostnad upptäckt"
+                : `${newlyRecurring.length} nya återkommande kostnader upptäckta`}
+            </p>
+            <p className="mt-0.5">
+              {newlyRecurring
+                .map((s) => s.name ?? s.normalized_name)
+                .join(", ")}{" "}
+              — kontrollera att abonnemanget är avsett.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBannerDismissed(true)}
+            className="rounded p-1 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+            aria-label="Stäng"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
