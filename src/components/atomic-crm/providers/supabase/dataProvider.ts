@@ -12,10 +12,13 @@ import type {
   Deal,
   DealNote,
   EmailSendStatsResponse,
+  FortnoxCostAccount,
   FortnoxCostMonth,
   FortnoxInvoice,
   FortnoxInvoiceStats,
+  FortnoxNamedSubscription,
   FortnoxRecurringSupplier,
+  FortnoxResultMonth,
   FortnoxSupplierInvoice,
   FortnoxStatus,
   MonthlyAnalysisPeriodSummary,
@@ -647,6 +650,59 @@ const dataProviderWithCustomMethods = {
     );
     if (error || !data) {
       throw new Error("Failed to sync Fortnox supplier invoices");
+    }
+    return data;
+  },
+  /**
+   * Ekonomi fas 2 — the result report per month, straight from the Fortnox
+   * vouchers (bokföring). This is the correct cost picture: on the cash method
+   * the voucher stream captures the subscriptions that never become supplier
+   * invoices.
+   */
+  async getFortnoxResultMonthly(): Promise<FortnoxResultMonth[]> {
+    const { data, error } = await supabase
+      .from("fortnox_result_monthly")
+      .select("*")
+      .order("month", { ascending: true });
+    if (error) {
+      throw new Error("Failed to load Fortnox monthly result");
+    }
+    return (data ?? []) as FortnoxResultMonth[];
+  },
+  /** Net cost per BAS account — where the money goes. */
+  async getFortnoxCostByAccount(): Promise<FortnoxCostAccount[]> {
+    const { data, error } = await supabase
+      .from("fortnox_cost_by_account")
+      .select("*")
+      .order("cost", { ascending: false });
+    if (error) {
+      throw new Error("Failed to load Fortnox cost by account");
+    }
+    return (data ?? []) as FortnoxCostAccount[];
+  },
+  /** Recurring named costs read from voucher descriptions — the subscriptions. */
+  async getFortnoxNamedSubscriptions(): Promise<FortnoxNamedSubscription[]> {
+    const { data, error } = await supabase
+      .from("fortnox_named_subscriptions")
+      .select("*")
+      .order("sum_total", { ascending: false });
+    if (error) {
+      throw new Error("Failed to load Fortnox named subscriptions");
+    }
+    return (data ?? []) as FortnoxNamedSubscription[];
+  },
+  /** Pulls fresh voucher data from Fortnox now. Reports how many remain to backfill. */
+  async syncFortnoxVouchers(): Promise<{
+    synced: number;
+    rows: number;
+    remaining: number;
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_sync_vouchers",
+      { method: "POST", body: {} },
+    );
+    if (error || !data) {
+      throw new Error("Failed to sync Fortnox vouchers");
     }
     return data;
   },
