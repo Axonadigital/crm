@@ -12,8 +12,11 @@ import type {
   Deal,
   DealNote,
   EmailSendStatsResponse,
+  FortnoxCostMonth,
   FortnoxInvoice,
   FortnoxInvoiceStats,
+  FortnoxRecurringSupplier,
+  FortnoxSupplierInvoice,
   FortnoxStatus,
   MonthlyAnalysisPeriodSummary,
   PresentationPolicy,
@@ -596,6 +599,54 @@ const dataProviderWithCustomMethods = {
     );
     if (error || !data) {
       throw new Error("Failed to sync Fortnox invoices");
+    }
+    return data;
+  },
+  /**
+   * The supplier invoice mirror (leverantörsfakturor) — the cost side of the
+   * Ekonomi page. Reads the view so `status` is derived at read time.
+   */
+  async getFortnoxSupplierInvoices(): Promise<FortnoxSupplierInvoice[]> {
+    const { data, error } = await supabase
+      .from("fortnox_supplier_invoice_list")
+      .select("*")
+      .order("invoice_date", { ascending: false, nullsFirst: false })
+      .limit(500);
+    if (error) {
+      throw new Error("Failed to load Fortnox supplier invoices");
+    }
+    return (data ?? []) as FortnoxSupplierInvoice[];
+  },
+  /** Net supplier cost per month, aggregated in the database. */
+  async getFortnoxCostMonthly(): Promise<FortnoxCostMonth[]> {
+    const { data, error } = await supabase
+      .from("fortnox_cost_monthly")
+      .select("*")
+      .order("month", { ascending: true });
+    if (error) {
+      throw new Error("Failed to load Fortnox monthly costs");
+    }
+    return (data ?? []) as FortnoxCostMonth[];
+  },
+  /** Suppliers invoicing in 2+ distinct months — subscription candidates. */
+  async getFortnoxRecurringSuppliers(): Promise<FortnoxRecurringSupplier[]> {
+    const { data, error } = await supabase
+      .from("fortnox_supplier_recurring")
+      .select("*")
+      .order("sum_total", { ascending: false });
+    if (error) {
+      throw new Error("Failed to load recurring suppliers");
+    }
+    return (data ?? []) as FortnoxRecurringSupplier[];
+  },
+  /** Pulls fresh supplier invoice data from Fortnox now, instead of waiting for the hourly cron. */
+  async syncFortnoxSupplierInvoices(): Promise<{ synced: number }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_sync_supplier_invoices",
+      { method: "POST", body: {} },
+    );
+    if (error || !data) {
+      throw new Error("Failed to sync Fortnox supplier invoices");
     }
     return data;
   },
