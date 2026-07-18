@@ -1342,6 +1342,56 @@ export type CustomerCoverage = {
 };
 
 /**
+ * A manually maintained subscription — the source of truth for what the company
+ * actually pays for, reconciled against the bookkeeping. See
+ * `subscriptions_registry.sql`.
+ */
+export type Subscription = {
+  id: Identifier;
+  name: string;
+  vendor: string | null;
+  category: string | null;
+  monthly_amount: number;
+  currency: string;
+  status: "active" | "paused" | "ended";
+  started_on: string | null;
+  ended_on: string | null;
+  /** Uppercase patterns matched against Fortnox voucher descriptions. */
+  aliases: string[];
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Fields a user supplies when creating or editing a subscription. */
+export type SubscriptionInput = {
+  name: string;
+  vendor?: string | null;
+  category?: string | null;
+  monthly_amount: number;
+  currency?: string;
+  status?: "active" | "paused" | "ended";
+  started_on?: string | null;
+  ended_on?: string | null;
+  aliases?: string[];
+  notes?: string | null;
+};
+
+/**
+ * One vendor's booked operating cost from the bookkeeping — the reconciliation
+ * counterpart to a {@link Subscription}. From `fortnox_cost_by_description`.
+ */
+export type FortnoxCostDescription = {
+  description: string;
+  month_count: number;
+  total_cost: number;
+  /** Net cost booked in the trailing 90 days. */
+  cost_90d: number;
+  first_date: string | null;
+  last_date: string | null;
+};
+
+/**
  * A won, active deal carrying recurring revenue — the income side of the
  * Likviditet page. `recurring_amount` is in whole kronor at
  * `recurring_interval` cadence.

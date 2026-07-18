@@ -11,6 +11,7 @@ import {
   Phone,
   Radar,
   Receipt,
+  Repeat,
   Users,
   Wallet,
 } from "lucide-react";
@@ -73,6 +74,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Fakturor", to: "/invoices", icon: Receipt },
       { label: "Ekonomi", to: "/economy", icon: Wallet },
       { label: "Likviditet", to: "/liquidity", icon: LineChart },
+      { label: "Abonnemang", to: "/subscriptions", icon: Repeat },
       { label: "Kundtäckning", to: "/customer-coverage", icon: ClipboardCheck },
     ],
   },

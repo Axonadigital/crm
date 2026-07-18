@@ -5,10 +5,6 @@ import { memo } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-import {
-  classifyRecurring,
-  estimatedMonthlyCost,
-} from "../fortnox/economyFormat";
 import { monthlyAmount } from "../fortnox/liquidity";
 import type { CrmDataProvider } from "../providers/types";
 import { KpiCard } from "./KpiCard";
@@ -46,8 +42,8 @@ export const FinancialKpiRow = memo(() => {
     queryFn: () => dataProvider.getRecurringRevenue(),
   });
   const subs = useQuery({
-    queryKey: ["fortnox", "named-subscriptions"],
-    queryFn: () => dataProvider.getFortnoxNamedSubscriptions(),
+    queryKey: ["subscriptions"],
+    queryFn: () => dataProvider.getSubscriptions(),
   });
   const invoices = useQuery({
     queryKey: ["fortnox", "supplier-and-invoices", "list"],
@@ -79,11 +75,11 @@ export const FinancialKpiRow = memo(() => {
     0,
   );
 
-  const fixedCostMonthly = (subs.data ?? [])
-    .filter((s) => classifyRecurring(s) === "subscription")
-    .reduce((sum, s) => sum + estimatedMonthlyCost(s), 0);
+  const activeCostMonthly = (subs.data ?? [])
+    .filter((s) => s.status === "active")
+    .reduce((sum, s) => sum + s.monthly_amount, 0);
 
-  const netRunrate = mrr - fixedCostMonthly;
+  const netRunrate = mrr - activeCostMonthly;
 
   const unpaid = (invoices.data ?? []).filter(
     (i) => i.status === "unpaid" || i.status === "overdue",
