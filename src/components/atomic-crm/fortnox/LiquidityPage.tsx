@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/table";
 
 import type { CrmDataProvider } from "../providers/types";
-import { classifyRecurring, estimatedMonthlyCost } from "./economyFormat";
 import { formatCurrency } from "./invoiceFormat";
 import {
   monthlyAmount,
@@ -90,9 +89,9 @@ export const LiquidityPage = () => {
     queryFn: () => dataProvider.getRecurringRevenue(),
   });
 
-  const { data: subscriptionsRaw } = useQuery({
-    queryKey: ["fortnox", "named-subscriptions"],
-    queryFn: () => dataProvider.getFortnoxNamedSubscriptions(),
+  const { data: subscriptions } = useQuery({
+    queryKey: ["subscriptions"],
+    queryFn: () => dataProvider.getSubscriptions(),
   });
 
   const { data: result } = useQuery({
@@ -110,19 +109,17 @@ export const LiquidityPage = () => {
     return { rows: rows.sort((a, b) => b.monthly - a.monthly), monthly };
   }, [revenueDeals]);
 
-  // Recurring cost = the subscriptions with a fixed amount (the reliable,
-  // committed outflow). Variable recurring costs are excluded from the runrate.
+  // Recurring cost = the ACTIVE subscriptions in the manual registry — the
+  // source of truth for what we actually pay for right now. Handles plan
+  // switches (Pro↔Max) and cancellations the bookkeeping can't infer alone.
   const cost = useMemo(() => {
-    const subs = (subscriptionsRaw ?? [])
-      .filter((s) => classifyRecurring(s) === "subscription")
-      .map((s) => ({
-        name: s.name ?? s.normalized_name,
-        monthly: estimatedMonthlyCost(s),
-      }))
+    const subs = (subscriptions ?? [])
+      .filter((s) => s.status === "active")
+      .map((s) => ({ name: s.name, monthly: s.monthly_amount }))
       .sort((a, b) => b.monthly - a.monthly);
     const monthly = subs.reduce((sum, s) => sum + s.monthly, 0);
     return { subs, monthly };
-  }, [subscriptionsRaw]);
+  }, [subscriptions]);
 
   const netMonthly = revenue.monthly - cost.monthly;
 
@@ -158,7 +155,7 @@ export const LiquidityPage = () => {
         <StatCard
           label="Återkommande kostnader"
           value={`${formatCurrency(cost.monthly)}/mån`}
-          sub={`${cost.subs.length} fasta abonnemang`}
+          sub={`${cost.subs.length} aktiva abonnemang`}
           icon={ArrowDownRight}
         />
         <StatCard
@@ -250,15 +247,23 @@ export const LiquidityPage = () => {
 
         <Card>
           <CardContent className="p-0">
-            <div className="p-4 pb-0">
-              <h2 className="font-semibold">Återkommande kostnader</h2>
-              <p className="text-sm text-muted-foreground">
-                Fasta abonnemang ur bokföringen.
-              </p>
+            <div className="flex items-start justify-between p-4 pb-0">
+              <div>
+                <h2 className="font-semibold">Återkommande kostnader</h2>
+                <p className="text-sm text-muted-foreground">
+                  Aktiva abonnemang ur registret.
+                </p>
+              </div>
+              <a
+                href="/#/subscriptions"
+                className="text-sm text-muted-foreground underline hover:text-foreground"
+              >
+                Hantera
+              </a>
             </div>
             {cost.subs.length === 0 ? (
               <p className="p-6 text-sm text-muted-foreground">
-                Inga fasta abonnemang identifierade ännu.
+                Inga aktiva abonnemang. Lägg till dem under Abonnemang.
               </p>
             ) : (
               <Table>
@@ -286,8 +291,8 @@ export const LiquidityPage = () => {
 
       <p className="text-xs text-muted-foreground">
         Intäkter kommer från vunna deals med återkommande belopp; kostnader från
-        Fortnox-bokföringens fasta abonnemang. Rörliga kostnader räknas inte in
-        i runraten.
+        de aktiva abonnemangen i registret (stäms av mot bokföringen under
+        Abonnemang).
       </p>
     </div>
   );

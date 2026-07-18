@@ -14,6 +14,7 @@ import type {
   DealNote,
   EmailSendStatsResponse,
   FortnoxCostAccount,
+  FortnoxCostDescription,
   FortnoxCostMonth,
   FortnoxInvoice,
   FortnoxInvoiceStats,
@@ -22,6 +23,8 @@ import type {
   FortnoxResultMonth,
   FortnoxSupplierInvoice,
   FortnoxStatus,
+  Subscription,
+  SubscriptionInput,
   MonthlyAnalysisPeriodSummary,
   PresentationPolicy,
   RAFile,
@@ -830,6 +833,67 @@ const dataProviderWithCustomMethods = {
     }
 
     return [...byCompany.values()].sort((a, b) => b.won_amount - a.won_amount);
+  },
+  /**
+   * The manual subscription registry — the source of truth for what the company
+   * actually pays for, reconciled against the bookkeeping on the Abonnemang page.
+   */
+  async getSubscriptions(): Promise<Subscription[]> {
+    const { data, error } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .order("status", { ascending: true })
+      .order("monthly_amount", { ascending: false });
+    if (error) {
+      throw new Error("Failed to load subscriptions");
+    }
+    return (data ?? []) as Subscription[];
+  },
+  async createSubscription(input: SubscriptionInput): Promise<Subscription> {
+    const { data, error } = await supabase
+      .from("subscriptions")
+      .insert(input)
+      .select("*")
+      .single();
+    if (error || !data) {
+      throw new Error("Failed to create the subscription");
+    }
+    return data as Subscription;
+  },
+  async updateSubscription(
+    id: Identifier,
+    input: Partial<SubscriptionInput>,
+  ): Promise<Subscription> {
+    const { data, error } = await supabase
+      .from("subscriptions")
+      .update({ ...input, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error || !data) {
+      throw new Error("Failed to update the subscription");
+    }
+    return data as Subscription;
+  },
+  async deleteSubscription(id: Identifier): Promise<void> {
+    const { error } = await supabase
+      .from("subscriptions")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      throw new Error("Failed to delete the subscription");
+    }
+  },
+  /** Booked operating cost per vendor description — the reconciliation counterpart. */
+  async getCostByDescription(): Promise<FortnoxCostDescription[]> {
+    const { data, error } = await supabase
+      .from("fortnox_cost_by_description")
+      .select("*")
+      .order("cost_90d", { ascending: false });
+    if (error) {
+      throw new Error("Failed to load booked costs");
+    }
+    return (data ?? []) as FortnoxCostDescription[];
   },
   /** Creates or updates the company as a customer in Fortnox. Matches on org number to avoid duplicates. */
   async syncCompanyToFortnox(companyId: Identifier): Promise<{

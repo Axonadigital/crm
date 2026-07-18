@@ -79,6 +79,7 @@ import { EmailStatsPage } from "../email-stats/EmailStatsPage";
 import { CustomerCoveragePage } from "../fortnox/CustomerCoveragePage";
 import { EconomyPage } from "../fortnox/EconomyPage";
 import { LiquidityPage } from "../fortnox/LiquidityPage";
+import { SubscriptionsPage } from "../fortnox/SubscriptionsPage";
 import { InvoicesPage } from "../fortnox/InvoicesPage";
 
 const defaultStore = localStorageStore(undefined, "CRM");
@@ -279,6 +280,7 @@ const DesktopAdmin = (props: CoreAdminProps) => {
           path={CustomerCoveragePage.path}
           element={<CustomerCoveragePage />}
         />
+        <Route path={SubscriptionsPage.path} element={<SubscriptionsPage />} />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
       <Resource name="quotes" {...quotes} />
@@ -374,6 +376,10 @@ const MobileAdmin = (props: CoreAdminProps) => {
           <Route
             path={CustomerCoveragePage.path}
             element={<CustomerCoveragePage />}
+          />
+          <Route
+            path={SubscriptionsPage.path}
+            element={<SubscriptionsPage />}
           />
         </CustomRoutes>
         <Resource

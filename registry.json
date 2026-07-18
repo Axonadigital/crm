@@ -738,6 +738,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/subscriptionReconcile.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/liquidity.ts",
           "type": "registry:component"
         },
@@ -747,6 +751,14 @@
         },
         {
           "path": "src/components/atomic-crm/fortnox/economyFormat.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/SubscriptionsPage.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/SubscriptionDialog.tsx",
           "type": "registry:component"
         },
         {
