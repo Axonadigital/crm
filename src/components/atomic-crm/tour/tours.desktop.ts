@@ -320,6 +320,13 @@ const companies: TourDefinition = {
         align: "end",
       },
     },
+    {
+      popover: {
+        title: "Scanna hemsida — rapporten som öppnar samtalet",
+        description:
+          "Öppna ett företag med hemsida och klicka <b>Scanna hemsida</b> i högerspalten (Enrichment-sektionen). Sajten betygsätts 0–100 på sex områden och en delbar, säljfärdig rapport öppnas — ha den i handen vid första samtalet. Tumregel: <b>Scanna hemsida</b> = utifrån-analys av <i>prospekt</i> före affären. <b>Kundfliken</b> = djupanalysen och månadsrapporten för <i>vunna kunder</i>, med deras riktiga Google-data (Search Console &amp; Business-profil).",
+      },
+    },
   ],
 };
 
