@@ -37,6 +37,7 @@ import { AsideSection } from "../misc/AsideSection";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Company } from "../types";
 import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
+import { ScanWebsiteButton } from "./ScanWebsiteButton";
 import { sizes } from "./sizes";
 import { useGetSalesName } from "../sales/useGetSalesName";
 import {
@@ -552,6 +553,10 @@ export const EnrichmentInfo = ({ record }: { record: Company }) => {
             ? "Berika igen"
             : "Berika företag"}
       </Button>
+
+      <div className="mt-2">
+        <ScanWebsiteButton />
+      </div>
     </AsideSection>
   );
 };
