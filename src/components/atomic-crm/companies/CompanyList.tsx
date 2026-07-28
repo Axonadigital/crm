@@ -10,6 +10,7 @@ import { CompanyEmpty } from "./CompanyEmpty";
 import { CompanyListFilter } from "./CompanyListFilter";
 import { ImageList } from "./GridList";
 import { GoogleMapsScraper } from "./GoogleMapsScraper";
+import { BatchScanButton } from "./BatchScanButton";
 import { SearchProfiles } from "./SearchProfiles";
 
 export const CompanyList = () => {
@@ -65,6 +66,7 @@ const CompanyListActions = () => {
       >
         <SearchProfiles />
         <GoogleMapsScraper />
+        <BatchScanButton />
       </span>
       <CreateButton
         label={translate("resources.companies.action.new", {
