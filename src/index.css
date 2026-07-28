@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
+@import "driver.js/dist/driver.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -207,4 +208,82 @@ input[type="time"] {
 
 body {
   font-family: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Guided tour (driver.js) — themed with the app's design tokens, light + dark. */
+.driver-popover.axona-tour {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+  font-family: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  max-width: min(22rem, calc(100vw - 2rem));
+}
+
+.driver-popover.axona-tour .driver-popover-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--popover-foreground);
+}
+
+.driver-popover.axona-tour .driver-popover-description {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.driver-popover.axona-tour .driver-popover-progress-text {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.driver-popover.axona-tour
+  .driver-popover-navigation-btns
+  button.driver-popover-next-btn {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  text-shadow: none;
+  font-weight: 500;
+  padding: 0.25rem 0.75rem;
+}
+
+.driver-popover.axona-tour
+  .driver-popover-navigation-btns
+  button.driver-popover-prev-btn {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  text-shadow: none;
+  padding: 0.25rem 0.75rem;
+}
+
+.driver-popover.axona-tour button.driver-popover-close-btn {
+  color: var(--muted-foreground);
+}
+
+.driver-popover.axona-tour button.driver-popover-close-btn:hover {
+  color: var(--foreground);
+}
+
+/* Arrow inherits the popover background so it matches in both themes. */
+.driver-popover.axona-tour
+  .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: var(--popover);
+}
+.driver-popover.axona-tour
+  .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: var(--popover);
+}
+.driver-popover.axona-tour .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: var(--popover);
+}
+.driver-popover.axona-tour
+  .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: var(--popover);
 }

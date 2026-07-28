@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/sidebar";
 
 import { useConfigurationContext } from "../root/ConfigurationContext";
+import { TourLauncher } from "../tour";
 
 type NavItem = {
   label: string;
@@ -150,7 +151,9 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter />
+      <SidebarFooter>
+        <TourLauncher />
+      </SidebarFooter>
     </Sidebar>
   );
 }

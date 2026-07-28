@@ -99,7 +99,9 @@ const DealActions = () => (
   <TopToolbar>
     <FilterButton />
     <ExportButton />
-    <CreateButton label="resources.deals.action.new" />
+    <span data-tour="deals-create" className="inline-flex">
+      <CreateButton label="resources.deals.action.new" />
+    </span>
   </TopToolbar>
 );
 

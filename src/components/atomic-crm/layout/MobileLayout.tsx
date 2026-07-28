@@ -6,6 +6,7 @@ import { ErrorBoundary } from "react-error-boundary";
 
 import { FloatingFeedbackWidget } from "../feedback";
 import { useConfigurationLoader } from "../root/useConfigurationLoader";
+import { TourProvider } from "../tour";
 import { MobileNavigation } from "./MobileNavigation";
 import { mobileLayoutVars } from "./mobileLayoutConstants";
 
@@ -37,20 +38,22 @@ export const MobileLayout = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <div
-      className="min-h-dvh bg-background overflow-x-clip"
-      style={mobileLayoutVars}
-    >
-      <ErrorBoundary FallbackComponent={Error}>
-        <Suspense fallback={<Skeleton className="h-12 w-12 rounded-full" />}>
-          {children}
-        </Suspense>
-      </ErrorBoundary>
-      <MobileNavigation />
-      <FloatingFeedbackWidget />
-      <Notification
-        mobileOffset={{ bottom: "calc(var(--crm-mobile-nav-height) + 1rem)" }}
-      />
-    </div>
+    <TourProvider variant="mobile">
+      <div
+        className="min-h-dvh bg-background overflow-x-clip"
+        style={mobileLayoutVars}
+      >
+        <ErrorBoundary FallbackComponent={Error}>
+          <Suspense fallback={<Skeleton className="h-12 w-12 rounded-full" />}>
+            {children}
+          </Suspense>
+        </ErrorBoundary>
+        <MobileNavigation />
+        <FloatingFeedbackWidget />
+        <Notification
+          mobileOffset={{ bottom: "calc(var(--crm-mobile-nav-height) + 1rem)" }}
+        />
+      </div>
+    </TourProvider>
   );
 };

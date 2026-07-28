@@ -58,24 +58,32 @@ export const Dashboard = () => {
       {import.meta.env.VITE_IS_DEMO === "true" ? <Welcome /> : null}
 
       {totalDeal ? (
-        <WidgetErrorBoundary>
-          <KpiSummaryRow />
-        </WidgetErrorBoundary>
+        <div data-tour="dashboard-kpi">
+          <WidgetErrorBoundary>
+            <KpiSummaryRow />
+          </WidgetErrorBoundary>
+        </div>
       ) : null}
 
-      <WidgetErrorBoundary>
-        <FinancialKpiRow />
-      </WidgetErrorBoundary>
+      <div data-tour="dashboard-financial">
+        <WidgetErrorBoundary>
+          <FinancialKpiRow />
+        </WidgetErrorBoundary>
+      </div>
 
       {/* Hero: monthly revenue bars + pipeline distribution donut */}
       {totalDeal ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <WidgetErrorBoundary>
-            <RevenueTrendChart />
-          </WidgetErrorBoundary>
-          <WidgetErrorBoundary>
-            <PipelineDonut />
-          </WidgetErrorBoundary>
+          <div data-tour="dashboard-revenue">
+            <WidgetErrorBoundary>
+              <RevenueTrendChart />
+            </WidgetErrorBoundary>
+          </div>
+          <div data-tour="dashboard-pipeline">
+            <WidgetErrorBoundary>
+              <PipelineDonut />
+            </WidgetErrorBoundary>
+          </div>
         </div>
       ) : null}
 
@@ -94,9 +102,11 @@ export const Dashboard = () => {
         </div>
 
         <div className="flex flex-col gap-6">
-          <WidgetErrorBoundary>
-            <MoneyToCollect />
-          </WidgetErrorBoundary>
+          <div data-tour="dashboard-money">
+            <WidgetErrorBoundary>
+              <MoneyToCollect />
+            </WidgetErrorBoundary>
+          </div>
           <WidgetErrorBoundary>
             <RevenueGoalsTracker />
           </WidgetErrorBoundary>
@@ -109,9 +119,11 @@ export const Dashboard = () => {
           <WidgetErrorBoundary>
             <UpcomingMeetings />
           </WidgetErrorBoundary>
-          <WidgetErrorBoundary>
-            <TasksList />
-          </WidgetErrorBoundary>
+          <div data-tour="dashboard-tasks">
+            <WidgetErrorBoundary>
+              <TasksList />
+            </WidgetErrorBoundary>
+          </div>
         </div>
       </div>
     </div>

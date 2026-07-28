@@ -91,7 +91,7 @@ export const DealListContent = () => {
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="flex gap-4">
+      <div data-tour="deals-board" className="flex gap-4">
         {dealStages.map((stage) => (
           <DealColumn
             stage={stage.value}

@@ -42,6 +42,42 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/tour/waitForElement.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/tour/useAppTour.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/tour/types.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/tour/tours.mobile.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/tour/tours.desktop.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/tour/index.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/tour/TourProvider.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/tour/TourLauncher.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/tour/TourContext.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/templates/index.ts",
           "type": "registry:component"
         },
@@ -1223,6 +1259,10 @@
         },
         {
           "path": "src/components/atomic-crm/companies/SearchProfiles.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/companies/ScanWebsiteButton.tsx",
           "type": "registry:component"
         },
         {

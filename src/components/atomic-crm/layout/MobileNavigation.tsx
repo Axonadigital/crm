@@ -20,6 +20,7 @@ import {
   FileText,
   Handshake,
   Home,
+  LifeBuoy,
   ListTodo,
   MoreHorizontal,
   Phone,
@@ -37,6 +38,7 @@ import { TaskCreateSheet } from "../tasks/TaskCreateSheet";
 import { DealCreateSheet } from "../deals/DealCreateSheet";
 import { CompanyCreateSheet } from "../companies/CompanyCreateSheet";
 import { QuoteCreateSheet } from "../quotes/QuoteCreateSheet";
+import { useTour } from "../tour";
 import { MOBILE_NAV_CREATE_BUTTON_LIFT } from "./mobileLayoutConstants";
 
 export const MobileNavigation = () => {
@@ -85,6 +87,7 @@ export const MobileNavigation = () => {
 
   return (
     <nav
+      data-tour="mobile-nav"
       aria-label={translate("crm.navigation.label")}
       className="fixed bottom-0 left-0 right-0 z-50 border-t bg-secondary/95 backdrop-blur supports-[backdrop-filter]:bg-secondary/90"
       style={{
@@ -188,6 +191,7 @@ const CreateButton = () => {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            data-tour="mobile-create"
             variant="default"
             size="icon"
             className="size-14 shrink-0 rounded-full shadow-lg"
@@ -265,6 +269,7 @@ const CreateButton = () => {
 
 const MoreMenu = ({ isActive }: { isActive: boolean }) => {
   const translate = useTranslate();
+  const { startTour } = useTour();
   const [open, setOpen] = useState(false);
 
   const menuItems = [
@@ -323,6 +328,7 @@ const MoreMenu = ({ isActive }: { isActive: boolean }) => {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
+          data-tour="mobile-more"
           variant="ghost"
           className={cn(
             "h-auto min-w-0 flex-1 rounded-md px-1 py-2",
@@ -358,6 +364,17 @@ const MoreMenu = ({ isActive }: { isActive: boolean }) => {
               </span>
             </Link>
           ))}
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              startTour("overview");
+            }}
+            className="flex flex-col items-center gap-2 p-4 rounded-lg hover:bg-muted transition-colors text-foreground"
+          >
+            <LifeBuoy className="size-8" />
+            <span className="text-xs font-medium text-center">Rundtur</span>
+          </button>
         </div>
       </SheetContent>
     </Sheet>

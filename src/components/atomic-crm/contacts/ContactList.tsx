@@ -61,7 +61,7 @@ const ContactListLayoutDesktop = () => {
     <div className="flex flex-row gap-8">
       <ContactListFilter />
       <div className="w-full flex flex-col gap-4">
-        <Card className="py-0">
+        <Card className="py-0" data-tour="contacts-list">
           <ContactListContent />
         </Card>
       </div>
@@ -73,9 +73,14 @@ const ContactListLayoutDesktop = () => {
 const ContactListActions = () => (
   <TopToolbar>
     <SortButton fields={["first_name", "last_name", "last_seen"]} />
-    <ContactImportButton />
-    <ExportButton exporter={exporter} />
-    <CreateButton />
+    <span
+      data-tour="contacts-actions"
+      className="inline-flex items-center gap-2"
+    >
+      <ContactImportButton />
+      <ExportButton exporter={exporter} />
+      <CreateButton />
+    </span>
   </TopToolbar>
 );
 

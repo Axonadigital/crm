@@ -38,7 +38,7 @@ const CompanyListLayout = () => {
   return (
     <div className="w-full flex flex-row gap-8">
       <CompanyListFilter />
-      <div className="flex flex-col flex-1 gap-4">
+      <div className="flex flex-col flex-1 gap-4" data-tour="companies-list">
         <ImageList />
       </div>
     </div>
@@ -59,8 +59,13 @@ const CompanyListActions = () => {
         ]}
       />
       <ExportButton />
-      <SearchProfiles />
-      <GoogleMapsScraper />
+      <span
+        data-tour="companies-leadtools"
+        className="inline-flex items-center gap-2"
+      >
+        <SearchProfiles />
+        <GoogleMapsScraper />
+      </span>
       <CreateButton
         label={translate("resources.companies.action.new", {
           _: "New Company",
