@@ -24,7 +24,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: '[data-tour="mobile-nav"] a[href="/"]',
+      element: '[data-tour="mobile-nav-dashboard"]',
       popover: {
         title: "Dashboard",
         description: "Nyckeltal och dagens överblick.",
@@ -32,7 +32,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: '[data-tour="mobile-nav"] a[href="/contacts"]',
+      element: '[data-tour="mobile-nav-contacts"]',
       popover: {
         title: "Kontakter",
         description: "Alla personer du har en relation med.",
@@ -50,7 +50,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: '[data-tour="mobile-nav"] a[href="/call-queue"]',
+      element: '[data-tour="mobile-nav-call-queue"]',
       popover: {
         title: "Ringlista",
         description: "Din prioriterade samtalslista.",

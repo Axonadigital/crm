@@ -1,9 +1,10 @@
 import type { TourDefinition } from "./types";
 
 /**
- * Desktop tours. The overview tour rides on the always-visible left sidebar
- * (`a[href="…"]` links are stable, no page instrumentation needed). The deep
- * tours target `data-tour="…"` anchors added to each page's key widgets.
+ * Desktop tours. Every step targets a `data-tour="…"` anchor. Sidebar nav items
+ * carry `data-tour="nav-…"` anchors (added in AppSidebar) rather than relying on
+ * `a[href="…"]`, because react-admin mounts the router with a basename so the
+ * rendered href is not the literal `to` path. Deep tours target page widgets.
  */
 
 const overview: TourDefinition = {
@@ -23,7 +24,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/"]',
+      element: '[data-tour="nav-dashboard"]',
       popover: {
         title: "Översikt · Dashboard",
         description:
@@ -32,7 +33,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/customer-radar"]',
+      element: '[data-tour="nav-customer-radar"]',
       popover: {
         title: "Översikt · Kundradar",
         description:
@@ -41,7 +42,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/call-queue"]',
+      element: '[data-tour="nav-call-queue"]',
       popover: {
         title: "Översikt · Ringlista",
         description:
@@ -50,7 +51,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/calendar"]',
+      element: '[data-tour="nav-calendar"]',
       popover: {
         title: "Översikt · Kalender",
         description:
@@ -59,7 +60,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/email-stats"]',
+      element: '[data-tour="nav-email-stats"]',
       popover: {
         title: "Översikt · Email-statistik",
         description:
@@ -68,7 +69,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/contacts"]',
+      element: '[data-tour="nav-contacts"]',
       popover: {
         title: "Sälj · Kontakter",
         description:
@@ -77,7 +78,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/companies"]',
+      element: '[data-tour="nav-companies"]',
       popover: {
         title: "Sälj · Företag",
         description:
@@ -86,7 +87,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/deals"]',
+      element: '[data-tour="nav-deals"]',
       popover: {
         title: "Sälj · Deals",
         description:
@@ -95,7 +96,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/quotes"]',
+      element: '[data-tour="nav-quotes"]',
       popover: {
         title: "Sälj · Offerter",
         description:
@@ -104,7 +105,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/invoices"]',
+      element: '[data-tour="nav-invoices"]',
       popover: {
         title: "Sälj · Fakturor",
         description:
@@ -113,7 +114,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/economy"]',
+      element: '[data-tour="nav-economy"]',
       popover: {
         title: "Sälj · Ekonomi",
         description:
@@ -122,7 +123,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/liquidity"]',
+      element: '[data-tour="nav-liquidity"]',
       popover: {
         title: "Sälj · Likviditet",
         description:
@@ -131,7 +132,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/subscriptions"]',
+      element: '[data-tour="nav-subscriptions"]',
       popover: {
         title: "Sälj · Abonnemang",
         description:
@@ -140,7 +141,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/customer-coverage"]',
+      element: '[data-tour="nav-customer-coverage"]',
       popover: {
         title: "Sälj · Kundtäckning",
         description:
@@ -149,7 +150,7 @@ const overview: TourDefinition = {
       },
     },
     {
-      element: 'a[href="/lead_import_sources"]',
+      element: '[data-tour="nav-lead-import-sources"]',
       popover: {
         title: "Inflöde · Leadimport",
         description:

@@ -174,11 +174,23 @@ const NavMenuItem = ({
   });
   const isActive = !!primaryMatch || !!extraMatch;
   const Icon = item.icon;
+  // Stable anchor for the guided tour. We can't rely on `a[href="…"]` because
+  // react-admin mounts the router with a basename, so the rendered href is not
+  // the literal `to` path. See tours.desktop.ts.
+  const tourAnchor =
+    item.to === "/"
+      ? "nav-dashboard"
+      : `nav-${item.to.replace(/^\//, "").replace(/_/g, "-")}`;
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
-        <Link to={item.to} state={{ _scrollToTop: true }} onClick={onClick}>
+        <Link
+          to={item.to}
+          state={{ _scrollToTop: true }}
+          onClick={onClick}
+          data-tour={tourAnchor}
+        >
           <Icon />
           <span>{item.label}</span>
         </Link>

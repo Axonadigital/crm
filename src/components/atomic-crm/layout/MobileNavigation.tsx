@@ -99,12 +99,14 @@ export const MobileNavigation = () => {
         <>
           <NavigationButton
             href="/"
+            dataTour="mobile-nav-dashboard"
             Icon={Home}
             label={translate("ra.page.dashboard")}
             isActive={currentPath === "/"}
           />
           <NavigationButton
             href="/contacts"
+            dataTour="mobile-nav-contacts"
             Icon={Users}
             label={translate("resources.contacts.name", {
               smart_count: 2,
@@ -114,6 +116,7 @@ export const MobileNavigation = () => {
           <CreateButton />
           <NavigationButton
             href="/call-queue"
+            dataTour="mobile-nav-call-queue"
             Icon={Phone}
             label="Ringlista"
             isActive={currentPath === "/call-queue"}
@@ -127,11 +130,13 @@ export const MobileNavigation = () => {
 
 const NavigationButton = ({
   href,
+  dataTour,
   Icon,
   label,
   isActive,
 }: {
   href: string;
+  dataTour?: string;
   Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   label: string;
   isActive: boolean;
@@ -144,7 +149,11 @@ const NavigationButton = ({
       isActive ? null : "text-muted-foreground",
     )}
   >
-    <Link to={href} className="flex min-w-0 flex-col items-center gap-1">
+    <Link
+      to={href}
+      data-tour={dataTour}
+      className="flex min-w-0 flex-col items-center gap-1"
+    >
       <Icon className="size-5 shrink-0" />
       <span className="max-w-full truncate text-[11px] font-medium leading-tight">
         {label}
