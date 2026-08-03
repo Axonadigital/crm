@@ -172,6 +172,35 @@ describe("buildMonthlyReportPrompts", () => {
     expect(prompt).not.toContain("mot förra månaden");
   });
 
+  it("includes the per-month breakdown so AI can honestly flag a within-period decline", () => {
+    // Regression: aggregatet kan vara upp mot jämförelseperioden men ändå
+    // falla inom sig själv (juli lägre än juni) — utan denna rad hade AI:n
+    // bara sett "+294 %" och inte kunnat nämna nedgången ärligt.
+    const metrics = {
+      ...computeReportMetrics(snap, null),
+      monthlySeries: [
+        { month: "2026-06", clicks: 40, impressions: 1114 },
+        { month: "2026-07", clicks: 23, impressions: 628 },
+      ],
+    };
+    const { prompt } = buildMonthlyReportPrompts({
+      companyName: "JVS Maskiner AB",
+      contactName: "Anna Andersson",
+      periodLabel: "juni – juli 2026",
+      metrics,
+      upsell: null,
+      recommendations: [],
+      geoReadiness: "Strukturerad data finns.",
+      hasSearchData: true,
+      presentation: DEFAULT_PRESENTATION,
+      comparisonLabel: "perioden innan (april–maj)",
+    });
+    expect(prompt).toContain("Utveckling per månad i perioden");
+    expect(prompt).toContain("juni: 40 klick/1114 visningar");
+    expect(prompt).toContain("juli: 23 klick/628 visningar");
+    expect(prompt).toContain("nämn det ärligt");
+  });
+
   it("orders priorities by the explicitly selected upsell service", () => {
     const metrics = computeReportMetrics(snap, null);
     const { prompt } = buildMonthlyReportPrompts({

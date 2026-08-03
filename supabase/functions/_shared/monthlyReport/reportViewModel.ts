@@ -1,5 +1,6 @@
 import type {
   ReportAiContent,
+  ReportMetrics,
   ReportSnapshot,
   ReportStatus,
   ReportViewModel,
@@ -207,17 +208,40 @@ function trendPhrase(value: number | null, comparisonLabel: string): string {
     : `${Math.abs(Math.round(value))} % lägre än ${comparisonLabel}`;
 }
 
+/**
+ * En flermånadersperiod kan vara upp mot jämförelseperioden i aggregat
+ * (t.ex. juni+juli mot april+maj) MEN ändå falla inom sig själv (juli lägre
+ * än juni) — att bara skriva "294 % högre" är då sant men vilseledande.
+ * Ger en ärlig bisats när den senaste månaden i perioden är svagare än den
+ * första, annars "".
+ */
+function withinPeriodDeclineCaveat(
+  monthlySeries: NonNullable<ReportMetrics["monthlySeries"]> | undefined,
+  key: "clicks" | "impressions",
+): string {
+  if (!monthlySeries || monthlySeries.length < 2) return "";
+  const first = monthlySeries[0];
+  const last = monthlySeries[monthlySeries.length - 1];
+  if (last[key] >= first[key]) return "";
+  return ` — även om ${monthNameSv(`${last.month}-01`)} var lägre än ${monthNameSv(`${first.month}-01`)} inom perioden`;
+}
+
 function positiveFallbackSignal(viewModel: ReportViewModel): string {
   const metrics = viewModel.metrics;
   const comparisonLabel = comparisonLabelFor(viewModel);
   if (metrics.clicks.deltaPct != null && metrics.clicks.deltaPct > 0) {
-    return `Det starkaste tecknet är att klicken från Google blev ${trendPhrase(metrics.clicks.deltaPct, comparisonLabel)}.`;
+    const caveat = withinPeriodDeclineCaveat(metrics.monthlySeries, "clicks");
+    return `Det starkaste tecknet är att klicken från Google blev ${trendPhrase(metrics.clicks.deltaPct, comparisonLabel)}${caveat}.`;
   }
   if (
     metrics.impressions.deltaPct != null &&
     metrics.impressions.deltaPct > 0
   ) {
-    return `Det starkaste tecknet är att ni syntes ${trendPhrase(metrics.impressions.deltaPct, comparisonLabel)} i Google.`;
+    const caveat = withinPeriodDeclineCaveat(
+      metrics.monthlySeries,
+      "impressions",
+    );
+    return `Det starkaste tecknet är att ni syntes ${trendPhrase(metrics.impressions.deltaPct, comparisonLabel)} i Google${caveat}.`;
   }
   if (
     metrics.position.deltaAbsolute != null &&

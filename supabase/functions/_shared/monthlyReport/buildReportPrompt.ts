@@ -184,6 +184,26 @@ function orderRecommendationsForService(
   ];
 }
 
+/**
+ * En flermånadersperiod kan vara upp i aggregat (jämfört med en lika lång
+ * föregående period) men ändå falla inom sig själv (senaste månaden svagare
+ * än en tidigare) — utan denna rad ser AI:n bara aggregatet och skriver
+ * "+294 %" utan att kunna nämna att juli faktiskt var lägre än juni.
+ */
+function buildMonthlySeriesLine(
+  monthlySeries: ReportMetrics["monthlySeries"],
+): string {
+  if (!monthlySeries || monthlySeries.length < 2) return "";
+  const parts = monthlySeries.map((point) => {
+    const label = new Date(`${point.month}-01T00:00:00Z`).toLocaleDateString(
+      "sv-SE",
+      { month: "long", timeZone: "UTC" },
+    );
+    return `${label}: ${point.clicks} klick/${point.impressions} visningar`;
+  });
+  return `- Utveckling per månad i perioden: ${parts.join("; ")}. Om senaste månaden i den här listan är svagare än en tidigare månad: nämn det ärligt även om jämförelsen mot föregående period ovan är positiv — dölj INTE en nedgång i den senaste månaden bara för att aggregatet är upp.`;
+}
+
 function buildMetricsBlock(
   metrics: ReportMetrics,
   hasSearchData: boolean,
@@ -234,6 +254,8 @@ function buildMetricsBlock(
         `- Sökord som gav flest klick: ${queries.map((q) => q.query).join(", ")}`,
       );
     }
+    const monthlySeriesLine = buildMonthlySeriesLine(metrics.monthlySeries);
+    if (monthlySeriesLine) lines.push(monthlySeriesLine);
     lines.push(...buildSearchContextBlock(metrics, pres));
     lines.push(...buildBrandDiscoveryBlock(metrics));
   } else {

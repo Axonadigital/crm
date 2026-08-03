@@ -107,4 +107,38 @@ describe("report view model", () => {
     expect(content.summary).not.toContain("månaden före");
     expect(content.summary).toContain("perioden innan (april–maj)");
   });
+
+  it("adds an honest caveat when the aggregate is up but the last month within the period fell", () => {
+    // Regression: juni (40 klick) → juli (23 klick) — en nedgång inom
+    // perioden — men aggregatet (63) är ändå högre än jämförelseperioden
+    // (april–maj), så headlinen sa bara "294 % högre" utan att nämna att
+    // senaste månaden i själva verket gick ner. Kunden läste det som att
+    // allt gick uppåt, trots motsatsen i "Utveckling per månad"-grafen.
+    const multiMonthLatest: ReportSnapshot = {
+      ...latest,
+      period_start: "2026-06-01",
+      period_end: "2026-07-31",
+      search_console: { ...latest.search_console!, clicks: 63 },
+    };
+    const previous: ReportSnapshot = {
+      ...latest,
+      period_start: "2026-04-01",
+      period_end: "2026-05-31",
+      search_console: { ...latest.search_console!, clicks: 16 },
+    };
+    const model = buildReportViewModel({
+      companyName: "Test AB",
+      periodLabel: "juni – juli 2026",
+      latest: multiMonthLatest,
+      previous,
+    });
+    model.metrics.monthlySeries = [
+      { month: "2026-06", clicks: 40, impressions: 1114 },
+      { month: "2026-07", clicks: 23, impressions: 628 },
+    ];
+    const content = buildFallbackReportContent(model, "Anna Andersson");
+    expect(content.summary).toContain(
+      "även om juli var lägre än juni inom perioden",
+    );
+  });
 });
