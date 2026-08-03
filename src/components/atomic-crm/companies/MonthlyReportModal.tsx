@@ -97,10 +97,11 @@ const TONE_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 /**
- * Bygger ämnesrad + mejltext (klartext och rik HTML) för urklipp — samma
- * ämnesformat som send_monthly_report/index.ts använder vid faktiskt utskick.
- * HTML-varianten gör att formateringen (fetstil på hälsning/åtgärd) följer
- * med vid inklistring i Gmail, inte bara råtext.
+ * Bygger ämnesrad + urklippsinnehåll för rapportmejlet. `html` är den
+ * FAKTISKA genererade mejlmallen (samma som förhandsvisnings-iframen och
+ * det som skulle skickas) — inte bara de redigerbara textfälten — så att
+ * inklistring i Gmail ser likadan ut (rubrik, KPI-kort, layout). `text` är
+ * en enkel textreserv för klienter som inte tar emot rik HTML vid inklistring.
  */
 function buildEmailClipboard(
   company: Company,
@@ -120,26 +121,7 @@ function buildEmailClipboard(
   ].filter((p) => p && p.trim().length > 0);
 
   const text = paragraphs.join("\n\n");
-
-  const escapeHtml = (value: string) =>
-    value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  const html = [
-    ai.greeting
-      ? `<p style="margin:0 0 12px;font-weight:700;">${escapeHtml(ai.greeting)}</p>`
-      : "",
-    ai.summary
-      ? `<p style="margin:0 0 16px;">${escapeHtml(ai.summary)}</p>`
-      : "",
-    ai.recommended_action
-      ? `<p style="margin:0 0 8px;font-weight:700;">${escapeHtml(ai.recommended_action)}</p>`
-      : "",
-    ai.upsell_pitch
-      ? `<p style="margin:0;">${escapeHtml(ai.upsell_pitch)}</p>`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const html = report.generated_html ?? "";
 
   return { subject, text, html };
 }
@@ -463,6 +445,13 @@ export const MonthlyReportModal = ({
 
   const handleCopyEmailText = async () => {
     if (!report) return;
+    if (!report.generated_html) {
+      notify(
+        "Ingen förhandsvisning genererad än — klicka 'Uppdatera förhandsvisning' först.",
+        { type: "warning" },
+      );
+      return;
+    }
     const { subject, text, html } = buildEmailClipboard(company, report, ai);
     const clipboardText = `Ämne: ${subject}\n\n${text}`;
     try {
@@ -477,14 +466,14 @@ export const MonthlyReportModal = ({
         await navigator.clipboard.writeText(clipboardText);
       }
       notify(
-        "Mejltext kopierad — klistra in i Gmail, ändra ämne/text och bifoga PDF:en (Öppna PDF) själv.",
+        "Rapportmejlet kopierat — klistra in i Gmail, ändra ämne/text och bifoga PDF:en (Öppna PDF) själv.",
         { type: "info" },
       );
     } catch (error) {
       notify(
         error instanceof Error
           ? error.message
-          : "Kunde inte kopiera mejltexten",
+          : "Kunde inte kopiera rapportmejlet",
         { type: "warning" },
       );
     }
@@ -741,26 +730,10 @@ export const MonthlyReportModal = ({
               ) : null}
 
               <div className="grid gap-3 border-t pt-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Mail className="h-4 w-4" />
-                    Mailtext (redigerbar)
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyEmailText}
-                  >
-                    <ClipboardCopy className="h-4 w-4" />
-                    Kopiera mejltext
-                  </Button>
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Mail className="h-4 w-4" />
+                  Mailtext (redigerbar)
                 </div>
-                <p className="text-xs text-muted-foreground -mt-1">
-                  Kopierar ämne + text formaterat, för att klistra in och skicka
-                  själv från t.ex. Gmail. Bifoga PDF:en manuellt via "Öppna PDF"
-                  nedan.
-                </p>
                 <div className="grid gap-2">
                   <Label htmlFor="ai-greeting">Hälsning</Label>
                   <Input
@@ -867,21 +840,32 @@ export const MonthlyReportModal = ({
                 <div className="grid gap-2 border-t pt-4">
                   <div className="flex items-center justify-between gap-2">
                     <Label>Förhandsvisning (draft)</Label>
-                    {canSend ? (
+                    <div className="flex items-center gap-2">
                       <Button
+                        type="button"
                         variant="outline"
                         size="sm"
-                        onClick={handlePreview}
-                        disabled={isPreviewing}
+                        onClick={handleCopyEmailText}
                       >
-                        {isPreviewing ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                        Uppdatera förhandsvisning
+                        <ClipboardCopy className="h-4 w-4" />
+                        Kopiera rapportmejl
                       </Button>
-                    ) : null}
+                      {canSend ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handlePreview}
+                          disabled={isPreviewing}
+                        >
+                          {isPreviewing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                          Uppdatera förhandsvisning
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                   <iframe
                     title="Förhandsvisning av rapportmail"
@@ -891,7 +875,10 @@ export const MonthlyReportModal = ({
                   <p className="text-xs text-muted-foreground">
                     Text- och visningsändringar tillämpas i förhandsvisningen
                     när du klickar "Uppdatera förhandsvisning", och alltid vid
-                    utskick.
+                    utskick. "Kopiera rapportmejl" kopierar precis det som visas
+                    ovan (rubrik, KPI-kort, layout) formaterat, så det klistras
+                    in snyggt i t.ex. Gmail — bifoga PDF:en manuellt via "Öppna
+                    PDF".
                   </p>
                 </div>
               )}
