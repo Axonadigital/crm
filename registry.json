@@ -1354,6 +1354,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/companies/BatchScanButton.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/companies/AutocompleteCompanyInput.tsx",
           "type": "registry:component"
         },
