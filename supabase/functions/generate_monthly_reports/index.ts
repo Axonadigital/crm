@@ -355,6 +355,13 @@ async function generateReportForCompany(
       ? [selectedUpsell, ...upsells]
       : upsells;
   const hasSearchData = !!latest.search_console;
+  // Flermånadersperioder jämförs mot en lika lång föregående period, inte
+  // "förra månaden" — annars skriver AI:n att t.ex. en juni–juli-rapport
+  // jämfördes mot juni, trots att comparisonPeriod faktiskt är april–maj.
+  const comparisonLabel =
+    months === 1
+      ? "förra månaden"
+      : `perioden innan (${periodLabelSv(comparisonPeriod.startDate, comparisonPeriod.endDate)})`;
 
   const { prompt, systemPrompt } = buildMonthlyReportPrompts({
     companyName: company.name,
@@ -366,6 +373,7 @@ async function generateReportForCompany(
     geoReadiness: geoReadiness(latest.seo_checks),
     hasSearchData,
     presentation,
+    comparisonLabel,
   });
 
   let content = buildFallbackReportContent(viewModel, recipient.name);

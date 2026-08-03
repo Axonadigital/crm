@@ -148,6 +148,28 @@ describe("buildMonthlyReportPrompts", () => {
     expect(systemPrompt).toContain("Börja sammanfattningen");
     expect(systemPrompt).toContain("action_plan");
     expect(prompt).toContain("börja med det positiva");
+    expect(prompt).toContain("mot förra månaden");
+  });
+
+  it("uses the given comparisonLabel instead of 'förra månaden' for multi-month periods", () => {
+    // Regression: en flermånadersrapport (t.ex. juni–juli) jämförs mot en
+    // lika lång föregående period (april–maj), inte "förra månaden" — AI:n
+    // skrev annars ut fel jämförelse i kundtexten.
+    const metrics = computeReportMetrics(snap, null);
+    const { prompt } = buildMonthlyReportPrompts({
+      companyName: "JVS Maskiner AB",
+      contactName: "Anna Andersson",
+      periodLabel: "juni – juli 2026",
+      metrics,
+      upsell: null,
+      recommendations: [],
+      geoReadiness: "Strukturerad data finns.",
+      hasSearchData: true,
+      presentation: DEFAULT_PRESENTATION,
+      comparisonLabel: "perioden innan (april–maj)",
+    });
+    expect(prompt).toContain("mot perioden innan (april–maj)");
+    expect(prompt).not.toContain("mot förra månaden");
   });
 
   it("orders priorities by the explicitly selected upsell service", () => {

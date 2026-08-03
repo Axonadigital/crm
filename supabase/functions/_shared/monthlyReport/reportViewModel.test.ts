@@ -80,4 +80,31 @@ describe("report view model", () => {
     expect(content.summary).toContain("50");
     expect(content.recommended_action).toContain("strukturerad data");
   });
+
+  it("names the real comparison period in fallback text for multi-month reports, not 'månaden före'", () => {
+    // Regression: en juni–juli-rapport jämförs mot april–maj (lika lång
+    // föregående period), men fallback-texten sa alltid "månaden före" —
+    // vilket lästes som "jämfört med juni", inte den faktiska jämförelsen.
+    const multiMonthLatest: ReportSnapshot = {
+      ...latest,
+      period_start: "2026-06-01",
+      period_end: "2026-07-31",
+      search_console: { ...latest.search_console!, clicks: 150 },
+    };
+    const previous: ReportSnapshot = {
+      ...latest,
+      period_start: "2026-04-01",
+      period_end: "2026-05-31",
+      search_console: { ...latest.search_console!, clicks: 50 },
+    };
+    const model = buildReportViewModel({
+      companyName: "Test AB",
+      periodLabel: "juni – juli 2026",
+      latest: multiMonthLatest,
+      previous,
+    });
+    const content = buildFallbackReportContent(model, "Anna Andersson");
+    expect(content.summary).not.toContain("månaden före");
+    expect(content.summary).toContain("perioden innan (april–maj)");
+  });
 });

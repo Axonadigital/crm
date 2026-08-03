@@ -37,6 +37,14 @@ export type BuildReportPromptInput = {
    * den inte kan skriva ut svaga, Axona-ägda tal (t.ex. "45/100", "6,1 s").
    */
   presentation: PresentationPolicy;
+  /**
+   * Vad siffrorna jämförs mot, t.ex. "förra månaden" (1 månad) eller
+   * "perioden innan (april–maj)" (flermånadersperiod). Default "förra
+   * månaden" om utelämnad — annars skriver AI:n ut fel jämförelse för
+   * flermånadersrapporter (period_start/period_end spänner flera månader,
+   * men texten låtsas ändå jämföra mot "förra månaden").
+   */
+  comparisonLabel?: string;
 };
 
 function fmtNum(value: number | null): string {
@@ -44,13 +52,13 @@ function fmtNum(value: number | null): string {
   return value.toLocaleString("sv-SE", { maximumFractionDigits: 0 });
 }
 
-function fmtDelta(deltaPct: number | null): string {
-  if (deltaPct == null) return "(ingen jämförelse mot förra månaden ännu)";
+function fmtDelta(deltaPct: number | null, comparisonLabel: string): string {
+  if (deltaPct == null) return `(ingen jämförelse mot ${comparisonLabel} ännu)`;
   const rounded = Math.round(deltaPct);
-  if (rounded === 0) return "(oförändrat mot förra månaden)";
+  if (rounded === 0) return `(oförändrat mot ${comparisonLabel})`;
   return rounded > 0
-    ? `(+${rounded}% mot förra månaden)`
-    : `(${rounded}% mot förra månaden)`;
+    ? `(+${rounded}% mot ${comparisonLabel})`
+    : `(${rounded}% mot ${comparisonLabel})`;
 }
 
 function fmtPct(value: number | null | undefined): string {
@@ -180,6 +188,7 @@ function buildMetricsBlock(
   metrics: ReportMetrics,
   hasSearchData: boolean,
   pres: PresentationPolicy,
+  comparisonLabel: string,
 ): string {
   const lines: string[] = [];
   if (hasSearchData) {
@@ -187,12 +196,12 @@ function buildMetricsBlock(
     // ska AI:n inte ens kunna nämna det negativa talet.
     if (pres.showClicks) {
       lines.push(
-        `- Klick från Google: ${fmtNum(metrics.clicks.current)} ${fmtDelta(metrics.clicks.deltaPct)}`,
+        `- Klick från Google: ${fmtNum(metrics.clicks.current)} ${fmtDelta(metrics.clicks.deltaPct, comparisonLabel)}`,
       );
     }
     if (pres.showImpressions) {
       lines.push(
-        `- Visningar i Google: ${fmtNum(metrics.impressions.current)} ${fmtDelta(metrics.impressions.deltaPct)}`,
+        `- Visningar i Google: ${fmtNum(metrics.impressions.current)} ${fmtDelta(metrics.impressions.deltaPct, comparisonLabel)}`,
       );
     }
     if (pres.showPositionAbsolute && metrics.position.current != null) {
@@ -237,7 +246,7 @@ function buildMetricsBlock(
   if (metrics.performance_score.current != null) {
     lines.push(
       pres.showPerformanceScore
-        ? `- Hastighetspoäng (mobil, 0–100): ${metrics.performance_score.current} ${fmtDelta(metrics.performance_score.deltaPct)}`
+        ? `- Hastighetspoäng (mobil, 0–100): ${metrics.performance_score.current} ${fmtDelta(metrics.performance_score.deltaPct, comparisonLabel)}`
         : "- Prestanda: utvecklingsmöjlighet — nämn som framåtblickande möjlighet kopplad till Prestandaoptimering. Ange ALDRIG exakt poäng.",
     );
   }
@@ -317,6 +326,7 @@ export function buildMonthlyReportPrompts(input: BuildReportPromptInput): {
   const greetingName = input.contactName?.trim()
     ? input.contactName.trim().split(/\s+/)[0]
     : null;
+  const comparisonLabel = input.comparisonLabel ?? "förra månaden";
 
   const upsellBlock = input.upsell
     ? `Föreslagen tjänst att rekommendera:\n- Tjänst: ${input.upsell.label}\n- Nästa möjlighet för kunden: ${input.upsell.description}\n- Pitch-vinkel att utgå från: ${input.upsell.pitch}`
@@ -350,7 +360,7 @@ Period: ${input.periodLabel}
 ${TONE_GUIDANCE[input.presentation.tone]}
 
 Månadens siffror:
-${buildMetricsBlock(input.metrics, input.hasSearchData, input.presentation)}
+${buildMetricsBlock(input.metrics, input.hasSearchData, input.presentation, comparisonLabel)}
 
 Synlighet i AI-sök (beredskap): ${input.geoReadiness}
 

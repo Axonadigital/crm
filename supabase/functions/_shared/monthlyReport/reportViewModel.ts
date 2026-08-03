@@ -175,24 +175,49 @@ export function buildReportViewModel(input: {
   };
 }
 
-function trendPhrase(value: number | null): string {
-  if (value == null) return "utan säker jämförelse mot månaden före";
-  if (Math.abs(value) < 0.5) return "på ungefär samma nivå som månaden före";
+/** "april" – används bara för att namnge jämförelseperioden, ej hela datum. */
+function monthNameSv(periodISO: string): string {
+  return new Date(`${periodISO}T00:00:00Z`).toLocaleDateString("sv-SE", {
+    month: "long",
+    timeZone: "UTC",
+  });
+}
+
+/**
+ * Vad siffrorna jämförs mot i löptext. En kalendermånads rapportperiod →
+ * "månaden före" (som tidigare). Flermånadersperioder (t.ex. juni–juli) fick
+ * annars alltid samma hårdkodade fras trots att jämförelsen faktiskt gäller
+ * en lika lång period längre bak (april–maj) — läsaren tolkade det som att
+ * juli jämfördes mot juni.
+ */
+function comparisonLabelFor(viewModel: ReportViewModel): string {
+  const { period, comparisonPeriod } = viewModel;
+  const isSingleMonth = period.start.slice(0, 7) === period.end.slice(0, 7);
+  if (isSingleMonth) return "månaden före";
+  if (!comparisonPeriod) return "föregående period";
+  return `perioden innan (${monthNameSv(comparisonPeriod.start)}–${monthNameSv(comparisonPeriod.end)})`;
+}
+
+function trendPhrase(value: number | null, comparisonLabel: string): string {
+  if (value == null) return `utan säker jämförelse mot ${comparisonLabel}`;
+  if (Math.abs(value) < 0.5)
+    return `på ungefär samma nivå som ${comparisonLabel}`;
   return value > 0
-    ? `${Math.round(value)} % högre än månaden före`
-    : `${Math.abs(Math.round(value))} % lägre än månaden före`;
+    ? `${Math.round(value)} % högre än ${comparisonLabel}`
+    : `${Math.abs(Math.round(value))} % lägre än ${comparisonLabel}`;
 }
 
 function positiveFallbackSignal(viewModel: ReportViewModel): string {
   const metrics = viewModel.metrics;
+  const comparisonLabel = comparisonLabelFor(viewModel);
   if (metrics.clicks.deltaPct != null && metrics.clicks.deltaPct > 0) {
-    return `Det starkaste tecknet är att klicken från Google blev ${trendPhrase(metrics.clicks.deltaPct)}.`;
+    return `Det starkaste tecknet är att klicken från Google blev ${trendPhrase(metrics.clicks.deltaPct, comparisonLabel)}.`;
   }
   if (
     metrics.impressions.deltaPct != null &&
     metrics.impressions.deltaPct > 0
   ) {
-    return `Det starkaste tecknet är att ni syntes ${trendPhrase(metrics.impressions.deltaPct)} i Google.`;
+    return `Det starkaste tecknet är att ni syntes ${trendPhrase(metrics.impressions.deltaPct, comparisonLabel)} i Google.`;
   }
   if (
     metrics.position.deltaAbsolute != null &&
@@ -201,7 +226,7 @@ function positiveFallbackSignal(viewModel: ReportViewModel): string {
     return `Snittpositionen förbättrades ${Math.abs(metrics.position.deltaAbsolute).toFixed(1)} steg, där lägre tal är bättre.`;
   }
   if (metrics.clicks.current != null) {
-    return `Google gav ${metrics.clicks.current.toLocaleString("sv-SE")} besök till er webbplats och utvecklingen var ${trendPhrase(metrics.clicks.deltaPct)}.`;
+    return `Google gav ${metrics.clicks.current.toLocaleString("sv-SE")} besök till er webbplats och utvecklingen var ${trendPhrase(metrics.clicks.deltaPct, comparisonLabel)}.`;
   }
   return `Rapporten visar sidans tekniska och lokala nuläge för ${viewModel.period.label}.`;
 }
