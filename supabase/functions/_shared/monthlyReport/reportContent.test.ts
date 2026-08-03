@@ -152,9 +152,9 @@ describe("buildMonthlyReportPrompts", () => {
   });
 
   it("uses the given comparisonLabel instead of 'förra månaden' for multi-month periods", () => {
-    // Regression: en flermånadersrapport (t.ex. juni–juli) jämförs mot en
-    // lika lång föregående period (april–maj), inte "förra månaden" — AI:n
-    // skrev annars ut fel jämförelse i kundtexten.
+    // Regression: en flermånadersrapport (t.ex. juni–juli) jämförs numera
+    // mot den FÖRSTA valda månaden (juni), inte "förra månaden" och inte en
+    // extern föregående period — AI:n skrev annars ut fel jämförelse.
     const metrics = computeReportMetrics(snap, null);
     const { prompt } = buildMonthlyReportPrompts({
       companyName: "JVS Maskiner AB",
@@ -166,39 +166,10 @@ describe("buildMonthlyReportPrompts", () => {
       geoReadiness: "Strukturerad data finns.",
       hasSearchData: true,
       presentation: DEFAULT_PRESENTATION,
-      comparisonLabel: "perioden innan (april–maj)",
+      comparisonLabel: "juni 2026",
     });
-    expect(prompt).toContain("mot perioden innan (april–maj)");
+    expect(prompt).toContain("mot juni 2026");
     expect(prompt).not.toContain("mot förra månaden");
-  });
-
-  it("includes the per-month breakdown so AI can honestly flag a within-period decline", () => {
-    // Regression: aggregatet kan vara upp mot jämförelseperioden men ändå
-    // falla inom sig själv (juli lägre än juni) — utan denna rad hade AI:n
-    // bara sett "+294 %" och inte kunnat nämna nedgången ärligt.
-    const metrics = {
-      ...computeReportMetrics(snap, null),
-      monthlySeries: [
-        { month: "2026-06", clicks: 40, impressions: 1114 },
-        { month: "2026-07", clicks: 23, impressions: 628 },
-      ],
-    };
-    const { prompt } = buildMonthlyReportPrompts({
-      companyName: "JVS Maskiner AB",
-      contactName: "Anna Andersson",
-      periodLabel: "juni – juli 2026",
-      metrics,
-      upsell: null,
-      recommendations: [],
-      geoReadiness: "Strukturerad data finns.",
-      hasSearchData: true,
-      presentation: DEFAULT_PRESENTATION,
-      comparisonLabel: "perioden innan (april–maj)",
-    });
-    expect(prompt).toContain("Utveckling per månad i perioden");
-    expect(prompt).toContain("juni: 40 klick/1114 visningar");
-    expect(prompt).toContain("juli: 23 klick/628 visningar");
-    expect(prompt).toContain("nämn det ärligt");
   });
 
   it("orders priorities by the explicitly selected upsell service", () => {

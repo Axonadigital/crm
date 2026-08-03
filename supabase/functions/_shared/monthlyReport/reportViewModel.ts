@@ -1,6 +1,5 @@
 import type {
   ReportAiContent,
-  ReportMetrics,
   ReportSnapshot,
   ReportStatus,
   ReportViewModel,
@@ -186,17 +185,21 @@ function monthNameSv(periodISO: string): string {
 
 /**
  * Vad siffrorna jämförs mot i löptext. En kalendermånads rapportperiod →
- * "månaden före" (som tidigare). Flermånadersperioder (t.ex. juni–juli) fick
- * annars alltid samma hårdkodade fras trots att jämförelsen faktiskt gäller
- * en lika lång period längre bak (april–maj) — läsaren tolkade det som att
- * juli jämfördes mot juni.
+ * "månaden före". Flermånadersperioder jämförs numera sista valda månaden
+ * mot den FÖRSTA valda månaden (inte mot en extern period längre bak) —
+ * comparisonPeriod är då redan bara den första månaden, så etiketten blir
+ * dess månadsnamn, t.ex. "juni".
  */
 function comparisonLabelFor(viewModel: ReportViewModel): string {
   const { period, comparisonPeriod } = viewModel;
   const isSingleMonth = period.start.slice(0, 7) === period.end.slice(0, 7);
   if (isSingleMonth) return "månaden före";
-  if (!comparisonPeriod) return "föregående period";
-  return `perioden innan (${monthNameSv(comparisonPeriod.start)}–${monthNameSv(comparisonPeriod.end)})`;
+  if (!comparisonPeriod) return "den första månaden i perioden";
+  const startMonth = comparisonPeriod.start.slice(0, 7);
+  const endMonth = comparisonPeriod.end.slice(0, 7);
+  return startMonth === endMonth
+    ? monthNameSv(comparisonPeriod.start)
+    : `${monthNameSv(comparisonPeriod.start)}–${monthNameSv(comparisonPeriod.end)}`;
 }
 
 function trendPhrase(value: number | null, comparisonLabel: string): string {
@@ -208,40 +211,17 @@ function trendPhrase(value: number | null, comparisonLabel: string): string {
     : `${Math.abs(Math.round(value))} % lägre än ${comparisonLabel}`;
 }
 
-/**
- * En flermånadersperiod kan vara upp mot jämförelseperioden i aggregat
- * (t.ex. juni+juli mot april+maj) MEN ändå falla inom sig själv (juli lägre
- * än juni) — att bara skriva "294 % högre" är då sant men vilseledande.
- * Ger en ärlig bisats när den senaste månaden i perioden är svagare än den
- * första, annars "".
- */
-function withinPeriodDeclineCaveat(
-  monthlySeries: NonNullable<ReportMetrics["monthlySeries"]> | undefined,
-  key: "clicks" | "impressions",
-): string {
-  if (!monthlySeries || monthlySeries.length < 2) return "";
-  const first = monthlySeries[0];
-  const last = monthlySeries[monthlySeries.length - 1];
-  if (last[key] >= first[key]) return "";
-  return ` — även om ${monthNameSv(`${last.month}-01`)} var lägre än ${monthNameSv(`${first.month}-01`)} inom perioden`;
-}
-
 function positiveFallbackSignal(viewModel: ReportViewModel): string {
   const metrics = viewModel.metrics;
   const comparisonLabel = comparisonLabelFor(viewModel);
   if (metrics.clicks.deltaPct != null && metrics.clicks.deltaPct > 0) {
-    const caveat = withinPeriodDeclineCaveat(metrics.monthlySeries, "clicks");
-    return `Det starkaste tecknet är att klicken från Google blev ${trendPhrase(metrics.clicks.deltaPct, comparisonLabel)}${caveat}.`;
+    return `Det starkaste tecknet är att klicken från Google blev ${trendPhrase(metrics.clicks.deltaPct, comparisonLabel)}.`;
   }
   if (
     metrics.impressions.deltaPct != null &&
     metrics.impressions.deltaPct > 0
   ) {
-    const caveat = withinPeriodDeclineCaveat(
-      metrics.monthlySeries,
-      "impressions",
-    );
-    return `Det starkaste tecknet är att ni syntes ${trendPhrase(metrics.impressions.deltaPct, comparisonLabel)} i Google${caveat}.`;
+    return `Det starkaste tecknet är att ni syntes ${trendPhrase(metrics.impressions.deltaPct, comparisonLabel)} i Google.`;
   }
   if (
     metrics.position.deltaAbsolute != null &&

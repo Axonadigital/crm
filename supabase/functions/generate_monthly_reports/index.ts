@@ -143,6 +143,26 @@ function aggregateReportSnapshot(
   };
 }
 
+/**
+ * Senaste valda månadens EGNA (osummerade) data, med period_start/end satt
+ * till hela den valda perioden för visning. Används för flermånadersperioder
+ * — där jämförelsen är sista vs första valda månad, inte ett externt
+ * aggregat — så "nu"-siffran är den faktiska senaste månaden, inte en summa.
+ * `snaps` måste redan vara sorterad stigande på period_start.
+ */
+function lastMonthSnapshotForRange(
+  snaps: ReportSnapshot[],
+  range: { startDate: string; endDate: string },
+): ReportSnapshot | null {
+  if (snaps.length === 0) return null;
+  const mostRecent = snaps[snaps.length - 1];
+  return {
+    ...mostRecent,
+    period_start: range.startDate,
+    period_end: range.endDate,
+  };
+}
+
 /** Kundvänd rad om GEO/AI-sök-beredskap ur crawl-data. llms.txt nämns ej. */
 function geoReadiness(seoChecks: ReportSnapshot["seo_checks"]): string {
   if (!seoChecks) return "Kunde inte kontrolleras den här perioden.";
@@ -227,7 +247,6 @@ async function generateReportForCompany(
         return { startDate: m.startDate, endDate: m.endDate };
       })();
   const months = monthCount(reportPeriod.startDate, reportPeriod.endDate);
-  const comparisonPeriod = precedingRange(reportPeriod.startDate, months);
   const period = reportPeriod.startDate;
   const periodLabel = periodLabelSv(
     reportPeriod.startDate,
@@ -258,17 +277,30 @@ async function generateReportForCompany(
   if (!company) throw new Error(`Company ${companyId} not found`);
 
   // Endast officiella kalendermånad-snapshots är giltiga rapportunderlag.
-  // Flera månader aggregeras (B1); jämförelsen är föregående lika långa period.
-  const [rangeSnaps, comparisonSnaps] = await Promise.all([
-    loadMonthSnapshots(companyId, reportPeriod.startDate, reportPeriod.endDate),
-    loadMonthSnapshots(
+  const rangeSnaps = await loadMonthSnapshots(
+    companyId,
+    reportPeriod.startDate,
+    reportPeriod.endDate,
+  );
+  // Flermånadersperioder (B1) jämförs sista valda månaden mot den FÖRSTA
+  // valda månaden — inom perioden du faktiskt valde, inte mot ett externt
+  // aggregat längre bak. En enskild månad jämförs som tidigare mot
+  // föregående kalendermånad.
+  let latest: ReportSnapshot | null;
+  let previous: ReportSnapshot | null;
+  if (months > 1) {
+    latest = lastMonthSnapshotForRange(rangeSnaps, reportPeriod);
+    previous = rangeSnaps.length > 1 ? rangeSnaps[0] : null;
+  } else {
+    const comparisonPeriod = precedingRange(reportPeriod.startDate, 1);
+    const comparisonSnaps = await loadMonthSnapshots(
       companyId,
       comparisonPeriod.startDate,
       comparisonPeriod.endDate,
-    ),
-  ]);
-  const latest = aggregateReportSnapshot(rangeSnaps, reportPeriod);
-  const previous = aggregateReportSnapshot(comparisonSnaps, comparisonPeriod);
+    );
+    latest = aggregateReportSnapshot(rangeSnaps, reportPeriod);
+    previous = aggregateReportSnapshot(comparisonSnaps, comparisonPeriod);
+  }
 
   // Täckning: hur många av de begärda månaderna hade faktiskt en snapshot.
   // Skiljer "hela perioden summerad" från "bara delar av den" (t.ex. saknad
@@ -355,13 +387,15 @@ async function generateReportForCompany(
       ? [selectedUpsell, ...upsells]
       : upsells;
   const hasSearchData = !!latest.search_console;
-  // Flermånadersperioder jämförs mot en lika lång föregående period, inte
-  // "förra månaden" — annars skriver AI:n att t.ex. en juni–juli-rapport
-  // jämfördes mot juni, trots att comparisonPeriod faktiskt är april–maj.
+  // Flermånadersperioder jämförs sista valda månaden mot den FÖRSTA valda
+  // månaden (t.ex. juli mot juni) — namnge den faktiska första månaden
+  // istället för den generiska "förra månaden".
   const comparisonLabel =
     months === 1
       ? "förra månaden"
-      : `perioden innan (${periodLabelSv(comparisonPeriod.startDate, comparisonPeriod.endDate)})`;
+      : previous?.period_start && previous?.period_end
+        ? periodLabelSv(previous.period_start, previous.period_end)
+        : "den första månaden i perioden";
 
   const { prompt, systemPrompt } = buildMonthlyReportPrompts({
     companyName: company.name,
