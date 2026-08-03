@@ -27,7 +27,14 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Download, Eye, Loader2, Mail, Sparkles } from "lucide-react";
+import {
+  ClipboardCopy,
+  Download,
+  Eye,
+  Loader2,
+  Mail,
+  Sparkles,
+} from "lucide-react";
 
 import type {
   Company,
@@ -88,6 +95,54 @@ const TONE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "balanced", label: "Balanserad" },
   { value: "reassure", label: "Trygg/försiktig" },
 ];
+
+/**
+ * Bygger ämnesrad + mejltext (klartext och rik HTML) för urklipp — samma
+ * ämnesformat som send_monthly_report/index.ts använder vid faktiskt utskick.
+ * HTML-varianten gör att formateringen (fetstil på hälsning/åtgärd) följer
+ * med vid inklistring i Gmail, inte bara råtext.
+ */
+function buildEmailClipboard(
+  company: Company,
+  report: MonthlyReport,
+  ai: ReportAiContent,
+): { subject: string; text: string; html: string } {
+  const periodLabel =
+    report.view_model?.period.label ??
+    `${report.data_period_start ?? ""} – ${report.data_period_end ?? ""}`;
+  const subject = `Er synlighet i ${periodLabel} — ${company.name}`;
+
+  const paragraphs = [
+    ai.greeting,
+    ai.summary,
+    ai.recommended_action,
+    ai.upsell_pitch,
+  ].filter((p) => p && p.trim().length > 0);
+
+  const text = paragraphs.join("\n\n");
+
+  const escapeHtml = (value: string) =>
+    value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const html = [
+    ai.greeting
+      ? `<p style="margin:0 0 12px;font-weight:700;">${escapeHtml(ai.greeting)}</p>`
+      : "",
+    ai.summary
+      ? `<p style="margin:0 0 16px;">${escapeHtml(ai.summary)}</p>`
+      : "",
+    ai.recommended_action
+      ? `<p style="margin:0 0 8px;font-weight:700;">${escapeHtml(ai.recommended_action)}</p>`
+      : "",
+    ai.upsell_pitch
+      ? `<p style="margin:0;">${escapeHtml(ai.upsell_pitch)}</p>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return { subject, text, html };
+}
 
 /** Skillnaden mellan editerad policy och auto-basen → minimal override-payload. */
 function diffPresentation(
@@ -406,6 +461,35 @@ export const MonthlyReportModal = ({
     }
   };
 
+  const handleCopyEmailText = async () => {
+    if (!report) return;
+    const { subject, text, html } = buildEmailClipboard(company, report, ai);
+    const clipboardText = `Ämne: ${subject}\n\n${text}`;
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([clipboardText], { type: "text/plain" }),
+            "text/html": new Blob([html], { type: "text/html" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(clipboardText);
+      }
+      notify(
+        "Mejltext kopierad — klistra in i Gmail, ändra ämne/text och bifoga PDF:en (Öppna PDF) själv.",
+        { type: "info" },
+      );
+    } catch (error) {
+      notify(
+        error instanceof Error
+          ? error.message
+          : "Kunde inte kopiera mejltexten",
+        { type: "warning" },
+      );
+    }
+  };
+
   // Minimal override-payload (bara fält som avviker från auto-policyn).
   const presentationOverride =
     presBase && presPolicy ? diffPresentation(presBase, presPolicy) : undefined;
@@ -657,10 +741,26 @@ export const MonthlyReportModal = ({
               ) : null}
 
               <div className="grid gap-3 border-t pt-4">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Mail className="h-4 w-4" />
-                  Mailtext (redigerbar)
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Mail className="h-4 w-4" />
+                    Mailtext (redigerbar)
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyEmailText}
+                  >
+                    <ClipboardCopy className="h-4 w-4" />
+                    Kopiera mejltext
+                  </Button>
                 </div>
+                <p className="text-xs text-muted-foreground -mt-1">
+                  Kopierar ämne + text formaterat, för att klistra in och skicka
+                  själv från t.ex. Gmail. Bifoga PDF:en manuellt via "Öppna PDF"
+                  nedan.
+                </p>
                 <div className="grid gap-2">
                   <Label htmlFor="ai-greeting">Hälsning</Label>
                   <Input
