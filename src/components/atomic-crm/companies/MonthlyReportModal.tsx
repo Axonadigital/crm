@@ -672,7 +672,7 @@ export const MonthlyReportModal = ({
                 </div>
               )}
 
-              {report.selected_upsells.length > 1 ? (
+              {report.selected_upsells.length > 0 ? (
                 <div className="grid gap-2">
                   <Label htmlFor="report-recommendation">
                     Rekommenderad huvudåtgärd
