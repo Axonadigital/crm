@@ -386,22 +386,19 @@ async function generateReportForCompany(
     !upsells.some((offer) => offer.service === selectedUpsell.service)
       ? [selectedUpsell, ...upsells]
       : upsells;
-  // Google Business-paket kräver att business_profile-datan faktiskt gick att
-  // hämta för att en brist ska upptäckas (findings.ts). Misslyckas hämtningen
-  // (API-fel, saknad nyckel) skapas ingen finding, och tjänsten kan då aldrig
-  // väljas som "Rekommenderad huvudåtgärd" — även när kunden uppenbart saknar
-  // en profil. Erbjud den därför alltid som ett manuellt valbart alternativ.
-  const GOOGLE_BUSINESS_SERVICE = "Google Business-paket";
-  const googleBusinessOffer = catalog.find(
-    (offer) => offer.service === GOOGLE_BUSINESS_SERVICE,
+  // Analysen missar ibland en brist den borde ha hittat (t.ex. en trasig
+  // datakälla ger ingen finding alls, se Google Business-paket-fallet) —
+  // erbjud därför alltid HELA katalogen som valbara alternativ under
+  // "Rekommenderad huvudåtgärd", inte bara det analysen råkade upptäcka.
+  // De automatiskt upptäckta ligger överst (severity-sorterade); resten av
+  // katalogen fylls på efter, i katalogordning.
+  const catalogOnlyOffers = catalog.filter(
+    (offer) =>
+      !upsellsWithSelected.some(
+        (existing) => existing.service === offer.service,
+      ),
   );
-  const reportUpsells =
-    googleBusinessOffer &&
-    !upsellsWithSelected.some(
-      (offer) => offer.service === GOOGLE_BUSINESS_SERVICE,
-    )
-      ? [...upsellsWithSelected, googleBusinessOffer]
-      : upsellsWithSelected;
+  const reportUpsells = [...upsellsWithSelected, ...catalogOnlyOffers];
   const hasSearchData = !!latest.search_console;
   // Flermånadersperioder jämförs sista valda månaden mot den FÖRSTA valda
   // månaden (t.ex. juli mot juni) — namnge den faktiska första månaden
