@@ -227,6 +227,10 @@ export const MonthlyReportModal = ({
   const [periodPreset, setPeriodPreset] = useState("last_month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  // Ny kund registrerad mitt i perioden → "föregående period" har bara
+  // några dagars data och ger en missvisande jättesiffra. Hoppar då över
+  // jämförelsen helt istället för att visa en falsk trend.
+  const [skipComparison, setSkipComparison] = useState(false);
   const [report, setReport] = useState<MonthlyReport | null>(null);
   const [recipientEmail, setRecipientEmail] = useState("");
   const [selectedUpsellService, setSelectedUpsellService] = useState("");
@@ -383,6 +387,7 @@ export const MonthlyReportModal = ({
         ...(priorRecommendedService
           ? { recommended_service: priorRecommendedService }
           : {}),
+        ...(skipComparison ? { skip_comparison: true } : {}),
       });
       if (result.status === "skipped_already_finalized" && result.report_id) {
         // Perioden är redan skickad — öppna den befintliga rapporten istället
@@ -619,6 +624,21 @@ export const MonthlyReportModal = ({
                   jämförs med föregående lika långa period. Saknas månader, kör
                   "Hämta historik" på Kund-fliken först.
                 </p>
+              </div>
+              <div className="flex items-start gap-2">
+                <Switch
+                  id="skip-comparison"
+                  checked={skipComparison}
+                  onCheckedChange={setSkipComparison}
+                />
+                <Label
+                  htmlFor="skip-comparison"
+                  className="font-normal text-sm leading-tight"
+                >
+                  Ingen jämförelse mot föregående period — för nya kunder där
+                  föregående period bara har ett par dagars data och annars ger
+                  en missvisande jättesiffra.
+                </Label>
               </div>
               <Button
                 className="self-start"

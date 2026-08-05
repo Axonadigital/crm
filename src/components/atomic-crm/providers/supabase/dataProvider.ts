@@ -1381,6 +1381,7 @@ const dataProviderWithCustomMethods = {
       period_end: string;
       force?: boolean;
       recommended_service?: string;
+      skip_comparison?: boolean;
     },
   ): Promise<{ success: true; report_id: number | null; status: string }> {
     const { data, error } = await supabase.functions.invoke(

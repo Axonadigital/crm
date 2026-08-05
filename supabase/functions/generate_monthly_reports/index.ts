@@ -235,6 +235,13 @@ async function generateReportForCompany(
    */
   force = false,
   recommendedService?: string,
+  /**
+   * Hoppa över jämförelse mot föregående period helt (deltaPct blir null
+   * överallt). Till för nya kunder registrerade mitt i/sent i en månad —
+   * "föregående månad" har då bara några dagars data och ger en missvisande
+   * jättesiffra (t.ex. "+2000 %") istället för en ärlig "första rapporten".
+   */
+  skipComparison = false,
 ): Promise<{ report_id: number | null; status: string }> {
   // Period: vald (normaliserad till hela månader) eller default = förra månaden.
   const reportPeriod = requestedPeriod
@@ -285,10 +292,16 @@ async function generateReportForCompany(
   // Flermånadersperioder (B1) jämförs sista valda månaden mot den FÖRSTA
   // valda månaden — inom perioden du faktiskt valde, inte mot ett externt
   // aggregat längre bak. En enskild månad jämförs som tidigare mot
-  // föregående kalendermånad.
+  // föregående kalendermånad — om inte skipComparison är satt (ny kund).
   let latest: ReportSnapshot | null;
   let previous: ReportSnapshot | null;
-  if (months > 1) {
+  if (skipComparison) {
+    latest =
+      months > 1
+        ? lastMonthSnapshotForRange(rangeSnaps, reportPeriod)
+        : aggregateReportSnapshot(rangeSnaps, reportPeriod);
+    previous = null;
+  } else if (months > 1) {
     latest = lastMonthSnapshotForRange(rangeSnaps, reportPeriod);
     previous = rangeSnaps.length > 1 ? rangeSnaps[0] : null;
   } else {
@@ -717,6 +730,8 @@ Deno.serve(async (req: Request) =>
             ? { startDate: periodStart, endDate: periodEnd }
             : undefined;
         const force = getOptionalBooleanField(body, "force") ?? false;
+        const skipComparison =
+          getOptionalBooleanField(body, "skip_comparison") ?? false;
         const recommendedService =
           typeof (body as { recommended_service?: unknown })
             .recommended_service === "string"
@@ -728,6 +743,7 @@ Deno.serve(async (req: Request) =>
           requestedPeriod,
           force,
           recommendedService,
+          skipComparison,
         );
         return createJsonResponse({ success: true, ...result });
       } catch (error) {
