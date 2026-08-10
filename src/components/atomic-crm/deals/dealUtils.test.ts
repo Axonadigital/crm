@@ -5,6 +5,7 @@ import {
   findDealLabel,
   formatRecurringLabel,
   getRelativeTimeString,
+  periodDealValue,
   totalDealValue,
 } from "./dealUtils";
 import type { DealStage } from "../types";
@@ -149,6 +150,52 @@ describe("totalDealValue", () => {
         recurring_interval: undefined,
       }),
     ).toBe(3000);
+  });
+});
+
+describe("periodDealValue", () => {
+  it("returns only the recurring amount when there is no one-off amount", () => {
+    // Regression: en vunnen deal med bara ett 499 kr/mån-abonnemang ska öka
+    // "vunnet denna månad" med 499, inte 499*12 (det är vad totalDealValue
+    // ger — rätt för årsvärde i pipen, fel för en periods intäkt).
+    expect(
+      periodDealValue({
+        amount: 0,
+        recurring_amount: 499,
+      }),
+    ).toBe(499);
+  });
+
+  it("adds the one-off amount and one period of the recurring amount", () => {
+    expect(
+      periodDealValue({
+        amount: 5000,
+        recurring_amount: 1000,
+      }),
+    ).toBe(6000);
+  });
+
+  it("ignores recurring_interval entirely (unlike totalDealValue)", () => {
+    expect(periodDealValue({ amount: 0, recurring_amount: 499 })).toBe(
+      periodDealValue({
+        amount: 0,
+        recurring_amount: 499,
+      }),
+    );
+    expect(
+      totalDealValue({
+        amount: 0,
+        recurring_amount: 499,
+        recurring_interval: "monthly",
+      }),
+    ).toBe(5988);
+  });
+
+  it("handles null/undefined fields", () => {
+    expect(periodDealValue({ amount: null, recurring_amount: null })).toBe(0);
+    expect(
+      periodDealValue({ amount: undefined, recurring_amount: undefined }),
+    ).toBe(0);
   });
 });
 

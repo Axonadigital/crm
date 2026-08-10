@@ -34,6 +34,19 @@ export function totalDealValue(
   );
 }
 
+/**
+ * Engångsbeloppet plus EN period av det återkommande beloppet — oavsett
+ * intervall (t.ex. 499 kr/mån räknas som 499, inte 499*12). Använd för mått
+ * som representerar en specifik period (t.ex. "vunnet denna månad",
+ * genomsnittlig dealstorlek) — totalDealValue (årsvärde) skulle annars göra
+ * en enda 499 kr/mån-deal till en 5988 kr-post för den månaden den vanns i.
+ */
+export function periodDealValue(
+  deal: Pick<Deal, "amount" | "recurring_amount">,
+): number {
+  return (deal.amount || 0) + (deal.recurring_amount || 0);
+}
+
 export function formatRecurringLabel(
   interval: string | null | undefined,
 ): string {
