@@ -9,7 +9,7 @@ import {
 import { useGetList } from "ra-core";
 import { useMemo } from "react";
 
-import { periodDealValue, totalDealValue } from "../deals/dealUtils";
+import { totalDealValue } from "../deals/dealUtils";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 
@@ -77,16 +77,14 @@ export const useDashboardDeals = (): DashboardMetrics => {
     const months6ago = subMonths(now, 6);
     const months12ago = subMonths(now, 12);
 
-    // Closed revenue (won deals) - current month vs previous. Periodvärde,
-    // INTE totalDealValue (årsvärde) — annars räknas en enda 499 kr/mån-deal
-    // som 5988 kr "vunnet denna månad".
+    // Closed revenue (won deals) - current month vs previous
     const wonDeals = data.filter((d) => d.stage === "won");
     const closedRevenue = wonDeals
       .filter((d) => {
         const date = new Date(d.expected_closing_date);
         return !isBefore(date, thisMonthStart);
       })
-      .reduce((sum, d) => sum + periodDealValue(d), 0);
+      .reduce((sum, d) => sum + totalDealValue(d), 0);
 
     const closedRevenuePrev = wonDeals
       .filter((d) => {
@@ -95,7 +93,7 @@ export const useDashboardDeals = (): DashboardMetrics => {
           !isBefore(date, prevMonthStart) && isBefore(date, thisMonthStart)
         );
       })
-      .reduce((sum, d) => sum + periodDealValue(d), 0);
+      .reduce((sum, d) => sum + totalDealValue(d), 0);
 
     // Pipeline value - active stages only
     const activePipelineDeals = data.filter(
@@ -134,14 +132,13 @@ export const useDashboardDeals = (): DashboardMetrics => {
     const winRatePrev =
       totalClosedPrev90 > 0 ? (wonPrev90 / totalClosedPrev90) * 100 : 0;
 
-    // Average deal size - won deals last 6 months vs previous 6. Periodvärde
-    // av samma skäl som closedRevenue ovan.
+    // Average deal size - won deals last 6 months vs previous 6
     const wonRecent = wonDeals.filter((d) =>
       isAfter(new Date(d.expected_closing_date), months6ago),
     );
     const avgDealSize =
       wonRecent.length > 0
-        ? wonRecent.reduce((sum, d) => sum + periodDealValue(d), 0) /
+        ? wonRecent.reduce((sum, d) => sum + totalDealValue(d), 0) /
           wonRecent.length
         : 0;
 
@@ -151,7 +148,7 @@ export const useDashboardDeals = (): DashboardMetrics => {
     });
     const avgDealSizePrev =
       wonOlder.length > 0
-        ? wonOlder.reduce((sum, d) => sum + periodDealValue(d), 0) /
+        ? wonOlder.reduce((sum, d) => sum + totalDealValue(d), 0) /
           wonOlder.length
         : 0;
 
@@ -162,16 +159,13 @@ export const useDashboardDeals = (): DashboardMetrics => {
       const monthEnd = startOfMonth(subMonths(now, i - 1));
       const monthKey = format(monthStart, "MMM yyyy");
 
-      // "won" är periodvärde (samma skäl som closedRevenue); "pipeline"
-      // förblir totalDealValue (årsvärde) — det representerar potentiellt
-      // kontraktsvärde om deals i pipen vinns, inte redan intjänad intäkt.
       const monthWon = data
         .filter((d) => {
           if (d.stage !== "won") return false;
           const date = new Date(d.expected_closing_date);
           return !isBefore(date, monthStart) && isBefore(date, monthEnd);
         })
-        .reduce((sum, d) => sum + periodDealValue(d), 0);
+        .reduce((sum, d) => sum + totalDealValue(d), 0);
 
       const monthPipeline = data
         .filter((d) => {
