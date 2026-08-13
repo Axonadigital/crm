@@ -830,6 +830,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/FortnoxLinkCard.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/FortnoxCustomerButton.tsx",
           "type": "registry:component"
         },

@@ -138,7 +138,7 @@ export const CustomerCoveragePage = () => {
         <StatCard
           label="Återkommande intäkter"
           value={`${formatCurrency(summary.mrr)}/mån`}
-          sub={`${summary.recurringNoContract} utan Fortnox-avtal`}
+          sub={`${summary.recurringNoContract} utan automatiskt Fortnox-avtal`}
         />
         <StatCard
           label={`Betalt ${year}`}
