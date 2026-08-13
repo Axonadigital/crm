@@ -432,6 +432,198 @@ describe("customer billing overview", () => {
     });
   });
 
+  it("surfaces an overdue recurring line instead of a merely-due-soon installment", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 50,
+          name: "Löpande SEO",
+          amount: 0,
+          recurring_amount: 1000,
+          recurring_interval: "monthly",
+          invoiced_through: "2026-06-30", // covered through June -> overdue in August
+        }),
+        deal({
+          id: 51,
+          name: "Nyhetsbrev",
+          amount: 9000,
+          recurring_amount: 0,
+          recurring_interval: null,
+          billing_schedule_type: "installment",
+          installment_count: 3,
+          installment_interval_months: 1,
+          billing_start_date: "2026-09-01", // next installment due next month, not yet
+        }),
+      ],
+      [],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows[0].billing_status).toBe("overdue");
+    expect(rows[0].next_invoice_date).toBe("2026-07-01");
+    expect(rows[0].next_invoice_deals).toEqual([
+      expect.objectContaining({ deal_id: 50 }),
+    ]);
+  });
+
+  it("combines a missing one-time deal with an overdue recurring line instead of picking only one", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 52,
+          name: "Löpande SEO",
+          amount: 0,
+          recurring_amount: 1000,
+          recurring_interval: "monthly",
+          invoiced_through: "2026-06-30",
+        }),
+        deal({
+          id: 53,
+          name: "Startsida",
+          amount: 5000,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+      ],
+      [],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    const dealIds = rows[0].next_invoice_deals.map((d) => d.deal_id).sort();
+    expect(dealIds).toEqual([52, 53]);
+    expect(rows[0].next_invoice_amount).toBe(6000);
+  });
+
+  it("reminds about the one-time portion of a combo deal even though it also recurs", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 54,
+          name: "Startpaket + drift",
+          amount: 10000,
+          recurring_amount: 2000,
+          recurring_interval: "monthly",
+        }),
+      ],
+      [],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows[0].billing_warnings.join(" ")).toContain(
+      "saknar matchande Fortnox-faktura",
+    );
+    expect(rows[0].deals.find((d) => d.deal_id === 54)).toMatchObject({
+      status: "needs_invoice",
+    });
+  });
+
+  it("does not count an invoice linked to a different deal as an installment payment", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 55,
+          name: "Nyhetsbrev",
+          amount: 15000,
+          recurring_amount: 0,
+          recurring_interval: null,
+          billing_schedule_type: "installment",
+          installment_count: 3,
+          installment_interval_months: 1,
+          billing_start_date: "2026-08-01",
+        }),
+      ],
+      [
+        invoice({
+          document_number: 500,
+          deal_id: 999, // linked to an unrelated deal
+          invoice_date: "2026-08-01",
+          total: 6250,
+          total_vat: 1250,
+        }),
+      ],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows[0].deals[0]).toMatchObject({
+      installment_index: 1,
+      status: "needs_invoice",
+    });
+  });
+
+  it("does not count a stale invoice from before the deal's billing start as an installment payment", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 56,
+          name: "Nyhetsbrev",
+          amount: 15000,
+          recurring_amount: 0,
+          recurring_interval: null,
+          billing_schedule_type: "installment",
+          installment_count: 3,
+          installment_interval_months: 1,
+          billing_start_date: "2026-08-01",
+        }),
+      ],
+      [
+        // Same amount as one installment (5000), but dated before the deal
+        // even started — an unrelated, coincidentally-equal invoice.
+        invoice({
+          document_number: 501,
+          deal_id: null,
+          invoice_date: "2026-05-01",
+          total: 6250,
+          total_vat: 1250,
+        }),
+      ],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows[0].deals[0]).toMatchObject({
+      installment_index: 1,
+      status: "needs_invoice",
+    });
+  });
+
+  it("recommends the final installment's remainder-adjusted amount so the sum matches the deal total", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 57,
+          name: "Kampanj",
+          amount: 10000,
+          recurring_amount: 0,
+          recurring_interval: null,
+          billing_schedule_type: "installment",
+          installment_count: 3,
+          installment_interval_months: 1,
+          billing_start_date: "2026-01-01",
+        }),
+      ],
+      [
+        invoice({
+          document_number: 502,
+          deal_id: 57,
+          invoice_date: "2026-01-01",
+          total: 4166.665,
+          total_vat: 833.335,
+        }),
+        invoice({
+          document_number: 503,
+          deal_id: 57,
+          invoice_date: "2026-02-01",
+          total: 4166.665,
+          total_vat: 833.335,
+        }),
+      ],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    // Two installments of 3333.33 already invoiced; the third must absorb the
+    // 0.01 rounding remainder so 3333.33 + 3333.33 + 3333.34 = 10000.00.
+    expect(rows[0].deals[0].next_invoice_amount).toBe(3333.34);
+  });
+
   it("flags multi-deal customers when Fortnox invoices are not linked to deals", () => {
     const rows = buildCustomerBillingOverview(
       [

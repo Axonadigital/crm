@@ -89,14 +89,14 @@ describe("mapQuoteLineItems", () => {
         DeliveredQuantity: "1",
         Price: 45000,
         VAT: 25,
-        AccountNumber: 3011,
+        AccountNumber: 3001,
       },
       {
         Description: "SEO-abonnemang",
         DeliveredQuantity: "3",
         Price: 4500,
         VAT: 25,
-        AccountNumber: 3011,
+        AccountNumber: 3001,
       },
     ]);
   });

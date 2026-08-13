@@ -29,6 +29,7 @@ import {
   ensureFortnoxCustomer,
   loadCompany,
 } from "../_shared/fortnox/customerSync.ts";
+import { ensureContractArticle } from "../_shared/fortnox/articles.ts";
 import {
   buildContractPayload,
   mapContract,
@@ -105,6 +106,7 @@ async function createFromDeal(dealId: number) {
     client,
     company,
   );
+  const articleNumber = await ensureContractArticle(client);
 
   const startDate = new Date().toISOString().slice(0, 10);
   const payload = buildContractPayload(
@@ -116,6 +118,7 @@ async function createFromDeal(dealId: number) {
     },
     customer_number,
     startDate,
+    articleNumber,
   );
 
   const created = await client.post<FortnoxContractResponse>("/3/contracts", {

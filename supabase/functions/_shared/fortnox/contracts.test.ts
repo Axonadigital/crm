@@ -23,31 +23,38 @@ describe("invoiceIntervalFor", () => {
 });
 
 describe("buildContractRows", () => {
-  it("builds one free-text row from the recurring amount", () => {
-    const rows = buildContractRows({
-      id: 5,
-      name: "Månadsavtal hemsida",
-      recurring_amount: 1000,
-      recurring_interval: "monthly",
-    });
+  it("builds one row from the recurring amount, carrying the contract article", () => {
+    const rows = buildContractRows(
+      {
+        id: 5,
+        name: "Månadsavtal hemsida",
+        recurring_amount: 1000,
+        recurring_interval: "monthly",
+      },
+      "AVTAL",
+    );
     expect(rows).toEqual([
       {
         Description: "Månadsavtal hemsida",
         DeliveredQuantity: "1",
         Price: 1000,
         VAT: 25,
-        AccountNumber: 3011,
+        AccountNumber: 3001,
+        ArticleNumber: "AVTAL",
       },
     ]);
   });
 
   it("falls back to a generic description when the deal has no name", () => {
-    const rows = buildContractRows({
-      id: 5,
-      name: null,
-      recurring_amount: 199,
-      recurring_interval: "monthly",
-    });
+    const rows = buildContractRows(
+      {
+        id: 5,
+        name: null,
+        recurring_amount: 199,
+        recurring_interval: "monthly",
+      },
+      "AVTAL",
+    );
     expect(rows[0].Description).toBe("Löpande avtal");
   });
 });
@@ -63,6 +70,7 @@ describe("buildContractPayload", () => {
       },
       "12",
       "2026-07-17",
+      "AVTAL",
     );
 
     expect(payload).toMatchObject({
@@ -77,6 +85,7 @@ describe("buildContractPayload", () => {
     });
     expect(payload.InvoiceRows).toHaveLength(1);
     expect(payload.InvoiceRows[0].Price).toBe(500);
+    expect(payload.InvoiceRows[0].ArticleNumber).toBe("AVTAL");
   });
 
   it("uses a 12-month interval for a yearly deal", () => {
@@ -89,6 +98,7 @@ describe("buildContractPayload", () => {
       },
       "12",
       "2026-01-01",
+      "AVTAL",
     );
     expect(payload.InvoiceInterval).toBe(12);
   });
