@@ -12,17 +12,13 @@ const INTERVAL_MONTHS: Record<RecurringInterval, number> = {
   yearly: 12,
 };
 
-const INTERVAL_PRIORITY: RecurringInterval[] = [
-  "monthly",
-  "quarterly",
-  "yearly",
-];
-
 const toDateOnly = (date: Date): string => {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
 };
+
+const parseDate = (value: string): Date => new Date(`${value}T00:00:00`);
 
 const startOfYear = (year: number) => `${year}-01-01`;
 const startOfNextYear = (year: number) => `${year + 1}-01-01`;
@@ -36,6 +32,12 @@ const addMonths = (date: Date, months: number): Date => {
     next.setDate(0);
   }
 
+  return next;
+};
+
+const addDays = (date: Date, days: number): Date => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
   return next;
 };
 
@@ -60,6 +62,9 @@ const balanceExVat = (invoice: FortnoxInvoice): number => {
   return invoiceExVat(invoice) * ((invoice.balance ?? 0) / gross);
 };
 
+const dealInterval = (deal: RecurringRevenueDeal): RecurringInterval =>
+  (deal.recurring_interval as RecurringInterval | null) ?? "monthly";
+
 export const getCadenceLabel = (
   intervals: Array<RecurringInterval | null>,
 ): CustomerBillingRow["billing_cadence"] => {
@@ -69,29 +74,72 @@ export const getCadenceLabel = (
   return known[0];
 };
 
-export const getPrimaryInterval = (
-  intervals: Array<RecurringInterval | null>,
-): RecurringInterval => {
-  const known = intervals.filter(Boolean) as RecurringInterval[];
-  return (
-    INTERVAL_PRIORITY.find((interval) => known.includes(interval)) ?? "monthly"
-  );
+/**
+ * The next invoice date for a single recurring line. Manual `invoicedThrough`
+ * wins (the day after the covered period); otherwise we roll the last actual
+ * invoice forward by one interval, and fall back to the billing start date when
+ * there is no invoice history at all.
+ */
+export const getNextInvoiceDate = ({
+  invoicedThrough,
+  lastInvoiceDate,
+  billingStartDate,
+  interval,
+}: {
+  invoicedThrough?: string | null;
+  lastInvoiceDate: string | null;
+  billingStartDate?: string | null;
+  interval: RecurringInterval;
+}): string | null => {
+  if (invoicedThrough) {
+    return toDateOnly(addDays(parseDate(invoicedThrough), 1));
+  }
+  if (lastInvoiceDate) {
+    return toDateOnly(
+      addMonths(parseDate(lastInvoiceDate), INTERVAL_MONTHS[interval]),
+    );
+  }
+  if (billingStartDate) return billingStartDate;
+  return null;
 };
 
-export const getNextInvoiceDate = ({
+/**
+ * The date through which a recurring line is covered — the authority for how
+ * much of this year is left to invoice. Manual `invoicedThrough` wins; otherwise
+ * we assume the last invoice covered one interval forward (a yearly invoice in
+ * January covers the whole year, which invoice dates alone can't tell you).
+ */
+const coveredThroughDate = ({
+  invoicedThrough,
   lastInvoiceDate,
   interval,
 }: {
+  invoicedThrough: string | null;
   lastInvoiceDate: string | null;
   interval: RecurringInterval;
 }): string | null => {
-  if (!lastInvoiceDate) return null;
-  return toDateOnly(
-    addMonths(
-      new Date(`${lastInvoiceDate}T00:00:00`),
-      INTERVAL_MONTHS[interval],
-    ),
-  );
+  if (invoicedThrough) return invoicedThrough;
+  if (lastInvoiceDate) {
+    return toDateOnly(
+      addDays(
+        addMonths(parseDate(lastInvoiceDate), INTERVAL_MONTHS[interval]),
+        -1,
+      ),
+    );
+  }
+  return null;
+};
+
+/** How many of this calendar year's months are already covered/invoiced. */
+const coveredMonthsThisYear = (
+  coveredThrough: string | null,
+  year: number,
+): number => {
+  if (!coveredThrough) return 0;
+  const date = parseDate(coveredThrough);
+  if (date.getFullYear() < year) return 0;
+  if (date.getFullYear() > year) return 12;
+  return date.getMonth() + 1;
 };
 
 export const getBillingStatus = (
@@ -100,10 +148,16 @@ export const getBillingStatus = (
 ): CustomerBillingRow["billing_status"] => {
   if (!nextInvoiceDate) return "never_invoiced";
 
-  const days = daysBetween(today, new Date(`${nextInvoiceDate}T00:00:00`));
+  const days = daysBetween(today, parseDate(nextInvoiceDate));
   if (days < 0) return "overdue";
   if (days <= 30) return "due_soon";
   return "ok";
+};
+
+const earliestDate = (dates: string[]): string | null => {
+  const valid = dates.filter(Boolean);
+  if (valid.length === 0) return null;
+  return valid.reduce((min, current) => (current < min ? current : min));
 };
 
 export const buildCustomerBillingOverview = (
@@ -144,11 +198,7 @@ export const buildCustomerBillingOverview = (
       );
       const monthly = companyDeals.reduce(
         (sum, deal) =>
-          sum +
-          monthlyAmount(
-            deal.recurring_amount,
-            deal.recurring_interval as RecurringInterval | null,
-          ),
+          sum + monthlyAmount(deal.recurring_amount, dealInterval(deal)),
         0,
       );
       const expectedYearly = monthly * 12;
@@ -163,19 +213,45 @@ export const buildCustomerBillingOverview = (
         (sum, invoice) => sum + balanceExVat(invoice),
         0,
       );
-      const lastInvoice =
+      const lastInvoiceDate =
         companyInvoices
           .filter((invoice) => invoice.invoice_date)
-          .sort((a, b) =>
-            String(b.invoice_date).localeCompare(String(a.invoice_date)),
-          )[0] ?? null;
+          .map((invoice) => invoice.invoice_date as string)
+          .sort((a, b) => b.localeCompare(a))[0] ?? null;
+
+      // Schedule is computed per recurring line so a yearly and a monthly deal
+      // on the same customer each get the right coverage, then aggregated.
+      let remaining = 0;
+      let hasManualSchedule = false;
+      const nextDates: string[] = [];
+      for (const deal of companyDeals) {
+        const interval = dealInterval(deal);
+        const lineMonthly = monthlyAmount(deal.recurring_amount, interval);
+        if (deal.invoiced_through) hasManualSchedule = true;
+
+        const covered = coveredMonthsThisYear(
+          coveredThroughDate({
+            invoicedThrough: deal.invoiced_through,
+            lastInvoiceDate,
+            interval,
+          }),
+          year,
+        );
+        remaining += lineMonthly * (12 - covered);
+
+        const next = getNextInvoiceDate({
+          invoicedThrough: deal.invoiced_through,
+          lastInvoiceDate,
+          billingStartDate: deal.billing_start_date,
+          interval,
+        });
+        if (next) nextDates.push(next);
+      }
+
+      const nextInvoiceDate = earliestDate(nextDates);
       const intervals = companyDeals.map(
         (deal) => deal.recurring_interval as RecurringInterval | null,
       );
-      const nextInvoiceDate = getNextInvoiceDate({
-        lastInvoiceDate: lastInvoice?.invoice_date ?? null,
-        interval: getPrimaryInterval(intervals),
-      });
 
       return {
         company_id: companyDeals[0].company_id!,
@@ -186,14 +262,12 @@ export const buildCustomerBillingOverview = (
         billing_cadence: getCadenceLabel(intervals),
         invoiced_year_to_date: invoicedYearToDate,
         paid_year_to_date: paidYearToDate,
-        remaining_to_invoice_this_year: Math.max(
-          0,
-          expectedYearly - invoicedYearToDate,
-        ),
+        remaining_to_invoice_this_year: Math.max(0, Math.round(remaining)),
         outstanding_balance: outstanding,
-        last_invoice_date: lastInvoice?.invoice_date ?? null,
+        last_invoice_date: lastInvoiceDate,
         next_invoice_date: nextInvoiceDate,
         billing_status: getBillingStatus(nextInvoiceDate, today),
+        has_manual_schedule: hasManualSchedule,
       } satisfies CustomerBillingRow;
     })
     .sort((a, b) => {

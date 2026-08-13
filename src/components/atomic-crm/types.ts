@@ -261,6 +261,12 @@ export type Deal = {
   recurring_interval?: "monthly" | "quarterly" | "yearly" | null;
   /** Fortnox contract (avtal) number, once this recurring deal has one. */
   fortnox_contract_number?: number | null;
+  /** Recurring billing covered/invoiced through this date (correctable by hand). */
+  invoiced_through?: string | null;
+  /** Date the recurring billing period started; seeds the first invoice date. */
+  billing_start_date?: string | null;
+  /** Free-text note about the customer's billing arrangement. */
+  billing_notes?: string | null;
   created_at: string;
   updated_at: string;
   archived_at?: string;
@@ -1404,6 +1410,10 @@ export type RecurringRevenueDeal = {
   amount: number;
   recurring_amount: number;
   recurring_interval: "monthly" | "quarterly" | "yearly" | null;
+  /** Recurring billing covered/invoiced through this date (correctable by hand). */
+  invoiced_through: string | null;
+  /** Date the recurring billing period started; seeds the first invoice date. */
+  billing_start_date: string | null;
 };
 
 /**
@@ -1425,4 +1435,6 @@ export type CustomerBillingRow = {
   last_invoice_date: string | null;
   next_invoice_date: string | null;
   billing_status: "ok" | "due_soon" | "overdue" | "never_invoiced";
+  /** True when at least one deal carries a hand-set "invoiced through" date. */
+  has_manual_schedule: boolean;
 };

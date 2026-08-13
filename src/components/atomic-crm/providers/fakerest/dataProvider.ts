@@ -68,6 +68,19 @@ const demoInvoiceDate = (
   return toDateOnly(new Date(year, now.getMonth() - 1, 15));
 };
 
+/**
+ * Demo billing coverage: some customers are prepaid through year-end, some
+ * mid-year, and some have no manual schedule set (fall back to the estimate).
+ */
+const demoInvoicedThrough = (deal: Deal): string | null => {
+  if (deal.invoiced_through) return deal.invoiced_through;
+  const id = Number(deal.id);
+  const year = new Date().getFullYear();
+  if (id % 3 === 0) return null;
+  if (id % 3 === 1) return `${year}-12-31`;
+  return toDateOnly(new Date(year, 5, 30));
+};
+
 const demoRecurringInterval = (
   deal: Deal,
 ): NonNullable<Deal["recurring_interval"]> => {
@@ -294,6 +307,8 @@ export const createDataProvider = ({
         amount: deal.amount,
         recurring_amount: demoRecurringAmount(deal),
         recurring_interval: demoRecurringInterval(deal),
+        invoiced_through: demoInvoicedThrough(deal),
+        billing_start_date: deal.billing_start_date ?? null,
       }));
     },
     async getCustomerCoverage(): Promise<CustomerCoverage[]> {

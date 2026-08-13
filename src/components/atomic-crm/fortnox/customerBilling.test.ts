@@ -17,6 +17,8 @@ const deal = (
   amount: 0,
   recurring_amount: 12000,
   recurring_interval: "yearly",
+  invoiced_through: null,
+  billing_start_date: null,
   ...overrides,
 });
 
@@ -87,6 +89,50 @@ describe("customer billing overview", () => {
       remaining_to_invoice_this_year: 12000,
       billing_status: "never_invoiced",
     });
+  });
+
+  it("treats a manual 'invoiced through' date as the authority for remaining and next invoice", () => {
+    // Z-bud case: monthly deal, no matched Fortnox invoices, but prepaid for
+    // the rest of the year. The hand-set date must zero out the remaining.
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          recurring_amount: 1000,
+          recurring_interval: "monthly",
+          invoiced_through: "2026-12-31",
+        }),
+      ],
+      [],
+      new Date("2026-08-12T12:00:00"),
+    );
+
+    expect(rows[0]).toMatchObject({
+      monthly_recurring: 1000,
+      expected_yearly: 12000,
+      remaining_to_invoice_this_year: 0,
+      next_invoice_date: "2027-01-01",
+      billing_status: "ok",
+      has_manual_schedule: true,
+    });
+  });
+
+  it("leaves only the uncovered months to invoice when covered mid-year", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          recurring_amount: 1000,
+          recurring_interval: "monthly",
+          invoiced_through: "2026-06-30",
+        }),
+      ],
+      [],
+      new Date("2026-08-12T12:00:00"),
+    );
+
+    // Covered through June (6 months) -> 6 months left at 1000 = 6000.
+    expect(rows[0].remaining_to_invoice_this_year).toBe(6000);
+    expect(rows[0].next_invoice_date).toBe("2026-07-01");
+    expect(rows[0].billing_status).toBe("overdue");
   });
 
   it("normalises unpaid balances to ex VAT", () => {

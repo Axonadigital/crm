@@ -722,7 +722,7 @@ const dataProviderWithCustomMethods = {
     const { data, error } = await supabase
       .from("deals")
       .select(
-        "id, name, company_id, amount, recurring_amount, recurring_interval",
+        "id, name, company_id, amount, recurring_amount, recurring_interval, invoiced_through, billing_start_date",
       )
       .eq("stage", "won")
       .is("archived_at", null)
@@ -754,6 +754,8 @@ const dataProviderWithCustomMethods = {
       amount: r.amount,
       recurring_amount: r.recurring_amount,
       recurring_interval: r.recurring_interval,
+      invoiced_through: r.invoiced_through ?? null,
+      billing_start_date: r.billing_start_date ?? null,
     })) as RecurringRevenueDeal[];
   },
   /**
