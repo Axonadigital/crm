@@ -236,7 +236,9 @@ export const CustomerCoveragePage = () => {
                           : "—"}
                       </TableCell>
                       <TableCell>
-                        {invoice && invoice.next_invoice_date ? (
+                        {invoice?.billing_confidence === "needs_review" ? (
+                          <Badge variant="destructive">Kontrollera</Badge>
+                        ) : invoice && invoice.next_invoice_date ? (
                           <NextInvoiceChip
                             date={invoice.next_invoice_date}
                             status={invoice.billing_status}
@@ -248,15 +250,23 @@ export const CustomerCoveragePage = () => {
                       <TableCell className="min-w-56">
                         {invoice && invoice.next_invoice_date ? (
                           <div className="space-y-1">
-                            <div className="text-sm font-medium">
-                              Fakturera {formatCurrency(invoice.next_invoice_amount)}
-                            </div>
+                            {invoice.billing_confidence === "needs_review" ? (
+                              <Badge variant="destructive">
+                                Kontrollera fakturor
+                              </Badge>
+                            ) : (
+                              <div className="text-sm font-medium">
+                                Fakturera{" "}
+                                {formatCurrency(invoice.next_invoice_amount)}
+                              </div>
+                            )}
                             <div className="text-xs text-muted-foreground">
-                              {invoice.next_invoice_deals.length > 0
+                              {invoice.billing_warnings[0] ??
+                              (invoice.next_invoice_deals.length > 0
                                 ? invoice.next_invoice_deals
                                     .map((deal) => deal.deal_name)
                                     .join(", ")
-                                : "Inga deals hittades för datumet"}
+                                : "Inga deals hittades för datumet")}
                             </div>
                           </div>
                         ) : (

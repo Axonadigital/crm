@@ -76,6 +76,7 @@ describe("customer billing overview", () => {
       next_invoice_date: "2027-01-15",
       next_invoice_amount: 12000,
       billing_status: "ok",
+      billing_confidence: "high",
     });
   });
 
@@ -168,6 +169,76 @@ describe("customer billing overview", () => {
     });
   });
 
+  it("uses Fortnox invoice rows to separate recurring coverage from unrelated one-time invoices", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 64,
+          amount: 30000,
+          recurring_amount: 1000,
+          recurring_interval: "monthly",
+        }),
+        deal({
+          id: 65,
+          name: "Google Business Profil",
+          amount: 3000,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+      ],
+      [
+        invoice({
+          document_number: 2642,
+          invoice_date: "2026-07-10",
+          due_date: "2026-08-09",
+          total: 43750,
+          total_vat: 8750,
+          balance: 0,
+          status: "paid",
+          invoice_rows: [
+            {
+              Description: "Hemsida + fraksedelssystem",
+              PriceExcludingVAT: 30000,
+              DeliveredQuantity: "1",
+              TotalExcludingVAT: 30000,
+            },
+            {
+              Description: "Löpande drift & underhåll/ Månad",
+              PriceExcludingVAT: 1000,
+              DeliveredQuantity: "5",
+              TotalExcludingVAT: 5000,
+            },
+          ],
+        }),
+        invoice({
+          document_number: 2644,
+          invoice_date: "2026-08-11",
+          due_date: "2026-09-10",
+          total: 3750,
+          total_vat: 750,
+          balance: 3750,
+          status: "unpaid",
+          invoice_rows: [
+            {
+              Description: "Google Business Profil",
+              PriceExcludingVAT: 1500,
+              DeliveredQuantity: "2",
+              TotalExcludingVAT: 3000,
+            },
+          ],
+        }),
+      ],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows[0]).toMatchObject({
+      paid_year_to_date: 35000,
+      next_invoice_date: "2027-01-01",
+      next_invoice_amount: 1000,
+      billing_confidence: "high",
+    });
+  });
+
   it("normalises unpaid balances to ex VAT", () => {
     const rows = buildCustomerBillingOverview(
       [deal({ recurring_amount: 1000, recurring_interval: "monthly" })],
@@ -227,6 +298,29 @@ describe("customer billing overview", () => {
         }),
       ],
     });
+  });
+
+  it("flags multi-deal customers when Fortnox invoices are not linked to deals", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({ id: 1, amount: 30000, recurring_amount: 1000 }),
+        deal({ id: 2, name: "Businessprofil", amount: 3000 }),
+      ],
+      [
+        invoice({
+          total: 43750,
+          total_vat: 8750,
+          deal_id: null,
+          invoice_rows: [],
+        }),
+      ],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows[0].billing_confidence).toBe("needs_review");
+    expect(rows[0].billing_warnings[0]).toContain(
+      "Flera deals delar fakturamottagare",
+    );
   });
 });
 

@@ -1228,6 +1228,7 @@ export type FortnoxInvoice = {
   invoice_type: string | null;
   ocr: string | null;
   reminders: number | null;
+  invoice_rows?: Array<Record<string, unknown>>;
   /** Derived in the database so every view agrees. */
   status: "cancelled" | "paid" | "overdue" | "unpaid";
   synced_at: string;
@@ -1462,6 +1463,8 @@ export type CustomerBillingRow = {
     amount: number;
     next_invoice_date: string | null;
   }>;
+  billing_confidence: "high" | "needs_review";
+  billing_warnings: string[];
   billing_status: "ok" | "due_soon" | "overdue" | "never_invoiced";
   /** True when at least one deal carries a hand-set "invoiced through" date. */
   has_manual_schedule: boolean;

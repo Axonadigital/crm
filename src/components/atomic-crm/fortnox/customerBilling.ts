@@ -179,6 +179,57 @@ const latestDate = (dates: string[]): string | null => {
   return valid.reduce((max, current) => (current > max ? current : max));
 };
 
+const hasInvoiceRows = (invoice: FortnoxInvoice): boolean =>
+  Array.isArray(invoice.invoice_rows) && invoice.invoice_rows.length > 0;
+
+const rowNumber = (
+  row: Record<string, unknown>,
+  ...keys: string[]
+): number | null => {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+};
+
+const sameMoney = (a: number | null, b: number | null): boolean =>
+  a !== null && b !== null && Math.abs(a - b) < 0.5;
+
+/**
+ * Prefer Fortnox invoice rows over customer-level totals. A row with quantity
+ * 5 and price 1000 on a monthly deal means five monthly periods are covered;
+ * using the total invoice would wrongly let unrelated one-time rows move the
+ * recurring schedule.
+ */
+const rowBasedCoveredThrough = (
+  deal: RecurringRevenueDeal,
+  currentYearInvoices: FortnoxInvoice[],
+): string | null => {
+  if (dealInterval(deal) !== "monthly" || !deal.recurring_amount) return null;
+
+  const covered: string[] = [];
+  for (const invoice of currentYearInvoices) {
+    if (invoice.status !== "paid" || !invoice.invoice_date) continue;
+    for (const row of invoice.invoice_rows ?? []) {
+      const price = rowNumber(row, "PriceExcludingVAT", "Price");
+      const quantity = rowNumber(row, "DeliveredQuantity", "Quantity");
+      if (!sameMoney(price, deal.recurring_amount) || !quantity) continue;
+      covered.push(
+        toDateOnly(
+          endOfMonth(addMonths(parseDate(invoice.invoice_date), quantity)),
+        ),
+      );
+    }
+  }
+
+  return latestDate(covered);
+};
+
 /**
  * When invoices are not linked to a specific recurring deal, infer coverage
  * from money: subtract one-time won value, then spread the remaining invoiced
@@ -294,12 +345,21 @@ export const buildCustomerBillingOverview = (
       // on the same customer each get the right coverage, then aggregated.
       let remaining = 0;
       let hasManualSchedule = false;
+      let hasRowBasedCoverage = false;
       const nextDates: string[] = [];
       const dealRecommendations: CustomerBillingRow["next_invoice_deals"] = [];
       for (const deal of companyDeals) {
         const interval = dealInterval(deal);
         const lineMonthly = monthlyAmount(deal.recurring_amount, interval);
         if (deal.invoiced_through) hasManualSchedule = true;
+        const rowCoveredThrough = rowBasedCoveredThrough(
+          deal,
+          currentYearInvoices,
+        );
+        if (rowCoveredThrough) hasRowBasedCoverage = true;
+        const inferredCoveredThrough =
+          rowCoveredThrough ??
+          (deal.invoiced_through ? null : amountCoveredThrough);
 
         const covered = coveredMonthsThisYear(
           latestDate([
@@ -308,7 +368,7 @@ export const buildCustomerBillingOverview = (
               lastInvoiceDate,
               interval,
             }),
-            deal.invoiced_through ? null : amountCoveredThrough,
+            inferredCoveredThrough,
           ]),
           year,
         );
@@ -320,7 +380,7 @@ export const buildCustomerBillingOverview = (
             lastInvoiceDate,
             interval,
           }),
-          deal.invoiced_through ? null : amountCoveredThrough,
+          inferredCoveredThrough,
         ]);
 
         const next = getNextInvoiceDate({
@@ -353,6 +413,24 @@ export const buildCustomerBillingOverview = (
       const intervals = companyDeals.map(
         (deal) => deal.recurring_interval as RecurringInterval | null,
       );
+      const hasUnlinkedInvoices = currentYearInvoices.some(
+        (invoice) => invoice.deal_id == null,
+      );
+      const hasMissingInvoiceRows = currentYearInvoices.some(
+        (invoice) => !hasInvoiceRows(invoice),
+      );
+      const billingWarnings: string[] = [];
+      if (
+        companyDeals.length > 1 &&
+        hasUnlinkedInvoices &&
+        (!hasRowBasedCoverage || hasMissingInvoiceRows)
+      ) {
+        billingWarnings.push(
+          hasMissingInvoiceRows
+            ? "Flera deals delar fakturamottagare, men Fortnox-fakturan saknar speglade fakturarader. Synka Fortnox och kontrollera deal-koppling."
+            : "Flera deals delar fakturamottagare och minst en Fortnox-faktura saknar deal-koppling. Kontrollera vilka deals fakturan avser.",
+        );
+      }
 
       return {
         company_id: billedCompanyId,
@@ -369,6 +447,9 @@ export const buildCustomerBillingOverview = (
         next_invoice_date: nextInvoiceDate,
         next_invoice_amount: nextInvoiceAmount,
         next_invoice_deals: nextInvoiceDeals,
+        billing_confidence:
+          billingWarnings.length > 0 ? "needs_review" : "high",
+        billing_warnings: billingWarnings,
         billing_status: getBillingStatus(nextInvoiceDate, today),
         has_manual_schedule: hasManualSchedule,
       } satisfies CustomerBillingRow;

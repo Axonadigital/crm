@@ -7,6 +7,9 @@
  */
 
 export type FortnoxInvoiceListItem = Record<string, unknown>;
+export type FortnoxInvoiceDetailItem = FortnoxInvoiceListItem & {
+  InvoiceRows?: unknown;
+};
 
 export type FortnoxInvoiceRow = {
   document_number: number;
@@ -28,7 +31,9 @@ export type FortnoxInvoiceRow = {
   reminders: number | null;
   external_reference_1: string | null;
   external_reference_2: string | null;
+  invoice_rows: unknown[];
   raw: FortnoxInvoiceListItem;
+  detail_raw: FortnoxInvoiceDetailItem | null;
   synced_at: string;
 };
 
@@ -102,31 +107,38 @@ export function normalizeOrgNumber(value: unknown): string | null {
 export function mapInvoice(
   raw: FortnoxInvoiceListItem,
   nowIso: string,
+  detailRaw: FortnoxInvoiceDetailItem | null = null,
 ): FortnoxInvoiceRow | null {
-  const documentNumber = toNumber(raw.DocumentNumber);
+  const merged = { ...raw, ...(detailRaw ?? {}) };
+  const documentNumber = toNumber(merged.DocumentNumber);
   if (documentNumber === null) return null;
+  const invoiceRows = Array.isArray(detailRaw?.InvoiceRows)
+    ? detailRaw.InvoiceRows
+    : [];
 
   return {
     document_number: documentNumber,
-    customer_number: toText(raw.CustomerNumber),
-    customer_name: toText(raw.CustomerName),
-    organisation_number: toText(raw.OrganisationNumber),
-    invoice_date: toDate(raw.InvoiceDate),
-    due_date: toDate(raw.DueDate),
-    final_pay_date: toDate(raw.FinalPayDate),
-    currency: toText(raw.Currency),
-    total: toNumber(raw.Total),
-    total_vat: toNumber(raw.TotalVAT),
-    balance: toNumber(raw.Balance),
-    booked: toBool(raw.Booked),
-    sent: toBool(raw.Sent),
-    cancelled: toBool(raw.Cancelled),
-    invoice_type: toText(raw.InvoiceType),
-    ocr: toText(raw.OCR),
-    reminders: toNumber(raw.Reminders),
-    external_reference_1: toText(raw.ExternalInvoiceReference1),
-    external_reference_2: toText(raw.ExternalInvoiceReference2),
+    customer_number: toText(merged.CustomerNumber),
+    customer_name: toText(merged.CustomerName),
+    organisation_number: toText(merged.OrganisationNumber),
+    invoice_date: toDate(merged.InvoiceDate),
+    due_date: toDate(merged.DueDate),
+    final_pay_date: toDate(merged.FinalPayDate),
+    currency: toText(merged.Currency),
+    total: toNumber(merged.Total),
+    total_vat: toNumber(merged.TotalVAT),
+    balance: toNumber(merged.Balance),
+    booked: toBool(merged.Booked),
+    sent: toBool(merged.Sent),
+    cancelled: toBool(merged.Cancelled),
+    invoice_type: toText(merged.InvoiceType),
+    ocr: toText(merged.OCR),
+    reminders: toNumber(merged.Reminders),
+    external_reference_1: toText(merged.ExternalInvoiceReference1),
+    external_reference_2: toText(merged.ExternalInvoiceReference2),
+    invoice_rows: invoiceRows,
     raw,
+    detail_raw: detailRaw,
     synced_at: nowIso,
   };
 }

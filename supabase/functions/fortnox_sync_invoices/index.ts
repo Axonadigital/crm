@@ -18,6 +18,7 @@ import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { errorResponseFromUnknown, HttpError } from "../_shared/http.ts";
 import { createFortnoxClient } from "../_shared/fortnox/index.ts";
 import {
+  type FortnoxInvoiceDetailItem,
   formatLastModified,
   mapInvoice,
   normalizeOrgNumber,
@@ -39,6 +40,10 @@ const MAX_PAGES = 100;
 type FortnoxInvoiceListResponse = {
   MetaInformation?: { "@TotalPages"?: number; "@CurrentPage"?: number };
   Invoices?: Record<string, unknown>[];
+};
+
+type FortnoxInvoiceDetailResponse = {
+  Invoice?: FortnoxInvoiceDetailItem;
 };
 
 async function authorize(req: Request): Promise<void> {
@@ -95,6 +100,24 @@ async function fetchCustomers(
   } while (page <= totalPages && page <= 20);
 
   return customers;
+}
+
+async function fetchInvoiceDetail(
+  client: ReturnType<typeof createFortnoxClient>,
+  documentNumber: number,
+): Promise<FortnoxInvoiceDetailItem | null> {
+  try {
+    const response = await client.get<FortnoxInvoiceDetailResponse>(
+      `/3/invoices/${documentNumber}`,
+    );
+    return response.Invoice ?? null;
+  } catch (error) {
+    console.warn("fortnox_sync_invoices: could not fetch invoice detail", {
+      documentNumber,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 Deno.serve((req: Request) =>
@@ -166,7 +189,13 @@ Deno.serve((req: Request) =>
         totalPages = response.MetaInformation?.["@TotalPages"] ?? 1;
 
         for (const raw of response.Invoices ?? []) {
-          const row = mapInvoice(raw, startedAt);
+          const listRow = mapInvoice(raw, startedAt);
+          if (!listRow) continue;
+          const detail = await fetchInvoiceDetail(
+            client,
+            listRow.document_number,
+          );
+          const row = mapInvoice(raw, startedAt, detail);
           if (!row) continue;
 
           const companyId = resolveCompanyId(

@@ -64,6 +64,24 @@ describe("mapInvoice", () => {
   it("keeps the raw payload so a mapping mistake is recoverable", () => {
     expect(mapInvoice(paidInvoice, NOW)!.raw).toEqual(paidInvoice);
   });
+
+  it("merges invoice detail rows and exact VAT from the detail endpoint", () => {
+    const row = mapInvoice(
+      { ...paidInvoice, TotalVAT: undefined },
+      NOW,
+      {
+        ...paidInvoice,
+        TotalVAT: 1775,
+        InvoiceRows: [{ Description: "Hemsida", Price: 30000 }],
+      },
+    )!;
+
+    expect(row.total_vat).toBe(1775);
+    expect(row.invoice_rows).toEqual([
+      { Description: "Hemsida", Price: 30000 },
+    ]);
+    expect(row.detail_raw?.InvoiceRows).toHaveLength(1);
+  });
 });
 
 describe("deriveStatus", () => {
