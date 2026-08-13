@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Check, Minus, X } from "lucide-react";
+import { Check, ChevronDown, Minus, X } from "lucide-react";
 import { useDataProvider } from "ra-core";
-import { useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -55,7 +56,22 @@ const NA = () => <Minus className="mx-auto h-4 w-4 text-muted-foreground" />;
  */
 export const CustomerCoveragePage = () => {
   const dataProvider = useDataProvider<CrmDataProvider>();
+  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(
+    () => new Set(),
+  );
   const year = new Date().getFullYear();
+
+  const toggleExpanded = (companyId: string) => {
+    setExpandedCompanies((current) => {
+      const next = new Set(current);
+      if (next.has(companyId)) {
+        next.delete(companyId);
+      } else {
+        next.add(companyId);
+      }
+      return next;
+    });
+  };
 
   const { data: coverage, isPending } = useQuery({
     queryKey: ["customer-coverage"],
@@ -197,119 +213,212 @@ export const CustomerCoveragePage = () => {
               <TableBody>
                 {rows.map((c) => {
                   const invoice = billingByCompany.get(String(c.company_id));
+                  const expanded = expandedCompanies.has(String(c.company_id));
                   const missingInvoiceWarning =
                     invoice?.billing_warnings.find((warning) =>
                       warning.includes("saknar matchande Fortnox-faktura"),
                     ) ?? null;
                   return (
-                    <TableRow key={c.company_id}>
-                      <TableCell className="font-medium">
-                        <Link
-                          className="hover:underline"
-                          to={`/companies/${c.company_id}/show`}
-                        >
-                          {c.company_name ?? "—"}
-                        </Link>
-                        <div className="text-xs text-muted-foreground">
-                          {formatCurrency(c.won_amount)} vunnet värde
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {c.won_deal_count}
-                      </TableCell>
-                      <TableCell>
-                        {invoice
-                          ? BILLING_CADENCE_LABELS[invoice.billing_cadence]
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {c.has_recurring
-                          ? formatCurrency(c.recurring_monthly)
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {invoice
-                          ? formatCurrency(invoice.paid_year_to_date)
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {invoice
-                          ? formatCurrency(
-                              invoice.remaining_to_invoice_this_year,
-                            )
-                          : "—"}
-                      </TableCell>
-                      <TableCell>
-                        {invoice?.billing_confidence === "needs_review" ? (
-                          <Badge variant="destructive">Kontrollera</Badge>
-                        ) : invoice && invoice.next_invoice_date ? (
-                          <NextInvoiceChip
-                            date={invoice.next_invoice_date}
-                            status={invoice.billing_status}
-                          />
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell className="min-w-56">
-                        {invoice && invoice.next_invoice_date ? (
-                          <div className="space-y-1">
-                            {missingInvoiceWarning ? (
-                              <div className="text-sm font-medium text-destructive">
-                                Skicka faktura{" "}
-                                {formatCurrency(invoice.next_invoice_amount)}
+                    <Fragment key={c.company_id}>
+                      <TableRow>
+                        <TableCell className="font-medium">
+                          <div className="flex items-start gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="mt-0.5 h-6 w-6"
+                              onClick={() =>
+                                toggleExpanded(String(c.company_id))
+                              }
+                            >
+                              <ChevronDown
+                                className={`h-4 w-4 transition-transform ${
+                                  expanded ? "rotate-180" : ""
+                                }`}
+                              />
+                              <span className="sr-only">Visa deals</span>
+                            </Button>
+                            <div>
+                              <Link
+                                className="hover:underline"
+                                to={`/companies/${c.company_id}/show`}
+                              >
+                                {c.company_name ?? "—"}
+                              </Link>
+                              <div className="text-xs text-muted-foreground">
+                                {formatCurrency(c.won_amount)} vunnet värde
                               </div>
-                            ) : invoice.billing_confidence ===
-                              "needs_review" ? (
-                              <Badge variant="destructive">
-                                Kontrollera fakturor
-                              </Badge>
-                            ) : (
-                              <div className="text-sm font-medium">
-                                Fakturera{" "}
-                                {formatCurrency(invoice.next_invoice_amount)}
-                              </div>
-                            )}
-                            <div className="text-xs text-muted-foreground">
-                              {missingInvoiceWarning ??
-                              invoice.billing_warnings[0] ??
-                              (invoice.next_invoice_deals.length > 0
-                                ? invoice.next_invoice_deals
-                                    .map((deal) => deal.deal_name)
-                                    .join(", ")
-                                : "Inga deals hittades för datumet")}
                             </div>
                           </div>
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {invoice ? (
-                          <BillingStatusBadge status={invoice.billing_status} />
-                        ) : billingError && c.has_recurring ? (
-                          <Badge variant="destructive">
-                            Faktureringsdata saknas
-                          </Badge>
-                        ) : c.has_invoice ? (
-                          <Badge variant="secondary">Fakturerad</Badge>
-                        ) : (
-                          <Badge variant="outline">Ej återkommande</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {c.is_fortnox_customer ? <Yes /> : <No />}
-                      </TableCell>
-                      <TableCell>
-                        {!c.has_recurring ? (
-                          <NA />
-                        ) : c.has_contract ? (
-                          <Yes />
-                        ) : (
-                          <No />
-                        )}
-                      </TableCell>
-                    </TableRow>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {c.won_deal_count}
+                        </TableCell>
+                        <TableCell>
+                          {invoice
+                            ? BILLING_CADENCE_LABELS[invoice.billing_cadence]
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {c.has_recurring
+                            ? formatCurrency(c.recurring_monthly)
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {invoice
+                            ? formatCurrency(invoice.paid_year_to_date)
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {invoice
+                            ? formatCurrency(
+                                invoice.remaining_to_invoice_this_year,
+                              )
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {invoice?.billing_confidence === "needs_review" ? (
+                            <Badge variant="destructive">Kontrollera</Badge>
+                          ) : invoice && invoice.next_invoice_date ? (
+                            <NextInvoiceChip
+                              date={invoice.next_invoice_date}
+                              status={invoice.billing_status}
+                            />
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell className="min-w-56">
+                          {invoice && invoice.next_invoice_date ? (
+                            <div className="space-y-1">
+                              {missingInvoiceWarning ? (
+                                <div className="text-sm font-medium text-destructive">
+                                  Skicka faktura{" "}
+                                  {formatCurrency(invoice.next_invoice_amount)}
+                                </div>
+                              ) : invoice.billing_confidence ===
+                                "needs_review" ? (
+                                <Badge variant="destructive">
+                                  Kontrollera fakturor
+                                </Badge>
+                              ) : (
+                                <div className="text-sm font-medium">
+                                  Fakturera{" "}
+                                  {formatCurrency(invoice.next_invoice_amount)}
+                                </div>
+                              )}
+                              <div className="text-xs text-muted-foreground">
+                                {missingInvoiceWarning ??
+                                invoice.billing_warnings[0] ??
+                                (invoice.next_invoice_deals.length > 0
+                                  ? invoice.next_invoice_deals
+                                      .map((deal) => deal.deal_name)
+                                      .join(", ")
+                                  : "Inga deals hittades för datumet")}
+                              </div>
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {invoice ? (
+                            <BillingStatusBadge
+                              status={invoice.billing_status}
+                            />
+                          ) : billingError && c.has_recurring ? (
+                            <Badge variant="destructive">
+                              Faktureringsdata saknas
+                            </Badge>
+                          ) : c.has_invoice ? (
+                            <Badge variant="secondary">Fakturerad</Badge>
+                          ) : (
+                            <Badge variant="outline">Ej återkommande</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {c.is_fortnox_customer ? <Yes /> : <No />}
+                        </TableCell>
+                        <TableCell>
+                          {!c.has_recurring ? (
+                            <NA />
+                          ) : c.has_contract ? (
+                            <Yes />
+                          ) : (
+                            <No />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      {expanded && invoice?.deals?.length ? (
+                        <TableRow className="bg-muted/30">
+                          <TableCell colSpan={11} className="p-0">
+                            <div className="grid grid-cols-[minmax(220px,1fr)_120px_120px_150px_minmax(220px,1.2fr)] gap-3 px-12 py-3 text-xs">
+                              <div className="font-medium text-muted-foreground">
+                                Deal
+                              </div>
+                              <div className="text-right font-medium text-muted-foreground">
+                                Engång
+                              </div>
+                              <div className="text-right font-medium text-muted-foreground">
+                                Återk.
+                              </div>
+                              <div className="font-medium text-muted-foreground">
+                                Nästa
+                              </div>
+                              <div className="font-medium text-muted-foreground">
+                                Notis
+                              </div>
+                              {invoice.deals.map((deal) => (
+                                <Fragment key={String(deal.deal_id)}>
+                                  <div>
+                                    <Link
+                                      className="font-medium hover:underline"
+                                      to={`/deals/${deal.deal_id}/show`}
+                                    >
+                                      {deal.deal_name}
+                                    </Link>
+                                    {deal.company_name &&
+                                    deal.company_name !== c.company_name ? (
+                                      <div className="text-muted-foreground">
+                                        {deal.company_name}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="text-right">
+                                    {deal.one_time_amount
+                                      ? formatCurrency(deal.one_time_amount)
+                                      : "—"}
+                                  </div>
+                                  <div className="text-right">
+                                    {deal.recurring_amount
+                                      ? formatCurrency(deal.recurring_amount)
+                                      : "—"}
+                                  </div>
+                                  <div>
+                                    {deal.next_invoice_date
+                                      ? deal.next_invoice_date
+                                      : "—"}
+                                  </div>
+                                  <div>
+                                    {deal.status === "needs_invoice" ? (
+                                      <span className="font-medium text-destructive">
+                                        Skicka faktura{" "}
+                                        {formatCurrency(
+                                          deal.next_invoice_amount,
+                                        )}
+                                      </span>
+                                    ) : (
+                                      (deal.note ?? "OK")
+                                    )}
+                                  </div>
+                                </Fragment>
+                              ))}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
               </TableBody>

@@ -285,6 +285,13 @@ describe("customer billing overview", () => {
           amount: 10000,
         }),
       ],
+      deals: [
+        expect.objectContaining({
+          deal_id: 30,
+          status: "needs_invoice",
+          next_invoice_amount: 10000,
+        }),
+      ],
     });
     expect(rows[0].billing_warnings[0]).toContain(
       "saknar matchande Fortnox-faktura",
@@ -320,6 +327,11 @@ describe("customer billing overview", () => {
     expect(rows[0].billing_confidence).toBe("high");
     expect(rows[0].billing_warnings).toEqual([]);
     expect(rows[0].next_invoice_date).toBeNull();
+    expect(rows[0].deals[0]).toMatchObject({
+      deal_id: 31,
+      status: "ok",
+      next_invoice_amount: 0,
+    });
   });
 
   it("groups recurring coverage by the company that receives the invoice", () => {

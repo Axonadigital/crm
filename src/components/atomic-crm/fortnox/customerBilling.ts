@@ -498,6 +498,52 @@ export const buildCustomerBillingOverview = (
             : "Flera deals delar fakturamottagare och minst en Fortnox-faktura saknar deal-koppling. Kontrollera vilka deals fakturan avser.",
         );
       }
+      const missingDealIds = new Set(
+        missingOneTimeDeals.map((deal) => String(deal.id)),
+      );
+      const recommendedDealIds = new Set(
+        recommendedDeals.map((deal) => String(deal.deal_id)),
+      );
+      const dealDetails: CustomerBillingRow["deals"] = companyDeals.map(
+        (deal) => {
+          const recurringAmount = deal.recurring_amount ?? 0;
+          const isMissingOneTime = missingDealIds.has(String(deal.id));
+          const isNextRecommended = recommendedDealIds.has(String(deal.id));
+          const dealNext =
+            dealRecommendations.find(
+              (recommendation) =>
+                String(recommendation.deal_id) === String(deal.id),
+            )?.next_invoice_date ?? null;
+
+          return {
+            deal_id: deal.id,
+            deal_name: deal.name,
+            company_id: deal.company_id,
+            company_name: deal.company_name,
+            one_time_amount: deal.amount ?? 0,
+            recurring_amount: recurringAmount,
+            recurring_interval: deal.recurring_interval,
+            next_invoice_date: isMissingOneTime
+              ? recommendedDate
+              : dealNext,
+            next_invoice_amount: isMissingOneTime
+              ? (deal.amount ?? 0)
+              : isNextRecommended
+                ? recurringAmount
+                : 0,
+            status: isMissingOneTime
+              ? "needs_invoice"
+              : billingWarnings.length > 0
+                ? "needs_review"
+                : "ok",
+            note: isMissingOneTime
+              ? "Saknar matchande Fortnox-faktura"
+              : dealNext
+                ? `Nästa återkommande faktura ${dealNext}`
+                : null,
+          };
+        },
+      );
 
       return {
         company_id: billedCompanyId,
@@ -514,6 +560,7 @@ export const buildCustomerBillingOverview = (
         next_invoice_date: recommendedDate,
         next_invoice_amount: recommendedAmount,
         next_invoice_deals: recommendedDeals,
+        deals: dealDetails,
         billing_confidence:
           billingWarnings.length > 0 ? "needs_review" : "high",
         billing_warnings: billingWarnings,

@@ -715,9 +715,9 @@ const dataProviderWithCustomMethods = {
     return data;
   },
   /**
-   * Won, active deals with a recurring amount — the recurring-revenue side of
-   * the Likviditet page. Company names are resolved in a second query rather
-   * than an FK embed so a rename of the relationship can't break it.
+   * Won, active billable deals — the plan side of Kundtäckning and Likviditet.
+   * Company names are resolved in a second query rather than an FK embed so a
+   * rename of the relationship can't break it.
    */
   async getRecurringRevenue(): Promise<RecurringRevenueDeal[]> {
     const { data, error } = await supabase
@@ -727,7 +727,7 @@ const dataProviderWithCustomMethods = {
       )
       .eq("stage", "won")
       .is("archived_at", null)
-      .gt("recurring_amount", 0);
+      .or("amount.gt.0,recurring_amount.gt.0");
     if (error) {
       throw new Error("Failed to load recurring revenue");
     }

@@ -1463,6 +1463,19 @@ export type CustomerBillingRow = {
     amount: number;
     next_invoice_date: string | null;
   }>;
+  deals: Array<{
+    deal_id: Identifier;
+    deal_name: string;
+    company_id: Identifier | null;
+    company_name: string | null;
+    one_time_amount: number;
+    recurring_amount: number;
+    recurring_interval: "monthly" | "quarterly" | "yearly" | null;
+    next_invoice_date: string | null;
+    next_invoice_amount: number;
+    status: "ok" | "needs_invoice" | "needs_review";
+    note: string | null;
+  }>;
   billing_confidence: "high" | "needs_review";
   billing_warnings: string[];
   billing_status: "ok" | "due_soon" | "overdue" | "never_invoiced";
