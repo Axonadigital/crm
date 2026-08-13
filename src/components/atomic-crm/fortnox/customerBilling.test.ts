@@ -256,6 +256,72 @@ describe("customer billing overview", () => {
     expect(rows[0].outstanding_balance).toBe(500);
   });
 
+  it("reminds about won one-time deals that have no matching Fortnox invoice", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 30,
+          name: "Startsida",
+          amount: 10000,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+      ],
+      [],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      monthly_recurring: 0,
+      next_invoice_date: "2026-08-13",
+      next_invoice_amount: 10000,
+      billing_status: "due_soon",
+      billing_confidence: "needs_review",
+      next_invoice_deals: [
+        expect.objectContaining({
+          deal_id: 30,
+          deal_name: "Startsida",
+          amount: 10000,
+        }),
+      ],
+    });
+    expect(rows[0].billing_warnings[0]).toContain(
+      "saknar matchande Fortnox-faktura",
+    );
+  });
+
+  it("does not remind about a won one-time deal when Fortnox has a matching invoice row", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 31,
+          name: "Startsida",
+          amount: 10000,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+      ],
+      [
+        invoice({
+          total: 12500,
+          total_vat: 2500,
+          invoice_rows: [
+            {
+              Description: "Startsida",
+              TotalExcludingVAT: 10000,
+            },
+          ],
+        }),
+      ],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows[0].billing_confidence).toBe("high");
+    expect(rows[0].billing_warnings).toEqual([]);
+    expect(rows[0].next_invoice_date).toBeNull();
+  });
+
   it("groups recurring coverage by the company that receives the invoice", () => {
     const rows = buildCustomerBillingOverview(
       [

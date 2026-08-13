@@ -200,6 +200,38 @@ const rowNumber = (
 const sameMoney = (a: number | null, b: number | null): boolean =>
   a !== null && b !== null && Math.abs(a - b) < 0.5;
 
+const rowTotalExVat = (row: Record<string, unknown>): number | null =>
+  rowNumber(row, "TotalExcludingVAT", "Total", "PriceExcludingVAT", "Price");
+
+const invoiceMatchesDealAmount = (
+  deal: RecurringRevenueDeal,
+  invoice: FortnoxInvoice,
+): boolean => {
+  if (!deal.amount || invoice.status === "cancelled") return false;
+  if (invoice.deal_id != null && String(invoice.deal_id) === String(deal.id)) {
+    return true;
+  }
+  if (sameMoney(invoiceExVat(invoice), deal.amount)) return true;
+  if (!hasInvoiceRows(invoice) && invoiceExVat(invoice) >= deal.amount) {
+    return true;
+  }
+  return (invoice.invoice_rows ?? []).some((row) =>
+    sameMoney(rowTotalExVat(row), deal.amount),
+  );
+};
+
+const uninvoicedOneTimeDeals = (
+  companyDeals: RecurringRevenueDeal[],
+  companyInvoices: FortnoxInvoice[],
+): RecurringRevenueDeal[] =>
+  companyDeals.filter((deal) => {
+    if (!deal.amount || deal.amount <= 0) return false;
+    if (deal.recurring_amount && deal.recurring_amount > 0) return false;
+    return !companyInvoices.some((invoice) =>
+      invoiceMatchesDealAmount(deal, invoice),
+    );
+  });
+
 /**
  * Prefer Fortnox invoice rows over customer-level totals. A row with quantity
  * 5 and price 1000 on a monthly deal means five monthly periods are covered;
@@ -296,7 +328,7 @@ export const buildCustomerBillingOverview = (
   const dealsByCompany = new Map<string, RecurringRevenueDeal[]>();
   for (const deal of deals) {
     const companyId = billingCompanyId(deal);
-    if (!companyId || !deal.recurring_amount) continue;
+    if (!companyId || (!deal.amount && !deal.recurring_amount)) continue;
     const key = String(companyId);
     const existing = dealsByCompany.get(key) ?? [];
     existing.push(deal);
@@ -349,6 +381,7 @@ export const buildCustomerBillingOverview = (
       const nextDates: string[] = [];
       const dealRecommendations: CustomerBillingRow["next_invoice_deals"] = [];
       for (const deal of companyDeals) {
+        if (!deal.recurring_amount || deal.recurring_amount <= 0) continue;
         const interval = dealInterval(deal);
         const lineMonthly = monthlyAmount(deal.recurring_amount, interval);
         if (deal.invoiced_through) hasManualSchedule = true;
@@ -410,6 +443,33 @@ export const buildCustomerBillingOverview = (
         (sum, deal) => sum + deal.amount,
         0,
       );
+      const missingOneTimeDeals = uninvoicedOneTimeDeals(
+        companyDeals,
+        companyInvoices,
+      );
+      const missingOneTimeAmount = missingOneTimeDeals.reduce(
+        (sum, deal) => sum + (deal.amount ?? 0),
+        0,
+      );
+      const recommendedDate =
+        missingOneTimeDeals.length > 0
+          ? toDateOnly(today)
+          : nextInvoiceDate;
+      const recommendedDeals =
+        missingOneTimeDeals.length > 0
+          ? missingOneTimeDeals.map((deal) => ({
+              deal_id: deal.id,
+              deal_name: deal.name,
+              company_id: deal.company_id,
+              company_name: deal.company_name,
+              amount: deal.amount,
+              next_invoice_date: recommendedDate,
+            }))
+          : nextInvoiceDeals;
+      const recommendedAmount =
+        missingOneTimeDeals.length > 0
+          ? missingOneTimeAmount
+          : nextInvoiceAmount;
       const intervals = companyDeals.map(
         (deal) => deal.recurring_interval as RecurringInterval | null,
       );
@@ -420,6 +480,13 @@ export const buildCustomerBillingOverview = (
         (invoice) => !hasInvoiceRows(invoice),
       );
       const billingWarnings: string[] = [];
+      if (missingOneTimeDeals.length > 0) {
+        billingWarnings.push(
+          `Vunnen deal saknar matchande Fortnox-faktura: ${missingOneTimeDeals
+            .map((deal) => deal.name)
+            .join(", ")}`,
+        );
+      }
       if (
         companyDeals.length > 1 &&
         hasUnlinkedInvoices &&
@@ -444,13 +511,13 @@ export const buildCustomerBillingOverview = (
         remaining_to_invoice_this_year: Math.max(0, Math.round(remaining)),
         outstanding_balance: outstanding,
         last_invoice_date: lastInvoiceDate,
-        next_invoice_date: nextInvoiceDate,
-        next_invoice_amount: nextInvoiceAmount,
-        next_invoice_deals: nextInvoiceDeals,
+        next_invoice_date: recommendedDate,
+        next_invoice_amount: recommendedAmount,
+        next_invoice_deals: recommendedDeals,
         billing_confidence:
           billingWarnings.length > 0 ? "needs_review" : "high",
         billing_warnings: billingWarnings,
-        billing_status: getBillingStatus(nextInvoiceDate, today),
+        billing_status: getBillingStatus(recommendedDate, today),
         has_manual_schedule: hasManualSchedule,
       } satisfies CustomerBillingRow;
     })

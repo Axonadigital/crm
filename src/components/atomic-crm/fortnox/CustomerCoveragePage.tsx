@@ -197,6 +197,10 @@ export const CustomerCoveragePage = () => {
               <TableBody>
                 {rows.map((c) => {
                   const invoice = billingByCompany.get(String(c.company_id));
+                  const missingInvoiceWarning =
+                    invoice?.billing_warnings.find((warning) =>
+                      warning.includes("saknar matchande Fortnox-faktura"),
+                    ) ?? null;
                   return (
                     <TableRow key={c.company_id}>
                       <TableCell className="font-medium">
@@ -250,7 +254,13 @@ export const CustomerCoveragePage = () => {
                       <TableCell className="min-w-56">
                         {invoice && invoice.next_invoice_date ? (
                           <div className="space-y-1">
-                            {invoice.billing_confidence === "needs_review" ? (
+                            {missingInvoiceWarning ? (
+                              <div className="text-sm font-medium text-destructive">
+                                Skicka faktura{" "}
+                                {formatCurrency(invoice.next_invoice_amount)}
+                              </div>
+                            ) : invoice.billing_confidence ===
+                              "needs_review" ? (
                               <Badge variant="destructive">
                                 Kontrollera fakturor
                               </Badge>
@@ -261,7 +271,8 @@ export const CustomerCoveragePage = () => {
                               </div>
                             )}
                             <div className="text-xs text-muted-foreground">
-                              {invoice.billing_warnings[0] ??
+                              {missingInvoiceWarning ??
+                              invoice.billing_warnings[0] ??
                               (invoice.next_invoice_deals.length > 0
                                 ? invoice.next_invoice_deals
                                     .map((deal) => deal.deal_name)
