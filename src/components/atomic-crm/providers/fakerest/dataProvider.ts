@@ -19,11 +19,16 @@ import type {
   SalesFormData,
   SignUpData,
   Task,
+  CustomerBillingRow,
+  CustomerCoverage,
   CustomerVisibilityDashboardResponse,
   EmailSendStatsResponse,
+  FortnoxInvoice,
   MonthlyAnalysisPeriodSummary,
+  RecurringRevenueDeal,
 } from "../../types";
 import type { ConfigurationContextValue } from "../../root/ConfigurationContext";
+import { buildCustomerBillingOverview } from "../../fortnox/customerBilling";
 import { getActivityLog } from "../commons/activity";
 import { getCompanyAvatar } from "../commons/getCompanyAvatar";
 import { getContactAvatar } from "../commons/getContactAvatar";
@@ -40,6 +45,45 @@ import { withSupabaseFilterAdapter } from "./internal/supabaseAdapter";
 const TASK_MARKED_AS_DONE = "TASK_MARKED_AS_DONE";
 const TASK_MARKED_AS_UNDONE = "TASK_MARKED_AS_UNDONE";
 const TASK_DONE_NOT_CHANGED = "TASK_DONE_NOT_CHANGED";
+
+const toDateOnly = (date: Date): string => {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+};
+
+const demoInvoiceDate = (
+  companyId: Identifier,
+  interval: Deal["recurring_interval"],
+): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const id = Number(companyId);
+
+  if (id % 7 === 0) {
+    return toDateOnly(new Date(year, now.getMonth() - 2, 15));
+  }
+  if (interval === "yearly") return `${year}-01-15`;
+  if (interval === "quarterly") return toDateOnly(new Date(year, 5, 15));
+  return toDateOnly(new Date(year, now.getMonth() - 1, 15));
+};
+
+const demoRecurringInterval = (
+  deal: Deal,
+): NonNullable<Deal["recurring_interval"]> => {
+  if (deal.recurring_interval) return deal.recurring_interval;
+  const intervals = ["monthly", "quarterly", "yearly"] as const;
+  return intervals[Number(deal.id) % intervals.length];
+};
+
+const demoRecurringAmount = (deal: Deal): number => {
+  if ((deal.recurring_amount ?? 0) > 0) return deal.recurring_amount ?? 0;
+  const monthly = 1_500 + (Number(deal.id) % 6) * 750;
+  const interval = demoRecurringInterval(deal);
+  if (interval === "yearly") return monthly * 12;
+  if (interval === "quarterly") return monthly * 3;
+  return monthly;
+};
 
 const processCompanyLogo = async (params: any) => {
   let logo = params.data.logo;
@@ -224,6 +268,136 @@ export const createDataProvider = ({
         by_template: [],
         trend: [],
       };
+    },
+    async getRecurringRevenue(): Promise<RecurringRevenueDeal[]> {
+      const [{ data: deals }, { data: companies }] = await Promise.all([
+        baseDataProvider.getList<Deal>("deals", {
+          filter: { stage: "won" },
+          pagination: { page: 1, perPage: 10_000 },
+          sort: { field: "id", order: "ASC" },
+        }),
+        baseDataProvider.getList<Company>("companies", {
+          filter: {},
+          pagination: { page: 1, perPage: 10_000 },
+          sort: { field: "id", order: "ASC" },
+        }),
+      ]);
+      const companyById = new Map(companies.map((c) => [String(c.id), c]));
+
+      return deals.map((deal) => ({
+        id: deal.id,
+        name: deal.name,
+        company_id: deal.company_id,
+        company_name: deal.company_id
+          ? (companyById.get(String(deal.company_id))?.name ?? null)
+          : null,
+        amount: deal.amount,
+        recurring_amount: demoRecurringAmount(deal),
+        recurring_interval: demoRecurringInterval(deal),
+      }));
+    },
+    async getCustomerCoverage(): Promise<CustomerCoverage[]> {
+      const [{ data: deals }, { data: companies }] = await Promise.all([
+        baseDataProvider.getList<Deal>("deals", {
+          filter: { stage: "won" },
+          pagination: { page: 1, perPage: 10_000 },
+          sort: { field: "id", order: "ASC" },
+        }),
+        baseDataProvider.getList<Company>("companies", {
+          filter: {},
+          pagination: { page: 1, perPage: 10_000 },
+          sort: { field: "id", order: "ASC" },
+        }),
+      ]);
+      const companyById = new Map(companies.map((c) => [String(c.id), c]));
+      const byCompany = new Map<string, CustomerCoverage>();
+      const toMonthly = (
+        amount: number | null | undefined,
+        interval: Deal["recurring_interval"],
+      ) => {
+        if (!amount) return 0;
+        if (interval === "yearly") return amount / 12;
+        if (interval === "quarterly") return amount / 3;
+        return amount;
+      };
+
+      for (const deal of deals) {
+        if (!deal.company_id) continue;
+        const key = String(deal.company_id);
+        const company = companyById.get(key);
+        const interval = demoRecurringInterval(deal);
+        const monthly = toMonthly(demoRecurringAmount(deal), interval);
+        const existing = byCompany.get(key);
+        if (existing) {
+          existing.won_deal_count += 1;
+          existing.won_amount += deal.amount ?? 0;
+          existing.recurring_monthly += monthly;
+          existing.has_recurring = existing.has_recurring || monthly > 0;
+          existing.has_contract =
+            existing.has_contract || (monthly > 0 && Number(deal.id) % 3 !== 0);
+        } else {
+          byCompany.set(key, {
+            company_id: deal.company_id,
+            company_name: company?.name ?? null,
+            is_fortnox_customer: Number(deal.company_id) % 4 !== 0,
+            has_invoice: Number(deal.company_id) % 5 !== 0,
+            won_deal_count: 1,
+            won_amount: deal.amount ?? 0,
+            recurring_monthly: monthly,
+            has_recurring: monthly > 0,
+            has_contract: monthly > 0 && Number(deal.id) % 3 !== 0,
+          });
+        }
+      }
+
+      return [...byCompany.values()].sort(
+        (a, b) => b.won_amount - a.won_amount,
+      );
+    },
+    async getCustomerBillingOverview(): Promise<CustomerBillingRow[]> {
+      const deals = await dataProviderWithCustomMethod.getRecurringRevenue();
+      const invoices: FortnoxInvoice[] = deals
+        .filter((deal) => deal.company_id && Number(deal.company_id) % 5 !== 0)
+        .map((deal, index) => {
+          const invoiceDate = demoInvoiceDate(
+            deal.company_id!,
+            deal.recurring_interval,
+          );
+          const dueDate = toDateOnly(
+            new Date(
+              new Date(`${invoiceDate}T00:00:00`).getTime() + 30 * 864e5,
+            ),
+          );
+          const paid = Number(deal.company_id) % 6 !== 0;
+          const total = Math.round((deal.recurring_amount ?? 0) * 1.25);
+
+          return {
+            document_number: 90_000 + index,
+            company_id: Number(deal.company_id),
+            deal_id: Number(deal.id),
+            quote_id: null,
+            customer_number: String(deal.company_id),
+            customer_name: deal.company_name,
+            organisation_number: null,
+            invoice_date: invoiceDate,
+            due_date: dueDate,
+            final_pay_date: paid ? dueDate : null,
+            currency: "SEK",
+            total,
+            total_vat: total * 0.2,
+            balance: paid ? 0 : total,
+            booked: true,
+            sent: true,
+            cancelled: false,
+            invoice_type: null,
+            ocr: null,
+            reminders: null,
+            status: paid ? "paid" : "unpaid",
+            synced_at: new Date().toISOString(),
+          };
+        });
+
+      return buildCustomerBillingOverview(deals, invoices);
     },
     async getList(resource: string, params: any) {
       if (resource === "activity_log") {

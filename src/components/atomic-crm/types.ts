@@ -1405,3 +1405,24 @@ export type RecurringRevenueDeal = {
   recurring_amount: number;
   recurring_interval: "monthly" | "quarterly" | "yearly" | null;
 };
+
+/**
+ * Customer-level recurring-revenue billing overview. Deals describe the
+ * expected cadence and value; mirrored Fortnox invoices describe what has
+ * actually been invoiced and paid.
+ */
+export type CustomerBillingRow = {
+  company_id: Identifier;
+  company_name: string | null;
+  deal_count: number;
+  monthly_recurring: number;
+  expected_yearly: number;
+  billing_cadence: "monthly" | "quarterly" | "yearly" | "mixed";
+  invoiced_year_to_date: number;
+  paid_year_to_date: number;
+  remaining_to_invoice_this_year: number;
+  outstanding_balance: number;
+  last_invoice_date: string | null;
+  next_invoice_date: string | null;
+  billing_status: "ok" | "due_soon" | "overdue" | "never_invoiced";
+};

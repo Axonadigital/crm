@@ -790,6 +790,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/customerBilling.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/SubscriptionsPage.tsx",
           "type": "registry:component"
         },

@@ -23,6 +23,7 @@ import type {
   FortnoxResultMonth,
   FortnoxSupplierInvoice,
   FortnoxStatus,
+  CustomerBillingRow,
   Subscription,
   SubscriptionInput,
   MonthlyAnalysisPeriodSummary,
@@ -41,6 +42,7 @@ import {
   defaultTitle,
 } from "../../root/defaultConfiguration";
 import { ATTACHMENTS_BUCKET } from "../commons/attachments";
+import { buildCustomerBillingOverview } from "../../fortnox/customerBilling";
 import { getIsInitialized } from "./authProvider";
 import { supabase } from "./supabase";
 
@@ -833,6 +835,18 @@ const dataProviderWithCustomMethods = {
     }
 
     return [...byCompany.values()].sort((a, b) => b.won_amount - a.won_amount);
+  },
+  /**
+   * Customer-level recurring revenue collection overview. Uses won recurring
+   * deals as the plan and mirrored Fortnox invoices as the money trail.
+   */
+  async getCustomerBillingOverview(): Promise<CustomerBillingRow[]> {
+    const [deals, invoices] = await Promise.all([
+      this.getRecurringRevenue(),
+      this.getFortnoxInvoices(),
+    ]);
+
+    return buildCustomerBillingOverview(deals, invoices);
   },
   /**
    * The manual subscription registry — the source of truth for what the company
