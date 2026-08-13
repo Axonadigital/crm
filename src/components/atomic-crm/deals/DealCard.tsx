@@ -9,6 +9,8 @@ import { CompanyAvatar } from "../companies/CompanyAvatar";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 import { formatRecurringLabel } from "./dealUtils";
+import { dealNextInvoice } from "../fortnox/dealBilling";
+import { NextInvoiceChip } from "../fortnox/billingDisplay";
 
 export const DealCard = ({ deal, index }: { deal: Deal; index: number }) => {
   if (!deal) return null;
@@ -106,6 +108,16 @@ export const DealCardContent = ({
                 optionValue="value"
               />
             </p>
+            {(() => {
+              const schedule = dealNextInvoice(deal);
+              return schedule ? (
+                <NextInvoiceChip
+                  date={schedule.date}
+                  status={schedule.status}
+                  className="mt-1.5"
+                />
+              ) : null;
+            })()}
           </CardContent>
         </Card>
       </RecordContextProvider>

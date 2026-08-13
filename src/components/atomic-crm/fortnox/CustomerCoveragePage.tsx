@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, Check, Clock, Minus, X } from "lucide-react";
+import { Check, Minus, X } from "lucide-react";
 import { useDataProvider } from "ra-core";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -17,22 +17,13 @@ import {
 } from "@/components/ui/table";
 
 import type { CrmDataProvider } from "../providers/types";
-import type { CustomerBillingRow, CustomerCoverage } from "../types";
-import { formatCurrency, formatDate } from "./invoiceFormat";
-
-const CADENCE_LABELS: Record<CustomerBillingRow["billing_cadence"], string> = {
-  monthly: "Månadsvis",
-  quarterly: "Kvartalsvis",
-  yearly: "Årsvis",
-  mixed: "Blandat",
-};
-
-const STATUS_LABELS: Record<CustomerBillingRow["billing_status"], string> = {
-  ok: "Planerad",
-  due_soon: "Dags snart",
-  overdue: "Behöver faktureras",
-  never_invoiced: "Ingen faktura",
-};
+import type { CustomerCoverage } from "../types";
+import {
+  BILLING_CADENCE_LABELS,
+  BillingStatusBadge,
+  NextInvoiceChip,
+} from "./billingDisplay";
+import { formatCurrency } from "./invoiceFormat";
 
 const StatCard = ({
   label,
@@ -57,20 +48,6 @@ const StatCard = ({
 const Yes = () => <Check className="mx-auto h-4 w-4 text-emerald-600" />;
 const No = () => <X className="mx-auto h-4 w-4 text-destructive" />;
 const NA = () => <Minus className="mx-auto h-4 w-4 text-muted-foreground" />;
-
-const StatusBadge = ({
-  status,
-}: {
-  status: CustomerBillingRow["billing_status"];
-}) => {
-  if (status === "overdue" || status === "never_invoiced") {
-    return <Badge variant="destructive">{STATUS_LABELS[status]}</Badge>;
-  }
-  if (status === "due_soon") {
-    return <Badge variant="outline">{STATUS_LABELS[status]}</Badge>;
-  }
-  return <Badge variant="secondary">{STATUS_LABELS[status]}</Badge>;
-};
 
 /**
  * Kundtäckning — every won-deal customer and where they stand on billing:
@@ -226,7 +203,7 @@ export const CustomerCoveragePage = () => {
                       </TableCell>
                       <TableCell>
                         {invoice
-                          ? CADENCE_LABELS[invoice.billing_cadence]
+                          ? BILLING_CADENCE_LABELS[invoice.billing_cadence]
                           : "—"}
                       </TableCell>
                       <TableCell className="text-right">
@@ -247,22 +224,18 @@ export const CustomerCoveragePage = () => {
                           : "—"}
                       </TableCell>
                       <TableCell>
-                        {invoice ? (
-                          <div className="flex items-center gap-2">
-                            {invoice.billing_status === "due_soon" ? (
-                              <Clock className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <CalendarClock className="h-4 w-4 text-muted-foreground" />
-                            )}
-                            <span>{formatDate(invoice.next_invoice_date)}</span>
-                          </div>
+                        {invoice && invoice.next_invoice_date ? (
+                          <NextInvoiceChip
+                            date={invoice.next_invoice_date}
+                            status={invoice.billing_status}
+                          />
                         ) : (
                           "—"
                         )}
                       </TableCell>
                       <TableCell>
                         {invoice ? (
-                          <StatusBadge status={invoice.billing_status} />
+                          <BillingStatusBadge status={invoice.billing_status} />
                         ) : c.has_invoice ? (
                           <Badge variant="secondary">Fakturerad</Badge>
                         ) : (

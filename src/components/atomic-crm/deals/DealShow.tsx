@@ -26,6 +26,9 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 import { CompanyAvatar } from "../companies/CompanyAvatar";
 import { ContractDealButton } from "../fortnox/ContractDealButton";
+import { NextInvoiceChip } from "../fortnox/billingDisplay";
+import { dealNextInvoice } from "../fortnox/dealBilling";
+import { formatDate } from "../fortnox/invoiceFormat";
 import MobileHeader from "../layout/MobileHeader";
 import { MobileContent } from "../layout/MobileContent";
 import { MobileBackButton } from "../misc/MobileBackButton";
@@ -154,6 +157,34 @@ const DealShowContent = () => {
                 </span>
               ) : null}
             </div>
+
+            {record.recurring_amount
+              ? (() => {
+                  const schedule = dealNextInvoice(record);
+                  if (!schedule && !record.invoiced_through) return null;
+                  return (
+                    <div className="flex flex-col mr-10">
+                      <span className="text-xs text-muted-foreground tracking-wide">
+                        Nästa faktura
+                      </span>
+                      {schedule ? (
+                        <NextInvoiceChip
+                          date={schedule.date}
+                          status={schedule.status}
+                        />
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                      {record.invoiced_through ? (
+                        <span className="text-xs text-muted-foreground mt-0.5">
+                          Fakturerad t.o.m.{" "}
+                          {formatDate(record.invoiced_through)}
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })()
+              : null}
 
             {record.category && (
               <div className="flex flex-col mr-10">

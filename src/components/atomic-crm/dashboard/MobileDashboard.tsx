@@ -9,6 +9,7 @@ import { FinancialKpiRow } from "./FinancialKpiRow";
 import { FollowUpsDueToday } from "./FollowUpsDueToday";
 import { KpiSummaryRow } from "./KpiSummaryRow";
 import { MoneyToCollect } from "./MoneyToCollect";
+import { UpcomingInvoices } from "./UpcomingInvoices";
 import { LeadsMissingNextStep } from "./LeadsMissingNextStep";
 import { PipelineDonut } from "./PipelineDonut";
 import { RevenueGoalsTracker } from "./RevenueGoalsTracker";
@@ -112,6 +113,9 @@ export const MobileDashboard = () => {
         </WidgetErrorBoundary>
         <WidgetErrorBoundary>
           <MoneyToCollect />
+        </WidgetErrorBoundary>
+        <WidgetErrorBoundary>
+          <UpcomingInvoices />
         </WidgetErrorBoundary>
         {totalDeal ? (
           <>

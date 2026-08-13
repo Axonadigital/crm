@@ -91,6 +91,25 @@ const DealMiscInputs = () => {
         helperText={false}
       />
       <NumberInput source="recurring_amount" helperText={false} />
+      <TextInput
+        source="invoiced_through"
+        type="date"
+        label="Fakturerad t.o.m."
+        helperText="Styr nästa fakturadatum och hur mycket som är kvar att fakturera i år"
+      />
+      <TextInput
+        source="billing_start_date"
+        type="date"
+        label="Faktureringsstart"
+        helperText={false}
+      />
+      <TextInput
+        source="billing_notes"
+        label="Faktureringsnotis"
+        multiline
+        rows={2}
+        helperText={false}
+      />
       <DateInput
         validate={required()}
         source="expected_closing_date"
