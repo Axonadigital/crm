@@ -254,6 +254,8 @@ export type Deal = {
   company_id: Identifier;
   /** Company that should receive/pay the invoice when different from company_id. */
   billing_company_id?: Identifier | null;
+  /** Extra companies that the same delivery/deal also applies to. */
+  delivery_company_ids?: Identifier[] | null;
   contact_ids: Identifier[];
   category: string;
   stage: string;
@@ -1451,6 +1453,15 @@ export type CustomerBillingRow = {
   outstanding_balance: number;
   last_invoice_date: string | null;
   next_invoice_date: string | null;
+  next_invoice_amount: number;
+  next_invoice_deals: Array<{
+    deal_id: Identifier;
+    deal_name: string;
+    company_id: Identifier | null;
+    company_name: string | null;
+    amount: number;
+    next_invoice_date: string | null;
+  }>;
   billing_status: "ok" | "due_soon" | "overdue" | "never_invoiced";
   /** True when at least one deal carries a hand-set "invoiced through" date. */
   has_manual_schedule: boolean;

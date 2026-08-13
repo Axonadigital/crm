@@ -18,6 +18,8 @@ import { EditButton } from "@/components/admin/edit-button";
 import { ReferenceArrayField } from "@/components/admin/reference-array-field";
 import { ReferenceField } from "@/components/admin/reference-field";
 import { ReferenceManyField } from "@/components/admin/reference-many-field";
+import { SingleFieldList } from "@/components/admin/single-field-list";
+import { TextField } from "@/components/admin/text-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -224,6 +226,41 @@ const DealShowContent = () => {
             </div>
           )}
 
+          {(record.billing_company_id ||
+            !!record.delivery_company_ids?.length) && (
+            <div className="m-4 grid gap-4 sm:grid-cols-2">
+              {record.billing_company_id ? (
+                <div className="flex flex-col min-h-12">
+                  <span className="text-xs text-muted-foreground tracking-wide">
+                    Faktureras via
+                  </span>
+                  <ReferenceField
+                    source="billing_company_id"
+                    reference="companies"
+                    link="show"
+                  >
+                    <TextField source="name" />
+                  </ReferenceField>
+                </div>
+              ) : null}
+              {!!record.delivery_company_ids?.length ? (
+                <div className="flex flex-col min-h-12">
+                  <span className="text-xs text-muted-foreground tracking-wide">
+                    Gäller även bolag
+                  </span>
+                  <ReferenceArrayField
+                    source="delivery_company_ids"
+                    reference="companies"
+                  >
+                    <SingleFieldList>
+                      <TextField source="name" />
+                    </SingleFieldList>
+                  </ReferenceArrayField>
+                </div>
+              ) : null}
+            </div>
+          )}
+
           {record.description && (
             <div className="m-4 whitespace-pre-line">
               <span className="text-xs text-muted-foreground tracking-wide">
@@ -377,6 +414,41 @@ const DealShowContentMobile = () => {
             >
               <ContactList />
             </ReferenceArrayField>
+          </div>
+        )}
+
+        {(record.billing_company_id ||
+          !!record.delivery_company_ids?.length) && (
+          <div className="grid grid-cols-1 gap-3 mb-4">
+            {record.billing_company_id ? (
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">
+                  Faktureras via
+                </span>
+                <ReferenceField
+                  source="billing_company_id"
+                  reference="companies"
+                  link="show"
+                >
+                  <TextField source="name" />
+                </ReferenceField>
+              </div>
+            ) : null}
+            {!!record.delivery_company_ids?.length ? (
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">
+                  Gäller även bolag
+                </span>
+                <ReferenceArrayField
+                  source="delivery_company_ids"
+                  reference="companies"
+                >
+                  <SingleFieldList>
+                    <TextField source="name" />
+                  </SingleFieldList>
+                </ReferenceArrayField>
+              </div>
+            ) : null}
           </div>
         )}
 

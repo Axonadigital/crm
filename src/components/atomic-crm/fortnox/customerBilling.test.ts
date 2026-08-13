@@ -74,6 +74,7 @@ describe("customer billing overview", () => {
       remaining_to_invoice_this_year: 0,
       last_invoice_date: "2026-01-15",
       next_invoice_date: "2027-01-15",
+      next_invoice_amount: 12000,
       billing_status: "ok",
     });
   });
@@ -215,6 +216,16 @@ describe("customer billing overview", () => {
       monthly_recurring: 3000,
       invoiced_year_to_date: 3000,
       paid_year_to_date: 3000,
+      next_invoice_amount: 3000,
+      next_invoice_deals: [
+        expect.objectContaining({
+          deal_id: 20,
+          deal_name: "SEO-avtal",
+          company_id: 20,
+          company_name: "Leveransbolaget AB",
+          amount: 3000,
+        }),
+      ],
     });
   });
 });

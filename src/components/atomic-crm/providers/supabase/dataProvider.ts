@@ -723,7 +723,7 @@ const dataProviderWithCustomMethods = {
     const { data, error } = await supabase
       .from("deals")
       .select(
-        "id, name, company_id, billing_company_id, amount, recurring_amount, recurring_interval, invoiced_through, billing_start_date",
+        "id, name, company_id, billing_company_id, delivery_company_ids, amount, recurring_amount, recurring_interval, invoiced_through, billing_start_date",
       )
       .eq("stage", "won")
       .is("archived_at", null)
@@ -787,7 +787,7 @@ const dataProviderWithCustomMethods = {
     const { data: deals, error } = await supabase
       .from("deals")
       .select(
-        "company_id, billing_company_id, amount, recurring_amount, recurring_interval, fortnox_contract_number",
+        "company_id, billing_company_id, delivery_company_ids, amount, recurring_amount, recurring_interval, fortnox_contract_number",
       )
       .eq("stage", "won")
       .is("archived_at", null)

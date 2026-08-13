@@ -54,6 +54,13 @@ const DealLinkedToInputs = () => {
       <ReferenceInput source="billing_company_id" reference="companies">
         <AutocompleteCompanyInput label="Faktureras via" />
       </ReferenceInput>
+      <ReferenceArrayInput source="delivery_company_ids" reference="companies">
+        <AutocompleteArrayInput
+          label="Gäller även bolag"
+          optionText="name"
+          helperText={false}
+        />
+      </ReferenceArrayInput>
 
       <ReferenceArrayInput source="contact_ids" reference="contacts_summary">
         <AutocompleteArrayInput

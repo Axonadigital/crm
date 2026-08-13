@@ -295,6 +295,7 @@ export const buildCustomerBillingOverview = (
       let remaining = 0;
       let hasManualSchedule = false;
       const nextDates: string[] = [];
+      const dealRecommendations: CustomerBillingRow["next_invoice_deals"] = [];
       for (const deal of companyDeals) {
         const interval = dealInterval(deal);
         const lineMonthly = monthlyAmount(deal.recurring_amount, interval);
@@ -328,10 +329,27 @@ export const buildCustomerBillingOverview = (
           billingStartDate: deal.billing_start_date,
           interval,
         });
-        if (next) nextDates.push(next);
+        if (next) {
+          nextDates.push(next);
+          dealRecommendations.push({
+            deal_id: deal.id,
+            deal_name: deal.name,
+            company_id: deal.company_id,
+            company_name: deal.company_name,
+            amount: deal.recurring_amount,
+            next_invoice_date: next,
+          });
+        }
       }
 
       const nextInvoiceDate = earliestDate(nextDates);
+      const nextInvoiceDeals = dealRecommendations.filter(
+        (deal) => deal.next_invoice_date === nextInvoiceDate,
+      );
+      const nextInvoiceAmount = nextInvoiceDeals.reduce(
+        (sum, deal) => sum + deal.amount,
+        0,
+      );
       const intervals = companyDeals.map(
         (deal) => deal.recurring_interval as RecurringInterval | null,
       );
@@ -349,6 +367,8 @@ export const buildCustomerBillingOverview = (
         outstanding_balance: outstanding,
         last_invoice_date: lastInvoiceDate,
         next_invoice_date: nextInvoiceDate,
+        next_invoice_amount: nextInvoiceAmount,
+        next_invoice_deals: nextInvoiceDeals,
         billing_status: getBillingStatus(nextInvoiceDate, today),
         has_manual_schedule: hasManualSchedule,
       } satisfies CustomerBillingRow;

@@ -188,6 +188,7 @@ export const CustomerCoveragePage = () => {
                     Kvar att fakturera
                   </TableHead>
                   <TableHead>Nästa faktura</TableHead>
+                  <TableHead>Rekommendation</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-center">Fortnox-kund</TableHead>
                   <TableHead className="text-center">Avtal</TableHead>
@@ -240,6 +241,24 @@ export const CustomerCoveragePage = () => {
                             date={invoice.next_invoice_date}
                             status={invoice.billing_status}
                           />
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                      <TableCell className="min-w-56">
+                        {invoice && invoice.next_invoice_date ? (
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium">
+                              Fakturera {formatCurrency(invoice.next_invoice_amount)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {invoice.next_invoice_deals.length > 0
+                                ? invoice.next_invoice_deals
+                                    .map((deal) => deal.deal_name)
+                                    .join(", ")
+                                : "Inga deals hittades för datumet"}
+                            </div>
+                          </div>
                         ) : (
                           "—"
                         )}
