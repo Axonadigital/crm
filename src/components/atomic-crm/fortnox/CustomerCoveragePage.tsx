@@ -393,6 +393,9 @@ export const CustomerCoveragePage = () => {
                                   <div className="text-right">
                                     {deal.recurring_amount
                                       ? formatCurrency(deal.recurring_amount)
+                                      : deal.billing_schedule_type ===
+                                          "installment" && deal.installment_count
+                                        ? `${deal.installment_count} delar`
                                       : "—"}
                                   </div>
                                   <div>
@@ -403,10 +406,13 @@ export const CustomerCoveragePage = () => {
                                   <div>
                                     {deal.status === "needs_invoice" ? (
                                       <span className="font-medium text-destructive">
-                                        Skicka faktura{" "}
-                                        {formatCurrency(
-                                          deal.next_invoice_amount,
-                                        )}
+                                        {deal.billing_schedule_type ===
+                                          "installment" &&
+                                        deal.installment_index &&
+                                        deal.installment_count
+                                          ? `Delbetalning ${deal.installment_index}/${deal.installment_count}: `
+                                          : "Skicka faktura "}
+                                        {formatCurrency(deal.next_invoice_amount)}
                                       </span>
                                     ) : (
                                       (deal.note ?? "OK")

@@ -22,6 +22,8 @@ export const BILLING_CADENCE_LABELS: Record<
   quarterly: "Kvartalsvis",
   yearly: "Årsvis",
   mixed: "Blandat",
+  one_time: "Engång",
+  installment: "Delbetalning",
 };
 
 const badgeVariant = (

@@ -68,6 +68,11 @@ const balanceExVat = (invoice: FortnoxInvoice): number => {
 const dealInterval = (deal: RecurringRevenueDeal): RecurringInterval =>
   (deal.recurring_interval as RecurringInterval | null) ?? "monthly";
 
+const isInstallmentDeal = (deal: RecurringRevenueDeal): boolean =>
+  deal.billing_schedule_type === "installment" &&
+  (deal.amount ?? 0) > 0 &&
+  (deal.installment_count ?? 0) > 0;
+
 const billingCompanyId = (
   deal: RecurringRevenueDeal,
 ): RecurringRevenueDeal["company_id"] => {
@@ -80,9 +85,10 @@ const billingCompanyName = (deal: RecurringRevenueDeal): string | null =>
 
 export const getCadenceLabel = (
   intervals: Array<RecurringInterval | null>,
+  fallback: CustomerBillingRow["billing_cadence"] = "one_time",
 ): CustomerBillingRow["billing_cadence"] => {
   const known = [...new Set(intervals.filter(Boolean))] as RecurringInterval[];
-  if (known.length === 0) return "monthly";
+  if (known.length === 0) return fallback;
   if (known.length > 1) return "mixed";
   return known[0];
 };
@@ -220,12 +226,43 @@ const invoiceMatchesDealAmount = (
   );
 };
 
+const installmentAmount = (deal: RecurringRevenueDeal): number =>
+  isInstallmentDeal(deal)
+    ? Math.round((deal.amount / deal.installment_count!) * 100) / 100
+    : 0;
+
+const invoiceMatchesInstallment = (
+  deal: RecurringRevenueDeal,
+  invoice: FortnoxInvoice,
+): boolean => {
+  if (!isInstallmentDeal(deal) || invoice.status === "cancelled") return false;
+  const amount = installmentAmount(deal);
+  if (invoice.deal_id != null && String(invoice.deal_id) === String(deal.id)) {
+    return sameMoney(invoiceExVat(invoice), amount);
+  }
+  if (sameMoney(invoiceExVat(invoice), amount)) return true;
+  return (invoice.invoice_rows ?? []).some((row) =>
+    sameMoney(rowTotalExVat(row), amount),
+  );
+};
+
+const invoicedInstallmentCount = (
+  deal: RecurringRevenueDeal,
+  companyInvoices: FortnoxInvoice[],
+): number =>
+  Math.min(
+    deal.installment_count ?? 0,
+    companyInvoices.filter((invoice) => invoiceMatchesInstallment(deal, invoice))
+      .length,
+  );
+
 const uninvoicedOneTimeDeals = (
   companyDeals: RecurringRevenueDeal[],
   companyInvoices: FortnoxInvoice[],
 ): RecurringRevenueDeal[] =>
   companyDeals.filter((deal) => {
     if (!deal.amount || deal.amount <= 0) return false;
+    if (isInstallmentDeal(deal)) return false;
     if (deal.recurring_amount && deal.recurring_amount > 0) return false;
     return !companyInvoices.some((invoice) =>
       invoiceMatchesDealAmount(deal, invoice),
@@ -447,13 +484,45 @@ export const buildCustomerBillingOverview = (
         companyDeals,
         companyInvoices,
       );
+      const dueInstallments = companyDeals
+        .filter(isInstallmentDeal)
+        .map((deal) => {
+          const invoicedCount = invoicedInstallmentCount(deal, companyInvoices);
+          if (invoicedCount >= (deal.installment_count ?? 0)) return null;
+          const startDate = deal.billing_start_date ?? toDateOnly(today);
+          const intervalMonths = deal.installment_interval_months ?? 1;
+          const nextDate = toDateOnly(
+            addMonths(parseDate(startDate), invoicedCount * intervalMonths),
+          );
+          return {
+            deal,
+            installmentIndex: invoicedCount + 1,
+            nextDate,
+            amount: installmentAmount(deal),
+          };
+        })
+        .filter(Boolean) as Array<{
+        deal: RecurringRevenueDeal;
+        installmentIndex: number;
+        nextDate: string;
+        amount: number;
+      }>;
       const missingOneTimeAmount = missingOneTimeDeals.reduce(
         (sum, deal) => sum + (deal.amount ?? 0),
         0,
       );
+      const dueInstallmentAmount = dueInstallments.reduce(
+        (sum, installment) => sum + installment.amount,
+        0,
+      );
+      const nextInstallmentDate = earliestDate(
+        dueInstallments.map((installment) => installment.nextDate),
+      );
       const recommendedDate =
         missingOneTimeDeals.length > 0
           ? toDateOnly(today)
+          : dueInstallments.length > 0
+            ? nextInstallmentDate
           : nextInvoiceDate;
       const recommendedDeals =
         missingOneTimeDeals.length > 0
@@ -465,11 +534,25 @@ export const buildCustomerBillingOverview = (
               amount: deal.amount,
               next_invoice_date: recommendedDate,
             }))
+          : dueInstallments.length > 0
+            ? dueInstallments.map(({ deal, amount, nextDate }) => ({
+                deal_id: deal.id,
+                deal_name: deal.name,
+                company_id: deal.company_id,
+                company_name: deal.company_name,
+                amount,
+                next_invoice_date: nextDate,
+              }))
           : nextInvoiceDeals;
       const recommendedAmount =
         missingOneTimeDeals.length > 0
           ? missingOneTimeAmount
+          : dueInstallments.length > 0
+            ? dueInstallmentAmount
           : nextInvoiceAmount;
+      const installmentDealIds = new Set(
+        dueInstallments.map((installment) => String(installment.deal.id)),
+      );
       const intervals = companyDeals.map(
         (deal) => deal.recurring_interval as RecurringInterval | null,
       );
@@ -484,6 +567,16 @@ export const buildCustomerBillingOverview = (
         billingWarnings.push(
           `Vunnen deal saknar matchande Fortnox-faktura: ${missingOneTimeDeals
             .map((deal) => deal.name)
+            .join(", ")}`,
+        );
+      }
+      if (dueInstallments.length > 0) {
+        billingWarnings.push(
+          `Delbetalning kvar att fakturera: ${dueInstallments
+            .map(
+              ({ deal, installmentIndex }) =>
+                `${deal.name} (${installmentIndex}/${deal.installment_count})`,
+            )
             .join(", ")}`,
         );
       }
@@ -508,6 +601,9 @@ export const buildCustomerBillingOverview = (
         (deal) => {
           const recurringAmount = deal.recurring_amount ?? 0;
           const isMissingOneTime = missingDealIds.has(String(deal.id));
+          const dueInstallment = dueInstallments.find(
+            (installment) => String(installment.deal.id) === String(deal.id),
+          );
           const isNextRecommended = recommendedDealIds.has(String(deal.id));
           const dealNext =
             dealRecommendations.find(
@@ -523,21 +619,32 @@ export const buildCustomerBillingOverview = (
             one_time_amount: deal.amount ?? 0,
             recurring_amount: recurringAmount,
             recurring_interval: deal.recurring_interval,
+            billing_schedule_type: deal.billing_schedule_type,
+            installment_index: dueInstallment?.installmentIndex ?? null,
+            installment_count: deal.installment_count,
             next_invoice_date: isMissingOneTime
               ? recommendedDate
+              : dueInstallment
+                ? dueInstallment.nextDate
               : dealNext,
             next_invoice_amount: isMissingOneTime
               ? (deal.amount ?? 0)
+              : dueInstallment
+                ? dueInstallment.amount
               : isNextRecommended
                 ? recurringAmount
                 : 0,
             status: isMissingOneTime
+              ? "needs_invoice"
+              : installmentDealIds.has(String(deal.id))
               ? "needs_invoice"
               : billingWarnings.length > 0
                 ? "needs_review"
                 : "ok",
             note: isMissingOneTime
               ? "Saknar matchande Fortnox-faktura"
+              : dueInstallment
+                ? `Delbetalning ${dueInstallment.installmentIndex}/${deal.installment_count}`
               : dealNext
                 ? `Nästa återkommande faktura ${dealNext}`
                 : null,
@@ -551,7 +658,12 @@ export const buildCustomerBillingOverview = (
         deal_count: companyDeals.length,
         monthly_recurring: monthly,
         expected_yearly: expectedYearly,
-        billing_cadence: getCadenceLabel(intervals),
+        billing_cadence: dueInstallments.length
+          ? "installment"
+          : getCadenceLabel(
+              intervals,
+              companyDeals.some(isInstallmentDeal) ? "installment" : "one_time",
+            ),
         invoiced_year_to_date: invoicedYearToDate,
         paid_year_to_date: paidYearToDate,
         remaining_to_invoice_this_year: Math.max(0, Math.round(remaining)),

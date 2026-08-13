@@ -101,6 +101,27 @@ const DealMiscInputs = () => {
         helperText={false}
       />
       <NumberInput source="recurring_amount" helperText={false} />
+      <SelectInput
+        source="billing_schedule_type"
+        label="Faktureringssätt"
+        choices={[
+          { id: "standard", name: "Standard" },
+          { id: "installment", name: "Delbetalning" },
+        ]}
+        defaultValue="standard"
+        helperText={false}
+      />
+      <NumberInput
+        source="installment_count"
+        label="Antal delbetalningar"
+        helperText={false}
+      />
+      <NumberInput
+        source="installment_interval_months"
+        label="Månader mellan delbetalningar"
+        defaultValue={1}
+        helperText={false}
+      />
       <TextInput
         source="invoiced_through"
         type="date"

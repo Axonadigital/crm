@@ -263,6 +263,9 @@ export type Deal = {
   amount: number;
   recurring_amount?: number | null;
   recurring_interval?: "monthly" | "quarterly" | "yearly" | null;
+  billing_schedule_type?: "standard" | "installment" | null;
+  installment_count?: number | null;
+  installment_interval_months?: number | null;
   /** Fortnox contract (avtal) number, once this recurring deal has one. */
   fortnox_contract_number?: number | null;
   /** Recurring billing covered/invoiced through this date (correctable by hand). */
@@ -1430,6 +1433,9 @@ export type RecurringRevenueDeal = {
   amount: number;
   recurring_amount: number;
   recurring_interval: "monthly" | "quarterly" | "yearly" | null;
+  billing_schedule_type: "standard" | "installment";
+  installment_count: number | null;
+  installment_interval_months: number | null;
   /** Recurring billing covered/invoiced through this date (correctable by hand). */
   invoiced_through: string | null;
   /** Date the recurring billing period started; seeds the first invoice date. */
@@ -1447,7 +1453,13 @@ export type CustomerBillingRow = {
   deal_count: number;
   monthly_recurring: number;
   expected_yearly: number;
-  billing_cadence: "monthly" | "quarterly" | "yearly" | "mixed";
+  billing_cadence:
+    | "monthly"
+    | "quarterly"
+    | "yearly"
+    | "mixed"
+    | "one_time"
+    | "installment";
   invoiced_year_to_date: number;
   paid_year_to_date: number;
   remaining_to_invoice_this_year: number;
@@ -1471,6 +1483,9 @@ export type CustomerBillingRow = {
     one_time_amount: number;
     recurring_amount: number;
     recurring_interval: "monthly" | "quarterly" | "yearly" | null;
+    billing_schedule_type: "standard" | "installment";
+    installment_index: number | null;
+    installment_count: number | null;
     next_invoice_date: string | null;
     next_invoice_amount: number;
     status: "ok" | "needs_invoice" | "needs_review";

@@ -19,6 +19,9 @@ const deal = (
   amount: 0,
   recurring_amount: 12000,
   recurring_interval: "yearly",
+  billing_schedule_type: "standard",
+  installment_count: null,
+  installment_interval_months: null,
   invoiced_through: null,
   billing_start_date: null,
   ...overrides,
@@ -332,6 +335,57 @@ describe("customer billing overview", () => {
       status: "ok",
       next_invoice_amount: 0,
     });
+  });
+
+  it("recommends the next installment for a fixed deal split into payments", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 40,
+          name: "Nyhetsbrev",
+          amount: 15000,
+          recurring_amount: 0,
+          recurring_interval: null,
+          billing_schedule_type: "installment",
+          installment_count: 3,
+          installment_interval_months: 1,
+          billing_start_date: "2026-08-01",
+        }),
+      ],
+      [
+        invoice({
+          document_number: 401,
+          invoice_date: "2026-08-01",
+          total: 6250,
+          total_vat: 1250,
+          invoice_rows: [
+            {
+              Description: "Nyhetsbrev delbetalning 1",
+              TotalExcludingVAT: 5000,
+            },
+          ],
+        }),
+      ],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows[0]).toMatchObject({
+      billing_cadence: "installment",
+      next_invoice_date: "2026-09-01",
+      next_invoice_amount: 5000,
+      billing_confidence: "needs_review",
+      deals: [
+        expect.objectContaining({
+          deal_id: 40,
+          billing_schedule_type: "installment",
+          installment_index: 2,
+          installment_count: 3,
+          next_invoice_amount: 5000,
+          status: "needs_invoice",
+        }),
+      ],
+    });
+    expect(rows[0].billing_warnings[0]).toContain("Delbetalning kvar");
   });
 
   it("groups recurring coverage by the company that receives the invoice", () => {

@@ -311,6 +311,9 @@ export const createDataProvider = ({
         amount: deal.amount,
         recurring_amount: demoRecurringAmount(deal),
         recurring_interval: demoRecurringInterval(deal),
+        billing_schedule_type: deal.billing_schedule_type ?? "standard",
+        installment_count: deal.installment_count ?? null,
+        installment_interval_months: deal.installment_interval_months ?? null,
         invoiced_through: demoInvoicedThrough(deal),
         billing_start_date: deal.billing_start_date ?? null,
       }));
