@@ -62,7 +62,11 @@ export const CustomerCoveragePage = () => {
     queryFn: () => dataProvider.getCustomerCoverage(),
   });
 
-  const { data: billing, isPending: isBillingPending } = useQuery({
+  const {
+    data: billing,
+    error: billingError,
+    isPending: isBillingPending,
+  } = useQuery({
     queryKey: ["customer-billing-overview"],
     queryFn: () => dataProvider.getCustomerBillingOverview(),
   });
@@ -154,6 +158,13 @@ export const CustomerCoveragePage = () => {
 
       <Card>
         <CardContent className="overflow-x-auto p-0">
+          {billingError ? (
+            <div className="border-b bg-destructive/5 p-4 text-sm text-destructive">
+              Kunde inte läsa faktureringsdata från Fortnox-spegeln. Synka
+              Supabase-migrationer och Fortnox-funktioner om det här ligger kvar
+              efter omladdning.
+            </div>
+          ) : null}
           {pending ? (
             <div className="space-y-2 p-6">
               <Skeleton className="h-8 w-full" />
@@ -236,6 +247,10 @@ export const CustomerCoveragePage = () => {
                       <TableCell>
                         {invoice ? (
                           <BillingStatusBadge status={invoice.billing_status} />
+                        ) : billingError && c.has_recurring ? (
+                          <Badge variant="destructive">
+                            Faktureringsdata saknas
+                          </Badge>
                         ) : c.has_invoice ? (
                           <Badge variant="secondary">Fakturerad</Badge>
                         ) : (

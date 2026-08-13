@@ -41,6 +41,9 @@ const addDays = (date: Date, days: number): Date => {
   return next;
 };
 
+const endOfMonth = (date: Date): Date =>
+  new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
 const daysBetween = (from: Date, to: Date): number => {
   const fromMidnight = new Date(
     from.getFullYear(),
@@ -160,6 +163,57 @@ const earliestDate = (dates: string[]): string | null => {
   return valid.reduce((min, current) => (current < min ? current : min));
 };
 
+const latestDate = (dates: string[]): string | null => {
+  const valid = dates.filter(Boolean);
+  if (valid.length === 0) return null;
+  return valid.reduce((max, current) => (current > max ? current : max));
+};
+
+/**
+ * When invoices are not linked to a specific recurring deal, infer coverage
+ * from money: subtract one-time won value, then spread the remaining invoiced
+ * amount over the customer's total monthly runrate.
+ *
+ * Example: 30 000 one-time + 1 000/mån, invoice paid for 35 000 ex VAT in
+ * August => 5 recurring months covered (Aug-Dec), next invoice in January.
+ */
+const amountBasedCoveredThrough = ({
+  currentYearInvoices,
+  companyDeals,
+  monthly,
+}: {
+  currentYearInvoices: FortnoxInvoice[];
+  companyDeals: RecurringRevenueDeal[];
+  monthly: number;
+}): string | null => {
+  if (monthly <= 0 || currentYearInvoices.length === 0) return null;
+
+  const oneTimeAmount = companyDeals.reduce(
+    (sum, deal) => sum + (deal.amount ?? 0),
+    0,
+  );
+  const invoiced = currentYearInvoices.reduce(
+    (sum, invoice) => sum + invoiceExVat(invoice),
+    0,
+  );
+  const recurringInvoiced = Math.max(0, invoiced - oneTimeAmount);
+  if (recurringInvoiced <= 0) return null;
+
+  const firstInvoiceDate = earliestDate(
+    currentYearInvoices
+      .map((invoice) => invoice.invoice_date)
+      .filter(Boolean) as string[],
+  );
+  if (!firstInvoiceDate) return null;
+
+  const coveredMonths = Math.min(12, Math.ceil(recurringInvoiced / monthly));
+  if (coveredMonths <= 0) return null;
+
+  return toDateOnly(
+    endOfMonth(addMonths(parseDate(firstInvoiceDate), coveredMonths - 1)),
+  );
+};
+
 export const buildCustomerBillingOverview = (
   deals: RecurringRevenueDeal[],
   invoices: FortnoxInvoice[],
@@ -202,6 +256,11 @@ export const buildCustomerBillingOverview = (
         0,
       );
       const expectedYearly = monthly * 12;
+      const amountCoveredThrough = amountBasedCoveredThrough({
+        currentYearInvoices,
+        companyDeals,
+        monthly,
+      });
       const invoicedYearToDate = currentYearInvoices.reduce(
         (sum, invoice) => sum + invoiceExVat(invoice),
         0,
@@ -230,17 +289,29 @@ export const buildCustomerBillingOverview = (
         if (deal.invoiced_through) hasManualSchedule = true;
 
         const covered = coveredMonthsThisYear(
+          latestDate([
+            coveredThroughDate({
+              invoicedThrough: deal.invoiced_through,
+              lastInvoiceDate,
+              interval,
+            }),
+            deal.invoiced_through ? null : amountCoveredThrough,
+          ]),
+          year,
+        );
+        remaining += lineMonthly * (12 - covered);
+
+        const nextCoveredThrough = latestDate([
           coveredThroughDate({
             invoicedThrough: deal.invoiced_through,
             lastInvoiceDate,
             interval,
           }),
-          year,
-        );
-        remaining += lineMonthly * (12 - covered);
+          deal.invoiced_through ? null : amountCoveredThrough,
+        ]);
 
         const next = getNextInvoiceDate({
-          invoicedThrough: deal.invoiced_through,
+          invoicedThrough: nextCoveredThrough,
           lastInvoiceDate,
           billingStartDate: deal.billing_start_date,
           interval,

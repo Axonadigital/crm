@@ -135,6 +135,36 @@ describe("customer billing overview", () => {
     expect(rows[0].billing_status).toBe("overdue");
   });
 
+  it("infers prepaid recurring coverage after subtracting one-time deal value", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          amount: 30000,
+          recurring_amount: 1000,
+          recurring_interval: "monthly",
+        }),
+      ],
+      [
+        invoice({
+          invoice_date: "2026-08-08",
+          due_date: "2026-09-07",
+          total: 43750,
+          total_vat: 8750,
+          balance: 0,
+          status: "paid",
+        }),
+      ],
+      new Date("2026-08-13T12:00:00"),
+    );
+
+    expect(rows[0]).toMatchObject({
+      paid_year_to_date: 35000,
+      remaining_to_invoice_this_year: 0,
+      next_invoice_date: "2027-01-01",
+      billing_status: "ok",
+    });
+  });
+
   it("normalises unpaid balances to ex VAT", () => {
     const rows = buildCustomerBillingOverview(
       [deal({ recurring_amount: 1000, recurring_interval: "monthly" })],
