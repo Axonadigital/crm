@@ -770,6 +770,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/useCustomerBilling.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/useCompanyInvoices.ts",
           "type": "registry:component"
         },
@@ -790,7 +794,15 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/dealBilling.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/customerBilling.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/billingDisplay.tsx",
           "type": "registry:component"
         },
         {
@@ -839,6 +851,10 @@
         },
         {
           "path": "src/components/atomic-crm/fortnox/CompanyInvoiceSummary.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/CompanyBillingSummary.tsx",
           "type": "registry:component"
         },
         {
@@ -979,6 +995,10 @@
         },
         {
           "path": "src/components/atomic-crm/dashboard/UpcomingMeetings.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/dashboard/UpcomingInvoices.tsx",
           "type": "registry:component"
         },
         {

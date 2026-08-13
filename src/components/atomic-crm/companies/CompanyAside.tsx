@@ -50,6 +50,7 @@ import { getLeadStatusColor } from "./leadStatusUtils";
 import { CompanyInvoiceSummary } from "../fortnox/CompanyInvoiceSummary";
 import { CompanyBillingSummary } from "../fortnox/CompanyBillingSummary";
 import { FortnoxCustomerButton } from "../fortnox/FortnoxCustomerButton";
+import { FortnoxLinkCard } from "../fortnox/FortnoxLinkCard";
 
 interface CompanyAsideProps {
   link?: string;
@@ -71,6 +72,8 @@ export const CompanyAside = ({ link = "edit" }: CompanyAsideProps) => {
       </div>
 
       <FortnoxCustomerButton />
+
+      <FortnoxLinkCard />
 
       <CompanyBillingSummary companyId={record.id} />
 

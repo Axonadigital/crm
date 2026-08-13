@@ -18,6 +18,7 @@ import type {
   FortnoxCostMonth,
   FortnoxInvoice,
   FortnoxInvoiceStats,
+  UnlinkedFortnoxCustomer,
   FortnoxNamedSubscription,
   FortnoxRecurringSupplier,
   FortnoxResultMonth,
@@ -927,6 +928,86 @@ const dataProviderWithCustomMethods = {
       );
     }
     return data;
+  },
+  /**
+   * Links a company to an EXISTING Fortnox customer number by hand — for the
+   * customers the org-number match can't reach (e.g. Z-bud's fraktsedel
+   * invoices). Relinks the mirrored invoices so "betalt" is right immediately.
+   */
+  async linkFortnoxCustomer(
+    companyId: Identifier,
+    customerNumber: string,
+  ): Promise<{
+    customer_number: string;
+    action: "linked";
+    relinked_invoices: number;
+    customer_name: string | null;
+    org_number: string | null;
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_customers",
+      {
+        method: "POST",
+        body: {
+          company_id: Number(companyId),
+          customer_number: customerNumber,
+        },
+      },
+    );
+    if (error || !data) {
+      throw new Error(
+        (await extractFunctionError(error)) ??
+          "Failed to link the Fortnox customer number",
+      );
+    }
+    return data;
+  },
+  /**
+   * Fortnox customer numbers with mirrored invoices but no CRM company —
+   * aggregated per number. Feeds the "koppla omatchad faktura" list on the
+   * customer card so the user sees exactly which number the money sits under.
+   */
+  async getUnlinkedFortnoxInvoices(): Promise<UnlinkedFortnoxCustomer[]> {
+    const { data, error } = await supabase
+      .from("fortnox_invoice_list")
+      .select("customer_number, customer_name, total, invoice_date")
+      .is("company_id", null)
+      .not("customer_number", "is", null)
+      .limit(1000);
+    if (error) {
+      throw new Error("Failed to load unlinked Fortnox invoices");
+    }
+
+    const byNumber = new Map<string, UnlinkedFortnoxCustomer>();
+    for (const row of data ?? []) {
+      const number = row.customer_number as string | null;
+      if (!number) continue;
+      const existing = byNumber.get(number);
+      const amount = (row.total as number | null) ?? 0;
+      const date = (row.invoice_date as string | null) ?? null;
+      if (existing) {
+        existing.invoice_count += 1;
+        existing.total_amount += amount;
+        if (
+          date &&
+          (!existing.latest_invoice_date || date > existing.latest_invoice_date)
+        ) {
+          existing.latest_invoice_date = date;
+        }
+      } else {
+        byNumber.set(number, {
+          customer_number: number,
+          customer_name: (row.customer_name as string | null) ?? null,
+          invoice_count: 1,
+          total_amount: amount,
+          latest_invoice_date: date,
+        });
+      }
+    }
+
+    return [...byNumber.values()].sort(
+      (a, b) => b.total_amount - a.total_amount,
+    );
   },
   /**
    * Creates an UNBOOKED, UNSENT draft invoice in Fortnox from a quote.

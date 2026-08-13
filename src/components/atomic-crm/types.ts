@@ -1229,6 +1229,19 @@ export type FortnoxInvoice = {
   synced_at: string;
 };
 
+/**
+ * A Fortnox customer number that has mirrored invoices but no CRM company —
+ * the orphans behind a wrong "betalt". Aggregated per customer number so the
+ * user can adopt the whole group with one click.
+ */
+export type UnlinkedFortnoxCustomer = {
+  customer_number: string;
+  customer_name: string | null;
+  invoice_count: number;
+  total_amount: number;
+  latest_invoice_date: string | null;
+};
+
 export type FortnoxInvoiceStats = {
   total_invoices: number;
   unpaid_count: number;

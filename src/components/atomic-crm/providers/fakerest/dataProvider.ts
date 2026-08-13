@@ -414,6 +414,19 @@ export const createDataProvider = ({
 
       return buildCustomerBillingOverview(deals, invoices);
     },
+    async getUnlinkedFortnoxInvoices() {
+      // Demo has no orphan invoices — every mirrored invoice is linked.
+      return [];
+    },
+    async linkFortnoxCustomer(_companyId: Identifier, customerNumber: string) {
+      return {
+        customer_number: customerNumber,
+        action: "linked" as const,
+        relinked_invoices: 0,
+        customer_name: null,
+        org_number: null,
+      };
+    },
     async getList(resource: string, params: any) {
       if (resource === "activity_log") {
         const { filter = {}, pagination } = params;
