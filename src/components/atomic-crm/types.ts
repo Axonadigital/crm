@@ -252,6 +252,8 @@ export type ContactNote = {
 export type Deal = {
   name: string;
   company_id: Identifier;
+  /** Company that should receive/pay the invoice when different from company_id. */
+  billing_company_id?: Identifier | null;
   contact_ids: Identifier[];
   category: string;
   stage: string;
@@ -1420,6 +1422,8 @@ export type RecurringRevenueDeal = {
   name: string;
   company_id: Identifier | null;
   company_name: string | null;
+  billing_company_id: Identifier | null;
+  billing_company_name: string | null;
   amount: number;
   recurring_amount: number;
   recurring_interval: "monthly" | "quarterly" | "yearly" | null;

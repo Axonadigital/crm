@@ -14,6 +14,8 @@ const deal = (
   name: "SEO-avtal",
   company_id: 10,
   company_name: "Axona Kund AB",
+  billing_company_id: null,
+  billing_company_name: null,
   amount: 0,
   recurring_amount: 12000,
   recurring_interval: "yearly",
@@ -180,6 +182,40 @@ describe("customer billing overview", () => {
     );
 
     expect(rows[0].outstanding_balance).toBe(500);
+  });
+
+  it("groups recurring coverage by the company that receives the invoice", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 20,
+          company_id: 20,
+          company_name: "Leveransbolaget AB",
+          billing_company_id: 10,
+          billing_company_name: "Betalande Kund AB",
+          recurring_amount: 3000,
+          recurring_interval: "monthly",
+        }),
+      ],
+      [
+        invoice({
+          company_id: 10,
+          customer_name: "Betalande Kund AB",
+          total: 3750,
+          total_vat: 750,
+        }),
+      ],
+      new Date("2026-01-20T12:00:00"),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      company_id: 10,
+      company_name: "Betalande Kund AB",
+      monthly_recurring: 3000,
+      invoiced_year_to_date: 3000,
+      paid_year_to_date: 3000,
+    });
   });
 });
 

@@ -51,6 +51,9 @@ const DealLinkedToInputs = () => {
           validate={required()}
         />
       </ReferenceInput>
+      <ReferenceInput source="billing_company_id" reference="companies">
+        <AutocompleteCompanyInput label="Faktureras via" />
+      </ReferenceInput>
 
       <ReferenceArrayInput source="contact_ids" reference="contacts_summary">
         <AutocompleteArrayInput

@@ -723,7 +723,7 @@ const dataProviderWithCustomMethods = {
     const { data, error } = await supabase
       .from("deals")
       .select(
-        "id, name, company_id, amount, recurring_amount, recurring_interval, invoiced_through, billing_start_date",
+        "id, name, company_id, billing_company_id, amount, recurring_amount, recurring_interval, invoiced_through, billing_start_date",
       )
       .eq("stage", "won")
       .is("archived_at", null)
@@ -734,7 +734,11 @@ const dataProviderWithCustomMethods = {
     const rows = data ?? [];
 
     const companyIds = [
-      ...new Set(rows.map((r) => r.company_id).filter(Boolean)),
+      ...new Set(
+        rows
+          .flatMap((r) => [r.company_id, r.billing_company_id])
+          .filter(Boolean),
+      ),
     ];
     let names: Record<string, string> = {};
     if (companyIds.length > 0) {
@@ -752,6 +756,10 @@ const dataProviderWithCustomMethods = {
       name: r.name,
       company_id: r.company_id,
       company_name: r.company_id ? (names[String(r.company_id)] ?? null) : null,
+      billing_company_id: r.billing_company_id ?? null,
+      billing_company_name: r.billing_company_id
+        ? (names[String(r.billing_company_id)] ?? null)
+        : null,
       amount: r.amount,
       recurring_amount: r.recurring_amount,
       recurring_interval: r.recurring_interval,
@@ -779,7 +787,7 @@ const dataProviderWithCustomMethods = {
     const { data: deals, error } = await supabase
       .from("deals")
       .select(
-        "company_id, amount, recurring_amount, recurring_interval, fortnox_contract_number",
+        "company_id, billing_company_id, amount, recurring_amount, recurring_interval, fortnox_contract_number",
       )
       .eq("stage", "won")
       .is("archived_at", null)
@@ -788,7 +796,13 @@ const dataProviderWithCustomMethods = {
       throw new Error("Failed to load customer coverage");
     }
     const wonDeals = deals ?? [];
-    const companyIds = [...new Set(wonDeals.map((d) => d.company_id))];
+    const companyIds = [
+      ...new Set(
+        wonDeals
+          .flatMap((d) => [d.company_id, d.billing_company_id])
+          .filter(Boolean),
+      ),
+    ];
     if (companyIds.length === 0) return [];
 
     const [{ data: companies }, { data: invoices }] = await Promise.all([
@@ -811,7 +825,9 @@ const dataProviderWithCustomMethods = {
 
     const byCompany = new Map<string, CustomerCoverage>();
     for (const deal of wonDeals) {
-      const key = String(deal.company_id);
+      const billingCompanyId = deal.billing_company_id ?? deal.company_id;
+      if (!billingCompanyId) continue;
+      const key = String(billingCompanyId);
       const company = companyById.get(key);
       const monthly = toMonthly(deal.recurring_amount, deal.recurring_interval);
       const existing = byCompany.get(key);
@@ -824,7 +840,7 @@ const dataProviderWithCustomMethods = {
           existing.has_contract || !!deal.fortnox_contract_number;
       } else {
         byCompany.set(key, {
-          company_id: deal.company_id,
+          company_id: billingCompanyId,
           company_name: (company?.name as string) ?? null,
           is_fortnox_customer: !!company?.fortnox_customer_number,
           has_invoice: companiesWithInvoice.has(key),

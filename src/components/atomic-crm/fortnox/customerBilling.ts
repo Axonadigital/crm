@@ -68,6 +68,16 @@ const balanceExVat = (invoice: FortnoxInvoice): number => {
 const dealInterval = (deal: RecurringRevenueDeal): RecurringInterval =>
   (deal.recurring_interval as RecurringInterval | null) ?? "monthly";
 
+const billingCompanyId = (
+  deal: RecurringRevenueDeal,
+): RecurringRevenueDeal["company_id"] => {
+  const id = deal.billing_company_id ?? deal.company_id;
+  return id ?? null;
+};
+
+const billingCompanyName = (deal: RecurringRevenueDeal): string | null =>
+  deal.billing_company_name ?? deal.company_name;
+
 export const getCadenceLabel = (
   intervals: Array<RecurringInterval | null>,
 ): CustomerBillingRow["billing_cadence"] => {
@@ -234,8 +244,9 @@ export const buildCustomerBillingOverview = (
 
   const dealsByCompany = new Map<string, RecurringRevenueDeal[]>();
   for (const deal of deals) {
-    if (!deal.company_id || !deal.recurring_amount) continue;
-    const key = String(deal.company_id);
+    const companyId = billingCompanyId(deal);
+    if (!companyId || !deal.recurring_amount) continue;
+    const key = String(companyId);
     const existing = dealsByCompany.get(key) ?? [];
     existing.push(deal);
     dealsByCompany.set(key, existing);
@@ -243,6 +254,7 @@ export const buildCustomerBillingOverview = (
 
   return [...dealsByCompany.entries()]
     .map(([companyId, companyDeals]) => {
+      const billedCompanyId = billingCompanyId(companyDeals[0])!;
       const companyInvoices = invoicesByCompany.get(companyId) ?? [];
       const currentYearInvoices = companyInvoices.filter(
         (invoice) =>
@@ -325,8 +337,8 @@ export const buildCustomerBillingOverview = (
       );
 
       return {
-        company_id: companyDeals[0].company_id!,
-        company_name: companyDeals[0].company_name,
+        company_id: billedCompanyId,
+        company_name: billingCompanyName(companyDeals[0]),
         deal_count: companyDeals.length,
         monthly_recurring: monthly,
         expected_yearly: expectedYearly,

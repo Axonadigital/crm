@@ -304,6 +304,10 @@ export const createDataProvider = ({
         company_name: deal.company_id
           ? (companyById.get(String(deal.company_id))?.name ?? null)
           : null,
+        billing_company_id: deal.billing_company_id ?? null,
+        billing_company_name: deal.billing_company_id
+          ? (companyById.get(String(deal.billing_company_id))?.name ?? null)
+          : null,
         amount: deal.amount,
         recurring_amount: demoRecurringAmount(deal),
         recurring_interval: demoRecurringInterval(deal),
@@ -338,7 +342,8 @@ export const createDataProvider = ({
 
       for (const deal of deals) {
         if (!deal.company_id) continue;
-        const key = String(deal.company_id);
+        const billingCompanyId = deal.billing_company_id ?? deal.company_id;
+        const key = String(billingCompanyId);
         const company = companyById.get(key);
         const interval = demoRecurringInterval(deal);
         const monthly = toMonthly(demoRecurringAmount(deal), interval);
@@ -352,10 +357,10 @@ export const createDataProvider = ({
             existing.has_contract || (monthly > 0 && Number(deal.id) % 3 !== 0);
         } else {
           byCompany.set(key, {
-            company_id: deal.company_id,
+            company_id: billingCompanyId,
             company_name: company?.name ?? null,
-            is_fortnox_customer: Number(deal.company_id) % 4 !== 0,
-            has_invoice: Number(deal.company_id) % 5 !== 0,
+            is_fortnox_customer: Number(billingCompanyId) % 4 !== 0,
+            has_invoice: Number(billingCompanyId) % 5 !== 0,
             won_deal_count: 1,
             won_amount: deal.amount ?? 0,
             recurring_monthly: monthly,
@@ -372,10 +377,14 @@ export const createDataProvider = ({
     async getCustomerBillingOverview(): Promise<CustomerBillingRow[]> {
       const deals = await dataProviderWithCustomMethod.getRecurringRevenue();
       const invoices: FortnoxInvoice[] = deals
-        .filter((deal) => deal.company_id && Number(deal.company_id) % 5 !== 0)
+        .filter((deal) => {
+          const companyId = deal.billing_company_id ?? deal.company_id;
+          return companyId && Number(companyId) % 5 !== 0;
+        })
         .map((deal, index) => {
+          const companyId = deal.billing_company_id ?? deal.company_id;
           const invoiceDate = demoInvoiceDate(
-            deal.company_id!,
+            companyId!,
             deal.recurring_interval,
           );
           const dueDate = toDateOnly(
@@ -383,16 +392,16 @@ export const createDataProvider = ({
               new Date(`${invoiceDate}T00:00:00`).getTime() + 30 * 864e5,
             ),
           );
-          const paid = Number(deal.company_id) % 6 !== 0;
+          const paid = Number(companyId) % 6 !== 0;
           const total = Math.round((deal.recurring_amount ?? 0) * 1.25);
 
           return {
             document_number: 90_000 + index,
-            company_id: Number(deal.company_id),
+            company_id: Number(companyId),
             deal_id: Number(deal.id),
             quote_id: null,
-            customer_number: String(deal.company_id),
-            customer_name: deal.company_name,
+            customer_number: String(companyId),
+            customer_name: deal.billing_company_name ?? deal.company_name,
             organisation_number: null,
             invoice_date: invoiceDate,
             due_date: dueDate,
