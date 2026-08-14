@@ -26,6 +26,7 @@ import type {
   FortnoxInvoice,
   MonthlyAnalysisPeriodSummary,
   RecurringRevenueDeal,
+  ScannerLeadStatsResponse,
 } from "../../types";
 import type { ConfigurationContextValue } from "../../root/ConfigurationContext";
 import { buildCustomerBillingOverview } from "../../fortnox/customerBilling";
@@ -280,6 +281,21 @@ export const createDataProvider = ({
         by_channel: [],
         by_template: [],
         trend: [],
+      };
+    },
+    async getScannerLeadStats(): Promise<ScannerLeadStatsResponse> {
+      // Inget scanner_public_requests-dataset i fakerest ännu; returnera
+      // tomt istället för att hitta på siffror.
+      return {
+        totals: {
+          requests: 0,
+          scans_completed: 0,
+          leads_with_email: 0,
+          conversion_rate: null,
+          avg_score_leads: null,
+        },
+        trend: [],
+        latest_leads: [],
       };
     },
     async getRecurringRevenue(): Promise<RecurringRevenueDeal[]> {

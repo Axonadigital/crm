@@ -29,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { NIVO_THEME } from "../dashboard/chartTheme";
@@ -36,6 +37,7 @@ import MobileHeader from "../layout/MobileHeader";
 import { MobileContent } from "../layout/MobileContent";
 import type { CrmDataProvider } from "../providers/types";
 import type { EmailSendStatsResponse } from "../types";
+import { ScannerLeadStatsContent } from "./ScannerLeadStatsContent";
 
 const CHANNEL_LABELS: Record<string, string> = {
   monthly_report: "Månadsrapport",
@@ -75,26 +77,88 @@ function formatPeriodStart(value: string): string {
   });
 }
 
+type StatsTab = "email" | "scanner";
+
+const TAB_DESCRIPTIONS: Record<StatsTab, string> = {
+  email:
+    "Öppnings- och klickfrekvens för utskickade mejl (månadsrapporter, offertsigneringar och mallutskick), som underlag för att jämföra vilka texter som fungerar.",
+  scanner:
+    "Besökare som scannar sin egen hemsida via lead magneten på axonadigital.se — hur många försök som blir leads, och vilka de är.",
+};
+
 export function EmailStatsPage() {
   const dataProvider = useDataProvider<CrmDataProvider>();
   const isMobile = useIsMobile();
   const [period, setPeriod] = useState<PeriodOption>("90d");
+  const [tab, setTab] = useState<StatsTab>("email");
 
   const range = useMemo(() => periodToRange(period), [period]);
-  const statsQuery = useQuery({
+  const emailStatsQuery = useQuery({
     queryKey: ["email-send-stats", period],
     queryFn: () => dataProvider.getEmailSendStats(range),
   });
+  const scannerLeadStatsQuery = useQuery({
+    queryKey: ["scanner-lead-stats", period],
+    queryFn: () => dataProvider.getScannerLeadStats(range),
+    enabled: tab === "scanner",
+  });
 
   const content = (
-    <EmailStatsContent
-      data={statsQuery.data ?? null}
-      isPending={statsQuery.isPending}
-      error={statsQuery.error as Error | null}
-      period={period}
-      onPeriodChange={setPeriod}
-      onRetry={() => statsQuery.refetch()}
-    />
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="hidden items-center gap-2 md:flex">
+            <Mail className="size-5 text-primary" />
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Email-statistik
+            </h1>
+          </div>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            {TAB_DESCRIPTIONS[tab]}
+          </p>
+        </div>
+        <Select
+          value={period}
+          onValueChange={(value) => setPeriod(value as PeriodOption)}
+        >
+          <SelectTrigger className="w-full lg:w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(PERIOD_LABELS) as PeriodOption[]).map((option) => (
+              <SelectItem key={option} value={option}>
+                {PERIOD_LABELS[option]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </header>
+
+      <Tabs value={tab} onValueChange={(value) => setTab(value as StatsTab)}>
+        <TabsList>
+          <TabsTrigger value="email">E-post</TabsTrigger>
+          <TabsTrigger value="scanner">
+            Lead-magnet (scanna hemsida)
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="email" className="mt-6">
+          <EmailStatsContent
+            data={emailStatsQuery.data ?? null}
+            isPending={emailStatsQuery.isPending}
+            error={emailStatsQuery.error as Error | null}
+            onRetry={() => emailStatsQuery.refetch()}
+          />
+        </TabsContent>
+        <TabsContent value="scanner" className="mt-6">
+          <ScannerLeadStatsContent
+            data={scannerLeadStatsQuery.data ?? null}
+            isPending={scannerLeadStatsQuery.isPending}
+            error={scannerLeadStatsQuery.error as Error | null}
+            onRetry={() => scannerLeadStatsQuery.refetch()}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 
   if (isMobile) {
@@ -106,7 +170,13 @@ export function EmailStatsPage() {
             <h1 className="text-lg font-semibold">Email-statistik</h1>
           </div>
         </MobileHeader>
-        <MobileContent onRefresh={() => statsQuery.refetch()}>
+        <MobileContent
+          onRefresh={() =>
+            tab === "email"
+              ? emailStatsQuery.refetch()
+              : scannerLeadStatsQuery.refetch()
+          }
+        >
           {content}
         </MobileContent>
       </>
@@ -120,15 +190,11 @@ function EmailStatsContent({
   data,
   isPending,
   error,
-  period,
-  onPeriodChange,
   onRetry,
 }: {
   data: EmailSendStatsResponse | null;
   isPending: boolean;
   error: Error | null;
-  period: PeriodOption;
-  onPeriodChange: (period: PeriodOption) => void;
   onRetry: () => void;
 }) {
   if (isPending) return <EmailStatsSkeleton />;
@@ -154,37 +220,6 @@ function EmailStatsContent({
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="hidden items-center gap-2 md:flex">
-            <Mail className="size-5 text-primary" />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Email-statistik
-            </h1>
-          </div>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Öppnings- och klickfrekvens för utskickade mejl (månadsrapporter,
-            offertsigneringar och mallutskick), som underlag för att jämföra
-            vilka texter som fungerar.
-          </p>
-        </div>
-        <Select
-          value={period}
-          onValueChange={(value) => onPeriodChange(value as PeriodOption)}
-        >
-          <SelectTrigger className="w-full lg:w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.keys(PERIOD_LABELS) as PeriodOption[]).map((option) => (
-              <SelectItem key={option} value={option}>
-                {PERIOD_LABELS[option]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </header>
-
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <SummaryCard
           icon={Send}
@@ -466,13 +501,6 @@ function SummaryCard({
 function EmailStatsSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-4 w-96 max-w-full" />
-        </div>
-        <Skeleton className="h-9 w-56" />
-      </div>
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         {Array.from({ length: 5 }, (_, index) => (
           <Skeleton key={index} className="h-28 rounded-xl" />

@@ -34,6 +34,7 @@ import type {
   ReportAiContent,
   Sale,
   SalesFormData,
+  ScannerLeadStatsResponse,
   SignUpData,
 } from "../../types";
 import type { ConfigurationContextValue } from "../../root/ConfigurationContext";
@@ -1625,6 +1626,19 @@ const dataProviderWithCustomMethods = {
       throw new Error(error?.message ?? "Failed to load email send stats");
     }
     return data as EmailSendStatsResponse;
+  },
+  async getScannerLeadStats(params?: {
+    start?: string;
+    end?: string;
+  }): Promise<ScannerLeadStatsResponse> {
+    const { data, error } = await supabase.rpc("get_scanner_lead_stats", {
+      p_start: params?.start ?? null,
+      p_end: params?.end ?? null,
+    });
+    if (error || !data) {
+      throw new Error(error?.message ?? "Failed to load scanner lead stats");
+    }
+    return data as ScannerLeadStatsResponse;
   },
   async expireOverdueQuotes(): Promise<{ affected: number }> {
     const { data, error } = await supabase.rpc("expire_overdue_quotes");

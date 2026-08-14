@@ -1126,6 +1126,34 @@ export type EmailSendStatsResponse = {
   trend: EmailSendStatsTrendPoint[];
 };
 
+export type ScannerLeadStatsTrendPoint = {
+  period_start: string;
+  requests: number;
+  leads: number;
+};
+
+export type ScannerLeadStatsLead = {
+  created_at: string;
+  url: string;
+  email: string;
+  total_score: number | null;
+  verdict_band: "risk" | "needs_work" | "leaking" | "strong" | null;
+  report_slug: string | null;
+  company_id: Identifier | null;
+};
+
+export type ScannerLeadStatsResponse = {
+  totals: {
+    requests: number;
+    scans_completed: number;
+    leads_with_email: number;
+    conversion_rate: number | null;
+    avg_score_leads: number | null;
+  };
+  trend: ScannerLeadStatsTrendPoint[];
+  latest_leads: ScannerLeadStatsLead[];
+};
+
 export type CustomerVisibilityReason = {
   tone: "positive" | "neutral" | "negative";
   label: string;
