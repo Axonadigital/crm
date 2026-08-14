@@ -2,6 +2,8 @@ import { ResponsiveLine } from "@nivo/line";
 import {
   AlertTriangle,
   Building2,
+  CalendarCheck,
+  ListChecks,
   Percent,
   Search,
   UserPlus,
@@ -90,7 +92,7 @@ export function ScannerLeadStatsContent({
         axonadigital.se — hur många försök som blir leads, och vilka de är.
       </p>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <SummaryCard
           icon={Search}
           label="Scan-försök"
@@ -118,6 +120,22 @@ export function ScannerLeadStatsContent({
               : data.totals.avg_score_leads.toLocaleString("sv-SE")
           }
           helper="Genomsnittlig scanpoäng (0–100)"
+        />
+        <SummaryCard
+          icon={CalendarCheck}
+          label="Möten bokade"
+          value={data.totals.meetings_booked.toLocaleString("sv-SE")}
+          helper={`${formatRate(data.totals.meeting_conversion_rate)} av leads, via Cal.com`}
+        />
+        <SummaryCard
+          icon={ListChecks}
+          label="Väntande uppföljningar"
+          value={data.totals.open_followups.toLocaleString("sv-SE")}
+          helper={
+            data.totals.unassigned_followups > 0
+              ? `${data.totals.unassigned_followups.toLocaleString("sv-SE")} oassignerade`
+              : "Alla tilldelade en säljare"
+          }
         />
       </div>
 
@@ -228,6 +246,7 @@ export function ScannerLeadStatsContent({
                   <TableHead>URL</TableHead>
                   <TableHead>E-post</TableHead>
                   <TableHead className="text-right">Poäng</TableHead>
+                  <TableHead>Möte</TableHead>
                   <TableHead />
                   <TableHead />
                 </TableRow>
@@ -252,6 +271,14 @@ export function ScannerLeadStatsContent({
                       }`}
                     >
                       {lead.total_score ?? "–"}
+                    </TableCell>
+                    <TableCell>
+                      {lead.meeting_booked && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400">
+                          <CalendarCheck className="size-3" />
+                          Bokat
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {lead.report_slug && (
@@ -315,8 +342,8 @@ function ScannerLeadStatsSkeleton() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-4 w-96 max-w-full" />
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {Array.from({ length: 6 }, (_, index) => (
           <Skeleton key={index} className="h-28 rounded-xl" />
         ))}
       </div>

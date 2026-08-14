@@ -1140,6 +1140,7 @@ export type ScannerLeadStatsLead = {
   verdict_band: "risk" | "needs_work" | "leaking" | "strong" | null;
   report_slug: string | null;
   company_id: Identifier | null;
+  meeting_booked: boolean;
 };
 
 export type ScannerLeadStatsResponse = {
@@ -1149,6 +1150,10 @@ export type ScannerLeadStatsResponse = {
     leads_with_email: number;
     conversion_rate: number | null;
     avg_score_leads: number | null;
+    meetings_booked: number;
+    meeting_conversion_rate: number | null;
+    open_followups: number;
+    unassigned_followups: number;
   };
   trend: ScannerLeadStatsTrendPoint[];
   latest_leads: ScannerLeadStatsLead[];
@@ -1521,7 +1526,12 @@ export type CustomerBillingRow = {
   }>;
   billing_confidence: "high" | "needs_review";
   billing_warnings: string[];
-  billing_status: "ok" | "due_soon" | "overdue" | "never_invoiced";
+  billing_status:
+    | "ok"
+    | "due_soon"
+    | "overdue"
+    | "never_invoiced"
+    | "fully_invoiced";
   /** True when at least one deal carries a hand-set "invoiced through" date. */
   has_manual_schedule: boolean;
 };

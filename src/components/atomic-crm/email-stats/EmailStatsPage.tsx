@@ -42,6 +42,7 @@ import { ScannerLeadStatsContent } from "./ScannerLeadStatsContent";
 const CHANNEL_LABELS: Record<string, string> = {
   monthly_report: "Månadsrapport",
   docuseal_signing: "Offert-signering",
+  scanner_report: "Scanner-rapport",
   template: "Mall-utskick",
   other: "Övrigt",
 };
