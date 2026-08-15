@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, Minus, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Minus, X } from "lucide-react";
 import { useDataProvider } from "ra-core";
 import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -102,6 +102,9 @@ export const CustomerCoveragePage = () => {
     const gapScore = (c: CustomerCoverage) =>
       (c.is_fortnox_customer ? 0 : 2) +
       (c.has_recurring && !c.has_contract ? 1 : 0) +
+      (billingByCompany.get(String(c.company_id))?.has_overdue_invoice
+        ? 3
+        : 0) +
       (["overdue", "never_invoiced"].includes(
         billingByCompany.get(String(c.company_id))?.billing_status ?? "ok",
       )
@@ -135,6 +138,7 @@ export const CustomerCoveragePage = () => {
       ),
       needsAction: billingList.filter(
         (row) =>
+          row.has_overdue_invoice ||
           row.billing_status === "overdue" ||
           row.billing_status === "never_invoiced" ||
           row.billing_status === "due_soon",
@@ -324,19 +328,32 @@ export const CustomerCoveragePage = () => {
                           )}
                         </TableCell>
                         <TableCell>
-                          {invoice ? (
-                            <BillingStatusBadge
-                              status={invoice.billing_status}
-                            />
-                          ) : billingError && c.has_recurring ? (
-                            <Badge variant="destructive">
-                              Faktureringsdata saknas
-                            </Badge>
-                          ) : c.has_invoice ? (
-                            <Badge variant="secondary">Fakturerad</Badge>
-                          ) : (
-                            <Badge variant="outline">Ej återkommande</Badge>
-                          )}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {invoice?.has_overdue_invoice ? (
+                              <Badge
+                                variant="destructive"
+                                className="gap-1"
+                                title="Obetald Fortnox-faktura har passerat förfallodatum"
+                              >
+                                <AlertTriangle className="h-3 w-3" />
+                                Förfallen{" "}
+                                {formatCurrency(invoice.overdue_invoice_amount)}
+                              </Badge>
+                            ) : null}
+                            {invoice ? (
+                              <BillingStatusBadge
+                                status={invoice.billing_status}
+                              />
+                            ) : billingError && c.has_recurring ? (
+                              <Badge variant="destructive">
+                                Faktureringsdata saknas
+                              </Badge>
+                            ) : c.has_invoice ? (
+                              <Badge variant="secondary">Fakturerad</Badge>
+                            ) : (
+                              <Badge variant="outline">Ej återkommande</Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {c.is_fortnox_customer ? <Yes /> : <No />}

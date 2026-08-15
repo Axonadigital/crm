@@ -461,6 +461,17 @@ export const buildCustomerBillingOverview = (
           .map((invoice) => invoice.invoice_date as string)
           .sort((a, b) => b.localeCompare(a))[0] ?? null;
 
+      // A deal being fully invoiced only means nothing new needs sending —
+      // it says nothing about whether what was already sent got paid. Track
+      // that separately so an overdue balance can never hide behind "Klar".
+      const overdueInvoices = companyInvoices.filter(
+        (invoice) => invoice.status === "overdue",
+      );
+      const overdueInvoiceAmount = overdueInvoices.reduce(
+        (sum, invoice) => sum + balanceExVat(invoice),
+        0,
+      );
+
       // Schedule is computed per recurring line so a yearly and a monthly deal
       // on the same customer each get the right coverage, then aggregated.
       let remaining = 0;
@@ -748,6 +759,8 @@ export const buildCustomerBillingOverview = (
         paid_year_to_date: paidYearToDate,
         remaining_to_invoice_this_year: Math.max(0, Math.round(remaining)),
         outstanding_balance: outstanding,
+        has_overdue_invoice: overdueInvoices.length > 0,
+        overdue_invoice_amount: overdueInvoiceAmount,
         last_invoice_date: lastInvoiceDate,
         next_invoice_date: recommendedDate,
         next_invoice_amount: recommendedAmount,
@@ -774,6 +787,7 @@ export const buildCustomerBillingOverview = (
           fully_invoiced: 0,
         };
       return (
+        Number(b.has_overdue_invoice) - Number(a.has_overdue_invoice) ||
         statusScore[b.billing_status] - statusScore[a.billing_status] ||
         b.remaining_to_invoice_this_year - a.remaining_to_invoice_this_year ||
         b.monthly_recurring - a.monthly_recurring

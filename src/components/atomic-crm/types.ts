@@ -1497,6 +1497,10 @@ export type CustomerBillingRow = {
   paid_year_to_date: number;
   remaining_to_invoice_this_year: number;
   outstanding_balance: number;
+  /** True when this customer has a Fortnox invoice past its due date and still unpaid. */
+  has_overdue_invoice: boolean;
+  /** Ex-VAT balance still owed across all overdue invoices. */
+  overdue_invoice_amount: number;
   last_invoice_date: string | null;
   next_invoice_date: string | null;
   next_invoice_amount: number;

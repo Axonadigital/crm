@@ -338,6 +338,34 @@ describe("customer billing overview", () => {
     });
   });
 
+  it("flags an overdue unpaid invoice even when the deal itself is fully_invoiced", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 33,
+          name: "Hemsida Ensidig",
+          amount: 5000,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+      ],
+      [
+        invoice({
+          total: 6250,
+          total_vat: 1250,
+          balance: 6250,
+          status: "overdue",
+          sent: false,
+        }),
+      ],
+      new Date("2026-08-15T12:00:00"),
+    );
+
+    expect(rows[0].billing_status).toBe("fully_invoiced");
+    expect(rows[0].has_overdue_invoice).toBe(true);
+    expect(rows[0].overdue_invoice_amount).toBe(5000);
+  });
+
   it("does not mark an unbilled one-time deal as fully_invoiced (it needs a first invoice instead)", () => {
     const rows = buildCustomerBillingOverview(
       [
