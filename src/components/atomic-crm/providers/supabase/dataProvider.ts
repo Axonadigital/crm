@@ -1052,6 +1052,31 @@ const dataProviderWithCustomMethods = {
     return data;
   },
   /**
+   * Invoices a won deal's one-time amount in Fortnox, creating the customer
+   * there first if it doesn't exist yet. The invoice is stamped with the deal
+   * reference, which is what finally gives the mirrored invoice its deal_id.
+   * Creates an unbooked draft only — never books or sends. Cannot run twice
+   * for the same deal (the database enforces it).
+   */
+  async createFortnoxInvoiceFromDeal(dealId: Identifier): Promise<{
+    document_number: number;
+    customer_number: string;
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_invoices",
+      {
+        method: "POST",
+        body: { action: "create_from_deal", deal_id: Number(dealId) },
+      },
+    );
+    if (error || !data) {
+      throw new Error(
+        (await extractFunctionError(error)) ?? "Failed to create the invoice",
+      );
+    }
+    return data;
+  },
+  /**
    * Turns a won recurring deal into a Fortnox contract (avtal) that generates
    * recurring invoices. Creates the contract only — never books or sends.
    * Cannot run twice for the same deal (the database enforces it).

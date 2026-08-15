@@ -28,6 +28,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 import { CompanyAvatar } from "../companies/CompanyAvatar";
 import { ContractDealButton } from "../fortnox/ContractDealButton";
+import { InvoiceDealButton } from "../fortnox/InvoiceDealButton";
 import { NextInvoiceChip } from "../fortnox/billingDisplay";
 import { dealNextInvoice } from "../fortnox/dealBilling";
 import { formatDate } from "../fortnox/invoiceFormat";
@@ -105,6 +106,7 @@ const DealShowContent = () => {
                 </>
               ) : (
                 <>
+                  <InvoiceDealButton />
                   <ContractDealButton />
                   <ArchiveButton record={record} />
                   <EditButton />

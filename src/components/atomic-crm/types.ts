@@ -268,6 +268,8 @@ export type Deal = {
   installment_interval_months?: number | null;
   /** Fortnox contract (avtal) number, once this recurring deal has one. */
   fortnox_contract_number?: number | null;
+  /** Fortnox invoice number for the one-time amount, once it has been invoiced. */
+  fortnox_invoice_number?: number | null;
   /** Recurring billing covered/invoiced through this date (correctable by hand). */
   invoiced_through?: string | null;
   /** Date the recurring billing period started; seeds the first invoice date. */
