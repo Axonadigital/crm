@@ -311,14 +311,48 @@ const invoicedInstallmentCount = (
 const uninvoicedOneTimeDeals = (
   companyDeals: RecurringRevenueDeal[],
   companyInvoices: FortnoxInvoice[],
-): RecurringRevenueDeal[] =>
-  companyDeals.filter((deal) => {
-    if (!deal.amount || deal.amount <= 0) return false;
-    if (isInstallmentDeal(deal)) return false;
-    return !companyInvoices.some((invoice) =>
-      invoiceMatchesDealAmount(deal, invoice),
-    );
-  });
+): RecurringRevenueDeal[] => {
+  const oneTimeCandidates = companyDeals.filter(
+    (deal) => (deal.amount ?? 0) > 0 && !isInstallmentDeal(deal),
+  );
+  const unmatched = oneTimeCandidates.filter(
+    (deal) =>
+      !companyInvoices.some((invoice) =>
+        invoiceMatchesDealAmount(deal, invoice),
+      ),
+  );
+
+  // Ambiguity-free fallback: a negotiated discount or rounding can leave a
+  // genuinely paid deal's amount not exactly matching its invoice. When
+  // there's exactly one still-unmatched one-time deal and exactly one
+  // invoice nothing else on the company claims by amount, there's no real
+  // ambiguity about which invoice it is — don't flag it as missing.
+  // Skipped whenever the company also has a recurring deal, since those
+  // infer coverage from the same invoices via separate, amount-agnostic
+  // logic this fallback could otherwise conflict with.
+  const hasRecurringDeal = companyDeals.some(
+    (deal) => (deal.recurring_amount ?? 0) > 0,
+  );
+  if (unmatched.length !== 1 || hasRecurringDeal) return unmatched;
+
+  const otherMatchedCandidates = oneTimeCandidates.filter(
+    (deal) => deal !== unmatched[0],
+  );
+  const claimedDocNumbers = new Set(
+    companyInvoices
+      .filter((invoice) =>
+        otherMatchedCandidates.some((deal) =>
+          invoiceMatchesDealAmount(deal, invoice),
+        ),
+      )
+      .map((invoice) => invoice.document_number),
+  );
+  const unclaimedInvoices = companyInvoices.filter(
+    (invoice) => !claimedDocNumbers.has(invoice.document_number),
+  );
+
+  return unclaimedInvoices.length === 1 ? [] : unmatched;
+};
 
 /**
  * Prefer Fortnox invoice rows over customer-level totals. A row with quantity

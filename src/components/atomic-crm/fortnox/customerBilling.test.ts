@@ -366,6 +366,75 @@ describe("customer billing overview", () => {
     expect(rows[0].overdue_invoice_amount).toBe(5000);
   });
 
+  it("matches a one-time deal to its invoice despite a negotiated discount, when there's no ambiguity", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 62,
+          name: "A Jonasson Byggservice AB",
+          amount: 6500,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+      ],
+      [
+        invoice({
+          document_number: 2638,
+          total: 7500,
+          total_vat: 1500,
+          balance: 0,
+          status: "paid",
+          invoice_rows: [{ Description: "Hemsida", TotalExcludingVAT: 6000 }],
+        }),
+      ],
+      new Date("2026-08-15T12:00:00"),
+    );
+
+    expect(rows[0].billing_warnings).toEqual([]);
+    expect(rows[0].deals[0]).toMatchObject({ deal_id: 62, status: "ok" });
+  });
+
+  it("does not fall back to ambiguity-free matching when a second deal could equally claim the invoice", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 40,
+          name: "ppp plåtservice",
+          amount: 7000,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+        deal({
+          id: 47,
+          name: "Loopia-deal",
+          amount: 2160,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+      ],
+      [
+        invoice({
+          document_number: 3001,
+          total: 8750,
+          total_vat: 1750,
+          invoice_rows: [
+            { Description: "Plåtarbete", TotalExcludingVAT: 7000 },
+          ],
+        }),
+      ],
+      new Date("2026-08-15T12:00:00"),
+    );
+
+    const byId = (id: number) =>
+      rows[0].deals.find((d) => String(d.deal_id) === String(id));
+    // Deal 40 is claimed by the invoice and must not be told to send another
+    // one — a pre-existing "multiple deals share this invoice recipient"
+    // warning still marks it needs_review rather than a clean "ok", which is
+    // a separate, unrelated mechanism.
+    expect(byId(40)?.status).not.toBe("needs_invoice");
+    expect(byId(47)).toMatchObject({ status: "needs_invoice" });
+  });
+
   it("does not mark an unbilled one-time deal as fully_invoiced (it needs a first invoice instead)", () => {
     const rows = buildCustomerBillingOverview(
       [
