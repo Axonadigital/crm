@@ -278,7 +278,7 @@ export async function buildPreviewArtifacts(): Promise<{
     metrics: sampleViewModel.metrics,
     viewModel: sampleViewModel,
     hasSearchData: true,
-    replyToEmail: "hej@axonadigital.se",
+    replyToEmail: "info@axonadigital.se",
   });
   const pdf = await buildReportPdf({
     viewModel: sampleViewModel,

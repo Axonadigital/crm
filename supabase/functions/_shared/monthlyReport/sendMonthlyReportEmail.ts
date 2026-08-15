@@ -45,7 +45,7 @@ export async function sendMonthlyReportEmail(
   input: SendMonthlyReportEmailInput,
 ): Promise<SendMonthlyReportEmailResult> {
   const resendApiKey = Deno.env.get("RESEND_API_KEY");
-  const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "hej@axonadigital.se";
+  const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "info@axonadigital.se";
 
   if (!resendApiKey) {
     throw new Error("RESEND_API_KEY not configured");

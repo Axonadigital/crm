@@ -133,7 +133,7 @@ async function sendReport(
     viewModel,
     hasSearchData,
     presentation,
-    replyToEmail: Deno.env.get("RESEND_FROM_EMAIL") || "hej@axonadigital.se",
+    replyToEmail: Deno.env.get("RESEND_FROM_EMAIL") || "info@axonadigital.se",
     bookingUrl: Deno.env.get("MONTHLY_REPORT_BOOKING_URL") || undefined,
   });
   const refreshedPdf = await buildReportPdf({

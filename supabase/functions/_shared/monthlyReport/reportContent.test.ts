@@ -359,7 +359,7 @@ describe("buildReportEmailHtml", () => {
       metrics,
       viewModel,
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
     expect(html).toContain("Klick från Google");
     expect(html).toContain("Vi föreslår en SEO-insats.");
@@ -390,11 +390,11 @@ describe("buildReportEmailHtml", () => {
       aiContent,
       metrics: computeReportMetrics(snap, null),
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
     expect(html).toContain("Boka 15 min genomgång");
     expect(html).toContain(
-      `href="mailto:hej%40axonadigital.se?subject=Genomg%C3%A5ng%20av%20synlighetsrapport"`,
+      `href="mailto:info%40axonadigital.se?subject=Genomg%C3%A5ng%20av%20synlighetsrapport"`,
     );
     expect(html).toContain("Svara på detta mejl");
   });
@@ -406,13 +406,13 @@ describe("buildReportEmailHtml", () => {
       aiContent,
       metrics: computeReportMetrics(snap, null),
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
       bookingUrl: "https://cal.com/axona/genomgang",
     });
     expect(html).toContain(`href="https://cal.com/axona/genomgang"`);
     expect(html).toContain("Boka 15 min genomgång");
     // Sekundär mailto-länk finns kvar även när en bokningslänk är satt.
-    expect(html).toContain(`href="mailto:hej%40axonadigital.se"`);
+    expect(html).toContain(`href="mailto:info%40axonadigital.se"`);
     expect(html).toContain("Svara på detta mejl");
   });
 
@@ -423,7 +423,7 @@ describe("buildReportEmailHtml", () => {
       aiContent,
       metrics: computeReportMetrics(snap, null),
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
     expect(html).not.toContain("<script>x</script>");
     expect(html).toContain("&lt;script&gt;");
@@ -439,7 +439,7 @@ describe("buildReportEmailHtml", () => {
         null,
       ),
       hasSearchData: false,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
     expect(html).not.toContain("Klick från Google");
     expect(html).toContain("Laddtid");
@@ -490,7 +490,7 @@ describe("buildReportEmailHtml", () => {
       metrics,
       viewModel,
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
     expect(html).not.toContain("Laddtid");
     expect(html).not.toContain("Snittposition");
@@ -548,7 +548,7 @@ describe("buildReportEmailHtml", () => {
       metrics,
       viewModel,
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
     expect(html).toContain("Rekommenderat nästa steg · SEO-optimering");
     // action_plan-fallbacken byggs ur recommendations — SEO-posten flyttas
@@ -621,7 +621,7 @@ describe("buildReportEmailHtml", () => {
       metrics,
       viewModel,
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
 
     expect(html).toContain("Rekommenderat nästa steg · SEO-optimering");
@@ -687,7 +687,7 @@ describe("buildReportEmailHtml", () => {
       metrics,
       viewModel,
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
 
     expect(html).toContain("Rekommenderat nästa steg · SEO-optimering");
@@ -726,7 +726,7 @@ describe("buildReportEmailHtml", () => {
       aiContent,
       metrics,
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
     // Kollar den faktiska sektionsrubriken (en <p>-tagg), inte HTML-kommentaren
     // som alltid finns i mallen oavsett gate.
@@ -738,7 +738,7 @@ describe("buildReportEmailHtml", () => {
       aiContent: { ...aiContent, recommended_service: "SEO-optimering" },
       metrics,
       hasSearchData: true,
-      replyToEmail: "hej@axonadigital.se",
+      replyToEmail: "info@axonadigital.se",
     });
     expect(withOverride).toContain(">Sökordsrörelser<");
     expect(withOverride).toContain("jvs maskiner");

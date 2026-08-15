@@ -15,7 +15,7 @@ describe("buildTermsAndSignatureSection", () => {
     address: "Storgatan 1",
     zipCity: "111 11 Stockholm",
     phone: "010-123 45 67",
-    email: "hej@axonadigital.se",
+    email: "info@axonadigital.se",
     website: "https://axonadigital.se",
     bankgiro: "123-4567",
     plusgiro: "",
@@ -70,6 +70,6 @@ describe("buildTermsAndSignatureSection", () => {
     expect(html).toContain("Er referens");
     expect(html).toContain("Anna Andersson");
     expect(html).toContain("Kontakt från Axona");
-    expect(html).toContain("hej@axonadigital.se");
+    expect(html).toContain("info@axonadigital.se");
   });
 });

@@ -295,7 +295,7 @@ Deno.serve(async (req: Request) =>
         try {
           const resendKey = Deno.env.get("RESEND_API_KEY");
           const fromEmail =
-            Deno.env.get("RESEND_FROM_EMAIL") || "hej@axonadigital.se";
+            Deno.env.get("RESEND_FROM_EMAIL") || "info@axonadigital.se";
           if (resendKey && contactEmail) {
             const emailRes = await fetch("https://api.resend.com/emails", {
               method: "POST",

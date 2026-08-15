@@ -14,7 +14,7 @@ describe("sendMonthlyReportEmail", () => {
           key === "RESEND_API_KEY"
             ? "re_test"
             : key === "RESEND_FROM_EMAIL"
-              ? "hej@axonadigital.se"
+              ? "info@axonadigital.se"
               : undefined,
       },
     });
