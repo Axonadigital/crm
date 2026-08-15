@@ -31,15 +31,23 @@ const StatCard = ({
   label,
   value,
   sub,
+  tone,
 }: {
   label: string;
   value: string;
   sub?: string;
+  tone?: "danger";
 }) => (
   <Card>
     <CardContent className="pt-6">
       <div className="text-sm text-muted-foreground">{label}</div>
-      <div className="mt-2 text-2xl font-semibold">{value}</div>
+      <div
+        className={`mt-2 text-2xl font-semibold ${
+          tone === "danger" ? "text-destructive" : ""
+        }`}
+      >
+        {value}
+      </div>
       {sub ? (
         <div className="mt-1 text-xs text-muted-foreground">{sub}</div>
       ) : null}
@@ -136,6 +144,12 @@ export const CustomerCoveragePage = () => {
         (sum, row) => sum + row.remaining_to_invoice_this_year,
         0,
       ),
+      outstanding: billingList.reduce(
+        (sum, row) => sum + row.outstanding_balance,
+        0,
+      ),
+      overdueCustomers: billingList.filter((row) => row.has_overdue_invoice)
+        .length,
       needsAction: billingList.filter(
         (row) =>
           row.has_overdue_invoice ||
@@ -158,7 +172,7 @@ export const CustomerCoveragePage = () => {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard label="Vunna kunder" value={String(summary.customers)} />
         <StatCard
           label="Återkommande intäkter"
@@ -169,6 +183,16 @@ export const CustomerCoveragePage = () => {
           label={`Betalt ${year}`}
           value={formatCurrency(summary.paidThisYear)}
           sub="betalda Fortnox-fakturor ex moms"
+        />
+        <StatCard
+          label="Obetalt"
+          value={formatCurrency(summary.outstanding)}
+          sub={
+            summary.overdueCustomers > 0
+              ? `${summary.overdueCustomers} kunder har förfallen faktura`
+              : "fakturerat men ännu inte betalt"
+          }
+          tone={summary.overdueCustomers > 0 ? "danger" : undefined}
         />
         <StatCard
           label={`Kvar att fakturera ${year}`}
@@ -205,6 +229,7 @@ export const CustomerCoveragePage = () => {
                   <TableHead>Typ</TableHead>
                   <TableHead className="text-right">Återk./mån</TableHead>
                   <TableHead className="text-right">Betalt {year}</TableHead>
+                  <TableHead className="text-right">Obetalt</TableHead>
                   <TableHead className="text-right">
                     Kvar att fakturera
                   </TableHead>
@@ -274,6 +299,26 @@ export const CustomerCoveragePage = () => {
                           {invoice
                             ? formatCurrency(invoice.paid_year_to_date)
                             : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {!invoice || invoice.outstanding_balance <= 0 ? (
+                            "—"
+                          ) : (
+                            <span
+                              className={
+                                invoice.has_overdue_invoice
+                                  ? "font-medium text-destructive"
+                                  : "text-amber-600 dark:text-amber-500"
+                              }
+                              title={
+                                invoice.has_overdue_invoice
+                                  ? "Förfallen — betalning har passerat förfallodatum"
+                                  : "Fakturerat, ännu inte förfallet"
+                              }
+                            >
+                              {formatCurrency(invoice.outstanding_balance)}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           {invoice
@@ -370,7 +415,7 @@ export const CustomerCoveragePage = () => {
                       </TableRow>
                       {expanded ? (
                         <TableRow className="bg-muted/30">
-                          <TableCell colSpan={11} className="space-y-4 p-0">
+                          <TableCell colSpan={12} className="space-y-4 p-0">
                             {invoice?.deals?.length ? (
                               <div className="grid grid-cols-[minmax(220px,1fr)_120px_120px_150px_minmax(220px,1.2fr)] gap-3 px-4 py-3 text-xs md:px-12">
                                 <div className="font-medium text-muted-foreground">

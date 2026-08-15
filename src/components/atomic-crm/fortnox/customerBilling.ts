@@ -485,7 +485,9 @@ export const buildCustomerBillingOverview = (
       const paidYearToDate = currentYearInvoices
         .filter((invoice) => invoice.status === "paid")
         .reduce((sum, invoice) => sum + invoiceExVat(invoice), 0);
-      const outstanding = currentYearInvoices.reduce(
+      // Money owed doesn't stop being owed when the calendar year turns, so
+      // this spans every mirrored invoice rather than the current year only.
+      const outstanding = companyInvoices.reduce(
         (sum, invoice) => sum + balanceExVat(invoice),
         0,
       );
@@ -506,12 +508,24 @@ export const buildCustomerBillingOverview = (
         0,
       );
 
+      // No invoice in the mirror carries a deal_id, so "the company's latest
+      // invoice" is only a safe anchor for a recurring line when nothing else
+      // could have produced it. On a customer who also bought a one-time job,
+      // that invoice is most likely the one-time one — anchoring to it invents
+      // a schedule out of an unrelated payment (a 499/mån line inheriting a
+      // website invoice's date, then reporting months it never billed).
+      const hasOneTimeValue = companyDeals.some(
+        (deal) => (deal.amount ?? 0) > 0,
+      );
+      const recurringAnchorDate = hasOneTimeValue ? null : lastInvoiceDate;
+
       // Schedule is computed per recurring line so a yearly and a monthly deal
       // on the same customer each get the right coverage, then aggregated.
       let remaining = 0;
       let hasManualSchedule = false;
       let hasRowBasedCoverage = false;
       const nextDates: string[] = [];
+      const unanchoredRecurringDeals: RecurringRevenueDeal[] = [];
       const dealRecommendations: CustomerBillingRow["next_invoice_deals"] = [];
       for (const deal of companyDeals) {
         if (!deal.recurring_amount || deal.recurring_amount <= 0) continue;
@@ -527,11 +541,28 @@ export const buildCustomerBillingOverview = (
           rowCoveredThrough ??
           (deal.invoiced_through ? null : amountCoveredThrough);
 
+        // Nothing trustworthy to date the schedule from: no hand-set "invoiced
+        // through", no billing start date, and no invoice this line can claim.
+        // Emit no next-invoice date rather than a fabricated one — but still
+        // count a full year as unbilled, because as far as the data shows this
+        // line has never been invoiced, and hiding the money would be a worse
+        // error than overstating it next to a warning that says why.
+        if (
+          !deal.invoiced_through &&
+          !deal.billing_start_date &&
+          !recurringAnchorDate &&
+          !inferredCoveredThrough
+        ) {
+          unanchoredRecurringDeals.push(deal);
+          remaining += lineMonthly * 12;
+          continue;
+        }
+
         const covered = coveredMonthsThisYear(
           latestDate([
             coveredThroughDate({
               invoicedThrough: deal.invoiced_through,
-              lastInvoiceDate,
+              lastInvoiceDate: recurringAnchorDate,
               interval,
             }),
             inferredCoveredThrough,
@@ -543,7 +574,7 @@ export const buildCustomerBillingOverview = (
         const nextCoveredThrough = latestDate([
           coveredThroughDate({
             invoicedThrough: deal.invoiced_through,
-            lastInvoiceDate,
+            lastInvoiceDate: recurringAnchorDate,
             interval,
           }),
           inferredCoveredThrough,
@@ -551,7 +582,7 @@ export const buildCustomerBillingOverview = (
 
         const next = getNextInvoiceDate({
           invoicedThrough: nextCoveredThrough,
-          lastInvoiceDate,
+          lastInvoiceDate: recurringAnchorDate,
           billingStartDate: deal.billing_start_date,
           interval,
         });
@@ -611,6 +642,33 @@ export const buildCustomerBillingOverview = (
         (sum, installment) => sum + installment.amount,
         0,
       );
+
+      /**
+       * Every still-uninvoiced installment whose turn falls inside this
+       * calendar year — not just the next one due. Counts toward "kvar att
+       * fakturera i år" alongside missing one-time deals, so the column
+       * reflects all money still to be billed rather than recurring lines only.
+       */
+      const remainingInstallmentsThisYear = companyDeals
+        .filter(isInstallmentDeal)
+        .reduce((sum, deal) => {
+          const invoicedCount = invoicedInstallmentCount(deal, companyInvoices);
+          const count = deal.installment_count ?? 0;
+          const startDate = deal.billing_start_date ?? toDateOnly(today);
+          const intervalMonths = deal.installment_interval_months ?? 1;
+          let lineTotal = 0;
+          for (let index = invoicedCount; index < count; index += 1) {
+            const date = addMonths(
+              parseDate(startDate),
+              index * intervalMonths,
+            );
+            if (date.getFullYear() === year) {
+              lineTotal += installmentAmountForIndex(deal, index + 1);
+            }
+          }
+          return sum + lineTotal;
+        }, 0);
+
       const nextInstallmentDate = earliestDate(
         dueInstallments.map((installment) => installment.nextDate),
       );
@@ -688,6 +746,13 @@ export const buildCustomerBillingOverview = (
         (invoice) => !hasInvoiceRows(invoice),
       );
       const billingWarnings: string[] = [];
+      if (unanchoredRecurringDeals.length > 0) {
+        billingWarnings.push(
+          `Abonnemang saknar startdatum – schemat kan inte beräknas: ${unanchoredRecurringDeals
+            .map((deal) => deal.name)
+            .join(", ")}`,
+        );
+      }
       if (missingOneTimeDeals.length > 0) {
         billingWarnings.push(
           `Vunnen deal saknar matchande Fortnox-faktura: ${missingOneTimeDeals
@@ -721,6 +786,9 @@ export const buildCustomerBillingOverview = (
       );
       const recommendedDealIds = new Set(
         recommendedDeals.map((deal) => String(deal.deal_id)),
+      );
+      const unanchoredDealIds = new Set(
+        unanchoredRecurringDeals.map((deal) => String(deal.id)),
       );
       const dealDetails: CustomerBillingRow["deals"] = companyDeals.map(
         (deal) => {
@@ -768,11 +836,13 @@ export const buildCustomerBillingOverview = (
                   : "ok",
             note: isMissingOneTime
               ? "Saknar matchande Fortnox-faktura"
-              : dueInstallment
-                ? `Delbetalning ${dueInstallment.installmentIndex}/${deal.installment_count}`
-                : dealNext
-                  ? `Nästa återkommande faktura ${dealNext}`
-                  : null,
+              : unanchoredDealIds.has(String(deal.id))
+                ? "Saknar startdatum – sätt Fakturering startar"
+                : dueInstallment
+                  ? `Delbetalning ${dueInstallment.installmentIndex}/${deal.installment_count}`
+                  : dealNext
+                    ? `Nästa återkommande faktura ${dealNext}`
+                    : null,
           };
         },
       );
@@ -791,7 +861,16 @@ export const buildCustomerBillingOverview = (
             ),
         invoiced_year_to_date: invoicedYearToDate,
         paid_year_to_date: paidYearToDate,
-        remaining_to_invoice_this_year: Math.max(0, Math.round(remaining)),
+        // Everything still to be billed this year, not just recurring lines:
+        // a won one-time deal with no invoice is money left to invoice too,
+        // and leaving it out made this column contradict the recommendation
+        // sitting next to it ("Skicka faktura 5 000 kr" beside "0 kr kvar").
+        remaining_to_invoice_this_year: Math.max(
+          0,
+          Math.round(
+            remaining + missingOneTimeAmount + remainingInstallmentsThisYear,
+          ),
+        ),
         outstanding_balance: outstanding,
         has_overdue_invoice: overdueInvoices.length > 0,
         overdue_invoice_amount: overdueInvoiceAmount,
@@ -803,10 +882,12 @@ export const buildCustomerBillingOverview = (
         billing_confidence:
           billingWarnings.length > 0 ? "needs_review" : "high",
         billing_warnings: billingWarnings,
+        // "Klar" requires both invoice history and no unresolved subscription;
+        // a line we couldn't schedule is an open question, not a finished job.
         billing_status: getBillingStatus(
           recommendedDate,
           today,
-          lastInvoiceDate !== null,
+          lastInvoiceDate !== null && unanchoredRecurringDeals.length === 0,
         ),
         has_manual_schedule: hasManualSchedule,
       } satisfies CustomerBillingRow;

@@ -435,6 +435,123 @@ describe("customer billing overview", () => {
     expect(byId(47)).toMatchObject({ status: "needs_invoice" });
   });
 
+  it("counts an uninvoiced one-time deal as money left to invoice this year", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 70,
+          name: "Hemsida",
+          amount: 5000,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+      ],
+      [],
+      new Date("2026-08-15T12:00:00"),
+    );
+
+    // The recommendation and the column must agree — previously this said
+    // "Skicka faktura 5 000 kr" beside "0 kr kvar att fakturera".
+    expect(rows[0].next_invoice_amount).toBe(5000);
+    expect(rows[0].remaining_to_invoice_this_year).toBe(5000);
+  });
+
+  it("keeps unpaid balances visible after the calendar year turns", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 71,
+          amount: 5000,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+      ],
+      [
+        invoice({
+          invoice_date: "2025-11-10",
+          due_date: "2025-12-10",
+          total: 6250,
+          total_vat: 1250,
+          balance: 6250,
+          status: "overdue",
+        }),
+      ],
+      new Date("2026-08-15T12:00:00"),
+    );
+
+    expect(rows[0].paid_year_to_date).toBe(0);
+    expect(rows[0].outstanding_balance).toBe(5000);
+    expect(rows[0].has_overdue_invoice).toBe(true);
+  });
+
+  it("does not invent a recurring schedule from a one-time deal's invoice", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 57,
+          name: "Tullus Hemsida",
+          amount: 8000,
+          recurring_amount: 0,
+          recurring_interval: null,
+        }),
+        deal({
+          id: 66,
+          name: "Tullus SEO hantering",
+          amount: 0,
+          recurring_amount: 499,
+          recurring_interval: null,
+          billing_start_date: null,
+          invoiced_through: null,
+        }),
+      ],
+      [
+        invoice({
+          document_number: 2629,
+          invoice_date: "2026-06-03",
+          total: 10000,
+          total_vat: 2000,
+          balance: 0,
+          status: "paid",
+          invoice_rows: [{ Description: "Hemsida", TotalExcludingVAT: 8000 }],
+        }),
+      ],
+      new Date("2026-08-15T12:00:00"),
+    );
+
+    // The website invoice says nothing about when the SEO subscription began,
+    // so no schedule may be derived from it.
+    const seo = rows[0].deals.find((d) => String(d.deal_id) === "66");
+    expect(seo?.next_invoice_date).toBeNull();
+    expect(rows[0].billing_warnings.join(" ")).toContain("saknar startdatum");
+    expect(rows[0].billing_status).not.toBe("fully_invoiced");
+  });
+
+  it("still anchors a recurring schedule to the last invoice when nothing else could have produced it", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 72,
+          amount: 0,
+          recurring_amount: 1000,
+          recurring_interval: "monthly",
+        }),
+      ],
+      [
+        invoice({
+          invoice_date: "2026-07-10",
+          total: 1250,
+          total_vat: 250,
+          balance: 0,
+          status: "paid",
+        }),
+      ],
+      new Date("2026-08-15T12:00:00"),
+    );
+
+    expect(rows[0].billing_warnings).toEqual([]);
+    expect(rows[0].next_invoice_date).toBe("2026-08-10");
+  });
+
   it("does not mark an unbilled one-time deal as fully_invoiced (it needs a first invoice instead)", () => {
     const rows = buildCustomerBillingOverview(
       [

@@ -12,7 +12,10 @@ export const BILLING_STATUS_LABELS: Record<BillingStatus, string> = {
   due_soon: "Dags snart",
   overdue: "Behöver faktureras",
   never_invoiced: "Ingen faktura",
-  fully_invoiced: "Klar",
+  // "Fakturerad", not "Klar": everything that should be sent has been sent,
+  // which says nothing about whether it was paid. A customer can be fully
+  // invoiced and still owe money — the Obetalt column carries that half.
+  fully_invoiced: "Fakturerad",
 };
 
 export const BILLING_CADENCE_LABELS: Record<
