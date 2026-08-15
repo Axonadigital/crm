@@ -109,14 +109,19 @@ export type FortnoxInvoiceRowPayload = {
   Price: number;
   VAT: number;
   AccountNumber?: number;
+  ArticleNumber?: string;
 };
 
 /**
  * A free-text invoice row needs an account number, otherwise Fortnox rejects it
  * (or books it somewhere surprising). We pass the sales account explicitly
  * rather than relying on whatever default the tenant happens to have.
+ *
+ * 3001 ("Försäljning inom Sverige, momspliktig 25%") — confirmed against this
+ * tenant's actual chart of accounts (every real invoice row already mirrored
+ * from Fortnox uses 3001; 3011 doesn't exist here and was never live-verified).
  */
-export const DEFAULT_SALES_ACCOUNT = 3011;
+export const DEFAULT_SALES_ACCOUNT = 3001;
 export const DEFAULT_VAT_RATE = 25;
 
 export function mapQuoteLineItems(

@@ -8,9 +8,11 @@
  * each invoice (or a later cron creates unbooked drafts for review).
  *
  * The payload builder is pure so it can be unit tested without a Fortnox
- * tenant. Contract rows reuse the same free-text row shape as invoices
- * (Description + Price + AccountNumber, no article) — see the note on
- * `buildContractRows`.
+ * tenant. Unlike one-off invoice rows, contract rows need an ArticleNumber —
+ * live-testing against `/3/contracts` showed Fortnox rejects an article-less
+ * free-text row here with "Feature inte tillgänglig", even though the same
+ * shape works for `/3/invoices`. The caller resolves the article via
+ * `ensureContractArticle` and passes its number in.
  */
 
 import {
@@ -55,12 +57,13 @@ export function invoiceIntervalFor(
 }
 
 /**
- * The single recurring row. Free-text (no ArticleNumber) with an explicit sales
- * account, exactly like invoice rows. If a tenant's contract endpoint turns out
- * to require an article, this is the one place to add it.
+ * The single recurring row, carrying the shared contract article (see
+ * `ensureContractArticle`) plus the same explicit sales account invoice rows
+ * use.
  */
 export function buildContractRows(
   deal: RecurringDeal,
+  articleNumber: string,
 ): FortnoxInvoiceRowPayload[] {
   return [
     {
@@ -69,6 +72,7 @@ export function buildContractRows(
       Price: deal.recurring_amount,
       VAT: DEFAULT_VAT_RATE,
       AccountNumber: DEFAULT_SALES_ACCOUNT,
+      ArticleNumber: articleNumber,
     },
   ];
 }
@@ -82,6 +86,7 @@ export function buildContractPayload(
   deal: RecurringDeal,
   customerNumber: string,
   startDate: string,
+  articleNumber: string,
   options: { currency?: string } = {},
 ): FortnoxContractPayload {
   return {
@@ -93,7 +98,7 @@ export function buildContractPayload(
     Continuous: true,
     Currency: options.currency ?? "SEK",
     Language: "SV",
-    InvoiceRows: buildContractRows(deal),
+    InvoiceRows: buildContractRows(deal, articleNumber),
     // Link back to the CRM deal, matching how invoices reference their deal.
     ExternalInvoiceReference2: dealReference(deal.id),
   };

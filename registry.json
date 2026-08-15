@@ -858,6 +858,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/CompanyInvoiceList.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/CompanyBillingSummary.tsx",
           "type": "registry:component"
         },
@@ -899,6 +903,10 @@
         },
         {
           "path": "src/components/atomic-crm/feedback/FeedbackAuthor.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/email-stats/ScannerLeadStatsContent.tsx",
           "type": "registry:component"
         },
         {

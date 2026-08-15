@@ -99,12 +99,17 @@ export const LiquidityPage = () => {
     queryFn: () => dataProvider.getFortnoxResultMonthly(),
   });
 
-  // Recurring income, normalised to a per-month figure.
+  // Recurring income, normalised to a per-month figure. getRecurringRevenue
+  // also returns one-time deals now (Kundtäckning needs those too), so filter
+  // back down to genuinely recurring lines here — Likviditet is specifically
+  // about recurring revenue vs. recurring cost, not one-off project value.
   const revenue = useMemo(() => {
-    const rows = (revenueDeals ?? []).map((d) => ({
-      ...d,
-      monthly: monthlyAmount(d.recurring_amount, d.recurring_interval),
-    }));
+    const rows = (revenueDeals ?? [])
+      .filter((d) => (d.recurring_amount ?? 0) > 0)
+      .map((d) => ({
+        ...d,
+        monthly: monthlyAmount(d.recurring_amount, d.recurring_interval),
+      }));
     const monthly = rows.reduce((sum, r) => sum + r.monthly, 0);
     return { rows: rows.sort((a, b) => b.monthly - a.monthly), monthly };
   }, [revenueDeals]);
@@ -148,7 +153,7 @@ export const LiquidityPage = () => {
         <StatCard
           label="Återkommande intäkter"
           value={`${formatCurrency(revenue.monthly)}/mån`}
-          sub={`${(revenueDeals ?? []).length} avtalskunder`}
+          sub={`${revenue.rows.length} avtalskunder`}
           tone="positive"
           icon={ArrowUpRight}
         />

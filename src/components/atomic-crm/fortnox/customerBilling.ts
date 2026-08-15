@@ -164,8 +164,11 @@ const coveredMonthsThisYear = (
 export const getBillingStatus = (
   nextInvoiceDate: string | null,
   today: Date,
+  hasInvoiceHistory: boolean = false,
 ): CustomerBillingRow["billing_status"] => {
-  if (!nextInvoiceDate) return "never_invoiced";
+  if (!nextInvoiceDate) {
+    return hasInvoiceHistory ? "fully_invoiced" : "never_invoiced";
+  }
 
   const days = daysBetween(today, parseDate(nextInvoiceDate));
   if (days < 0) return "overdue";
@@ -231,15 +234,54 @@ const installmentAmount = (deal: RecurringRevenueDeal): number =>
     ? Math.round((deal.amount / deal.installment_count!) * 100) / 100
     : 0;
 
+/**
+ * The recommended amount for one specific installment. Rounding each
+ * installment independently can leave the sum a few öre short of the deal's
+ * total (e.g. 10000/3 = 3333.33 × 3 = 9999.99), so the final installment
+ * absorbs the remainder instead. Only used for the displayed/recommended
+ * amount — matching (`invoiceMatchesInstallment`) stays on the flat value
+ * since its tolerance already swallows a few öre either way.
+ */
+const installmentAmountForIndex = (
+  deal: RecurringRevenueDeal,
+  index: number,
+): number => {
+  if (!isInstallmentDeal(deal)) return 0;
+  const count = deal.installment_count!;
+  const perInstallment = installmentAmount(deal);
+  if (index < count) return perInstallment;
+  return Math.round((deal.amount - perInstallment * (count - 1)) * 100) / 100;
+};
+
 const invoiceMatchesInstallment = (
   deal: RecurringRevenueDeal,
   invoice: FortnoxInvoice,
 ): boolean => {
   if (!isInstallmentDeal(deal) || invoice.status === "cancelled") return false;
-  const amount = installmentAmount(deal);
-  if (invoice.deal_id != null && String(invoice.deal_id) === String(deal.id)) {
-    return sameMoney(invoiceExVat(invoice), amount);
+
+  // An invoice explicitly linked to a different deal can never be this
+  // deal's installment, no matter what it costs — unlike the fallback below,
+  // a real link is authoritative and must not be overridden by a coincidental
+  // amount match.
+  if (invoice.deal_id != null) {
+    return (
+      String(invoice.deal_id) === String(deal.id) &&
+      sameMoney(invoiceExVat(invoice), installmentAmount(deal))
+    );
   }
+
+  // Unlinked invoice: fall back to amount matching, but only among invoices
+  // dated on/after this deal's billing start — an invoice from before the
+  // deal existed can't be one of its installments, no matter the amount.
+  if (
+    deal.billing_start_date &&
+    invoice.invoice_date &&
+    invoice.invoice_date < deal.billing_start_date
+  ) {
+    return false;
+  }
+
+  const amount = installmentAmount(deal);
   if (sameMoney(invoiceExVat(invoice), amount)) return true;
   return (invoice.invoice_rows ?? []).some((row) =>
     sameMoney(rowTotalExVat(row), amount),
@@ -252,10 +294,20 @@ const invoicedInstallmentCount = (
 ): number =>
   Math.min(
     deal.installment_count ?? 0,
-    companyInvoices.filter((invoice) => invoiceMatchesInstallment(deal, invoice))
-      .length,
+    companyInvoices.filter((invoice) =>
+      invoiceMatchesInstallment(deal, invoice),
+    ).length,
   );
 
+/**
+ * Deals with an un-invoiced one-time component: pure one-time deals, and the
+ * one-time portion of a combo deal (a setup fee alongside a recurring line).
+ * Pure recurring deals never reach here (amount defaults to 0), and combo
+ * deals with `amount` and `recurring_amount` both set still need their
+ * one-time part checked — `amountBasedCoveredThrough` already treats a combo
+ * deal's `amount` as real one-time value elsewhere in this file, so skipping
+ * the check here would leave that value permanently unverified.
+ */
 const uninvoicedOneTimeDeals = (
   companyDeals: RecurringRevenueDeal[],
   companyInvoices: FortnoxInvoice[],
@@ -263,7 +315,6 @@ const uninvoicedOneTimeDeals = (
   companyDeals.filter((deal) => {
     if (!deal.amount || deal.amount <= 0) return false;
     if (isInstallmentDeal(deal)) return false;
-    if (deal.recurring_amount && deal.recurring_amount > 0) return false;
     return !companyInvoices.some((invoice) =>
       invoiceMatchesDealAmount(deal, invoice),
     );
@@ -498,7 +549,7 @@ export const buildCustomerBillingOverview = (
             deal,
             installmentIndex: invoicedCount + 1,
             nextDate,
-            amount: installmentAmount(deal),
+            amount: installmentAmountForIndex(deal, invoicedCount + 1),
           };
         })
         .filter(Boolean) as Array<{
@@ -518,38 +569,67 @@ export const buildCustomerBillingOverview = (
       const nextInstallmentDate = earliestDate(
         dueInstallments.map((installment) => installment.nextDate),
       );
-      const recommendedDate =
-        missingOneTimeDeals.length > 0
-          ? toDateOnly(today)
-          : dueInstallments.length > 0
-            ? nextInstallmentDate
-          : nextInvoiceDate;
-      const recommendedDeals =
-        missingOneTimeDeals.length > 0
-          ? missingOneTimeDeals.map((deal) => ({
-              deal_id: deal.id,
-              deal_name: deal.name,
-              company_id: deal.company_id,
-              company_name: deal.company_name,
-              amount: deal.amount,
-              next_invoice_date: recommendedDate,
-            }))
-          : dueInstallments.length > 0
-            ? dueInstallments.map(({ deal, amount, nextDate }) => ({
-                deal_id: deal.id,
-                deal_name: deal.name,
-                company_id: deal.company_id,
-                company_name: deal.company_name,
-                amount,
-                next_invoice_date: nextDate,
-              }))
-          : nextInvoiceDeals;
-      const recommendedAmount =
-        missingOneTimeDeals.length > 0
-          ? missingOneTimeAmount
-          : dueInstallments.length > 0
-            ? dueInstallmentAmount
-          : nextInvoiceAmount;
+      const todayIso = toDateOnly(today);
+
+      // Three independent sources can each want to be "what to invoice next":
+      // a missing one-time deal (due immediately), a due installment, and the
+      // next recurring line. Picking just one by fixed priority can hide a
+      // more urgent item in a lower-priority category — e.g. a badly overdue
+      // recurring line behind an installment that's merely due next month.
+      // Instead: find the earliest date across all three, then merge in every
+      // category that's actually due (on/off before today) so nothing overdue
+      // gets dropped; if nothing is due yet, fall back to the single nearest
+      // upcoming category, matching the old "what's coming up next" behavior.
+      const recommendationCategories = [
+        {
+          date: missingOneTimeDeals.length > 0 ? todayIso : null,
+          amount: missingOneTimeAmount,
+          deals: missingOneTimeDeals.map((deal) => ({
+            deal_id: deal.id,
+            deal_name: deal.name,
+            company_id: deal.company_id,
+            company_name: deal.company_name,
+            amount: deal.amount,
+            next_invoice_date: todayIso,
+          })),
+        },
+        {
+          date: nextInstallmentDate,
+          amount: dueInstallmentAmount,
+          deals: dueInstallments.map(({ deal, amount, nextDate }) => ({
+            deal_id: deal.id,
+            deal_name: deal.name,
+            company_id: deal.company_id,
+            company_name: deal.company_name,
+            amount,
+            next_invoice_date: nextDate,
+          })),
+        },
+        {
+          date: nextInvoiceDate,
+          amount: nextInvoiceAmount,
+          deals: nextInvoiceDeals,
+        },
+      ];
+
+      const recommendedDate = earliestDate(
+        recommendationCategories
+          .map((c) => c.date)
+          .filter((d): d is string => Boolean(d)),
+      );
+      const dueCategories = recommendationCategories.filter(
+        (c) => c.date !== null && c.date <= todayIso,
+      );
+      const activeCategories =
+        dueCategories.length > 0
+          ? dueCategories
+          : recommendationCategories.filter((c) => c.date === recommendedDate);
+
+      const recommendedDeals = activeCategories.flatMap((c) => c.deals);
+      const recommendedAmount = activeCategories.reduce(
+        (sum, c) => sum + c.amount,
+        0,
+      );
       const installmentDealIds = new Set(
         dueInstallments.map((installment) => String(installment.deal.id)),
       );
@@ -626,28 +706,28 @@ export const buildCustomerBillingOverview = (
               ? recommendedDate
               : dueInstallment
                 ? dueInstallment.nextDate
-              : dealNext,
+                : dealNext,
             next_invoice_amount: isMissingOneTime
               ? (deal.amount ?? 0)
               : dueInstallment
                 ? dueInstallment.amount
-              : isNextRecommended
-                ? recurringAmount
-                : 0,
+                : isNextRecommended
+                  ? recurringAmount
+                  : 0,
             status: isMissingOneTime
               ? "needs_invoice"
               : installmentDealIds.has(String(deal.id))
-              ? "needs_invoice"
-              : billingWarnings.length > 0
-                ? "needs_review"
-                : "ok",
+                ? "needs_invoice"
+                : billingWarnings.length > 0
+                  ? "needs_review"
+                  : "ok",
             note: isMissingOneTime
               ? "Saknar matchande Fortnox-faktura"
               : dueInstallment
                 ? `Delbetalning ${dueInstallment.installmentIndex}/${deal.installment_count}`
-              : dealNext
-                ? `Nästa återkommande faktura ${dealNext}`
-                : null,
+                : dealNext
+                  ? `Nästa återkommande faktura ${dealNext}`
+                  : null,
           };
         },
       );
@@ -676,7 +756,11 @@ export const buildCustomerBillingOverview = (
         billing_confidence:
           billingWarnings.length > 0 ? "needs_review" : "high",
         billing_warnings: billingWarnings,
-        billing_status: getBillingStatus(recommendedDate, today),
+        billing_status: getBillingStatus(
+          recommendedDate,
+          today,
+          lastInvoiceDate !== null,
+        ),
         has_manual_schedule: hasManualSchedule,
       } satisfies CustomerBillingRow;
     })
@@ -687,6 +771,7 @@ export const buildCustomerBillingOverview = (
           never_invoiced: 2,
           due_soon: 1,
           ok: 0,
+          fully_invoiced: 0,
         };
       return (
         statusScore[b.billing_status] - statusScore[a.billing_status] ||

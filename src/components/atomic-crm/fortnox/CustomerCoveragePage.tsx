@@ -24,6 +24,7 @@ import {
   BillingStatusBadge,
   NextInvoiceChip,
 } from "./billingDisplay";
+import { CompanyInvoiceList } from "./CompanyInvoiceList";
 import { formatCurrency } from "./invoiceFormat";
 
 const StatCard = ({
@@ -310,12 +311,12 @@ export const CustomerCoveragePage = () => {
                               )}
                               <div className="text-xs text-muted-foreground">
                                 {missingInvoiceWarning ??
-                                invoice.billing_warnings[0] ??
-                                (invoice.next_invoice_deals.length > 0
-                                  ? invoice.next_invoice_deals
-                                      .map((deal) => deal.deal_name)
-                                      .join(", ")
-                                  : "Inga deals hittades för datumet")}
+                                  invoice.billing_warnings[0] ??
+                                  (invoice.next_invoice_deals.length > 0
+                                    ? invoice.next_invoice_deals
+                                        .map((deal) => deal.deal_name)
+                                        .join(", ")
+                                    : "Inga deals hittades för datumet")}
                               </div>
                             </div>
                           ) : (
@@ -350,76 +351,87 @@ export const CustomerCoveragePage = () => {
                           )}
                         </TableCell>
                       </TableRow>
-                      {expanded && invoice?.deals?.length ? (
+                      {expanded ? (
                         <TableRow className="bg-muted/30">
-                          <TableCell colSpan={11} className="p-0">
-                            <div className="grid grid-cols-[minmax(220px,1fr)_120px_120px_150px_minmax(220px,1.2fr)] gap-3 px-12 py-3 text-xs">
-                              <div className="font-medium text-muted-foreground">
-                                Deal
+                          <TableCell colSpan={11} className="space-y-4 p-0">
+                            {invoice?.deals?.length ? (
+                              <div className="grid grid-cols-[minmax(220px,1fr)_120px_120px_150px_minmax(220px,1.2fr)] gap-3 px-4 py-3 text-xs md:px-12">
+                                <div className="font-medium text-muted-foreground">
+                                  Deal
+                                </div>
+                                <div className="text-right font-medium text-muted-foreground">
+                                  Engång
+                                </div>
+                                <div className="text-right font-medium text-muted-foreground">
+                                  Återk.
+                                </div>
+                                <div className="font-medium text-muted-foreground">
+                                  Nästa
+                                </div>
+                                <div className="font-medium text-muted-foreground">
+                                  Notis
+                                </div>
+                                {invoice.deals.map((deal) => (
+                                  <Fragment key={String(deal.deal_id)}>
+                                    <div>
+                                      <Link
+                                        className="font-medium hover:underline"
+                                        to={`/deals/${deal.deal_id}/show`}
+                                      >
+                                        {deal.deal_name}
+                                      </Link>
+                                      {deal.company_name &&
+                                      deal.company_name !== c.company_name ? (
+                                        <div className="text-muted-foreground">
+                                          {deal.company_name}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    <div className="text-right">
+                                      {deal.one_time_amount
+                                        ? formatCurrency(deal.one_time_amount)
+                                        : "—"}
+                                    </div>
+                                    <div className="text-right">
+                                      {deal.recurring_amount
+                                        ? formatCurrency(deal.recurring_amount)
+                                        : deal.billing_schedule_type ===
+                                              "installment" &&
+                                            deal.installment_count
+                                          ? `${deal.installment_count} delar`
+                                          : "—"}
+                                    </div>
+                                    <div>
+                                      {deal.next_invoice_date
+                                        ? deal.next_invoice_date
+                                        : "—"}
+                                    </div>
+                                    <div>
+                                      {deal.status === "needs_invoice" ? (
+                                        <span className="font-medium text-destructive">
+                                          {deal.billing_schedule_type ===
+                                            "installment" &&
+                                          deal.installment_index &&
+                                          deal.installment_count
+                                            ? `Delbetalning ${deal.installment_index}/${deal.installment_count}: `
+                                            : "Skicka faktura "}
+                                          {formatCurrency(
+                                            deal.next_invoice_amount,
+                                          )}
+                                        </span>
+                                      ) : (
+                                        (deal.note ?? "OK")
+                                      )}
+                                    </div>
+                                  </Fragment>
+                                ))}
                               </div>
-                              <div className="text-right font-medium text-muted-foreground">
-                                Engång
+                            ) : null}
+                            <div className="px-4 pb-4 md:px-12">
+                              <div className="mb-1 text-xs font-medium text-muted-foreground">
+                                Fakturor i Fortnox
                               </div>
-                              <div className="text-right font-medium text-muted-foreground">
-                                Återk.
-                              </div>
-                              <div className="font-medium text-muted-foreground">
-                                Nästa
-                              </div>
-                              <div className="font-medium text-muted-foreground">
-                                Notis
-                              </div>
-                              {invoice.deals.map((deal) => (
-                                <Fragment key={String(deal.deal_id)}>
-                                  <div>
-                                    <Link
-                                      className="font-medium hover:underline"
-                                      to={`/deals/${deal.deal_id}/show`}
-                                    >
-                                      {deal.deal_name}
-                                    </Link>
-                                    {deal.company_name &&
-                                    deal.company_name !== c.company_name ? (
-                                      <div className="text-muted-foreground">
-                                        {deal.company_name}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                  <div className="text-right">
-                                    {deal.one_time_amount
-                                      ? formatCurrency(deal.one_time_amount)
-                                      : "—"}
-                                  </div>
-                                  <div className="text-right">
-                                    {deal.recurring_amount
-                                      ? formatCurrency(deal.recurring_amount)
-                                      : deal.billing_schedule_type ===
-                                          "installment" && deal.installment_count
-                                        ? `${deal.installment_count} delar`
-                                      : "—"}
-                                  </div>
-                                  <div>
-                                    {deal.next_invoice_date
-                                      ? deal.next_invoice_date
-                                      : "—"}
-                                  </div>
-                                  <div>
-                                    {deal.status === "needs_invoice" ? (
-                                      <span className="font-medium text-destructive">
-                                        {deal.billing_schedule_type ===
-                                          "installment" &&
-                                        deal.installment_index &&
-                                        deal.installment_count
-                                          ? `Delbetalning ${deal.installment_index}/${deal.installment_count}: `
-                                          : "Skicka faktura "}
-                                        {formatCurrency(deal.next_invoice_amount)}
-                                      </span>
-                                    ) : (
-                                      (deal.note ?? "OK")
-                                    )}
-                                  </div>
-                                </Fragment>
-                              ))}
+                              <CompanyInvoiceList companyId={c.company_id} />
                             </div>
                           </TableCell>
                         </TableRow>
