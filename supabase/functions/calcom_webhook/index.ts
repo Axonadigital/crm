@@ -62,14 +62,28 @@ function extractAttendees(payload: any) {
 }
 
 async function findContactByEmail(email?: string | null) {
-  if (!email) return null;
+  if (!email) {
+    console.log("findContactByEmail: ingen e-post att matcha mot");
+    return null;
+  }
 
+  // OBS: .contains() med en JS-array som värde formaterar postgrest-js om
+  // det som en Postgres array-literal ("{...}", kommaseparerad .toString()
+  // på varje element) — inte JSON. För ett objekt-element blir det
+  // "[object Object]", vilket Postgres avvisar med "invalid input syntax
+  // for type json". Skicka därför en färdig JSON-sträng istället, så tar
+  // biblioteket sträng-grenen och postar den rakt av.
   const { data, error } = await supabaseAdmin
     .from("contacts")
     .select("id, company_id, sales_id")
-    .contains("email_jsonb", [{ email }])
+    .contains("email_jsonb", JSON.stringify([{ email }]))
     .limit(1)
     .maybeSingle();
+
+  console.log(
+    "findContactByEmail:",
+    JSON.stringify({ email, found: Boolean(data), data, error }),
+  );
 
   if (error || !data) {
     return null;
