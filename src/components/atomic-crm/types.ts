@@ -677,9 +677,14 @@ export type FeedbackItem = {
   category: FeedbackCategory;
   status: FeedbackStatus;
   page_context?: string | null;
+  /** Publika URL:er till skärmdumpar i bucketen feedback-images. DB: NOT NULL DEFAULT '{}'. */
+  image_urls?: string[];
   sales_id: Identifier;
   created_at: string;
   updated_at: string;
+  /** Sätts av DB-trigger när innehållet skrivs om — inte vid klarmarkering. */
+  edited_at?: string | null;
+  edited_by_sales_id?: Identifier | null;
 } & Pick<RaRecord, "id">;
 
 // Kundregister — samlad info för levererade kunder (1:1 mot companies).
