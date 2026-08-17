@@ -1,7 +1,10 @@
 import { EditBase, Form, useNotify } from "ra-core";
 import { useMemo } from "react";
 
-import { FortnoxIntegrationCard } from "./FortnoxIntegrationCard";
+import {
+  FortnoxIntegrationCard,
+  FortnoxSandboxCard,
+} from "./FortnoxIntegrationCard";
 import {
   SettingsFormFields,
   transformSettingsFormValues,
@@ -39,6 +42,7 @@ export const SettingsPage = () => {
         <SettingsForm />
       </EditBase>
       <FortnoxIntegrationCard />
+      <FortnoxSandboxCard />
     </div>
   );
 };

@@ -25,7 +25,12 @@ import {
   HttpError,
   parseRequiredJsonBody,
 } from "../_shared/http.ts";
-import { createFortnoxClient, FortnoxError } from "../_shared/fortnox/index.ts";
+import {
+  createFortnoxClient,
+  FortnoxError,
+  type FortnoxEnvironment,
+  isFortnoxEnvironment,
+} from "../_shared/fortnox/index.ts";
 import { MissingBillingDataError } from "../_shared/fortnox/customers.ts";
 import {
   ensureFortnoxCustomer,
@@ -73,7 +78,7 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function createFromDeal(dealId: number) {
+async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
   const deal = await loadDeal(dealId);
 
   if (deal.fortnox_recurring_id) {
@@ -106,7 +111,7 @@ async function createFromDeal(dealId: number) {
     throw new HttpError(422, "Affären saknar kopplat företag");
   }
 
-  const client = createFortnoxClient();
+  const client = createFortnoxClient(environment);
   const company = await loadCompany(supabaseAdmin, billingCompanyId);
   const { customer_number } = await ensureFortnoxCustomer(
     supabaseAdmin,
@@ -197,7 +202,7 @@ async function createFromDeal(dealId: number) {
  * AUTOMATIC, so Fortnox generates invoices on the schedule. This is the step
  * that actually starts billing the customer.
  */
-async function activate(dealId: number) {
+async function activate(dealId: number, environment: FortnoxEnvironment) {
   const deal = await loadDeal(dealId);
 
   const recurringId = deal.fortnox_recurring_id;
@@ -209,7 +214,7 @@ async function activate(dealId: number) {
     );
   }
 
-  const client = createFortnoxClient();
+  const client = createFortnoxClient(environment);
   const path = `${RECURRINGS_PATH}/${recurringId}`;
 
   // The current ETag is mandatory for PATCH: without If-Match Fortnox answers
@@ -273,10 +278,21 @@ Deno.serve((req: Request) =>
         required: true,
       })!;
 
+      // Defaults to production so an ordinary click can never be redirected
+      // somewhere unexpected; testing against the sandbox is an explicit ask.
+      const environmentField = body.environment ?? "production";
+      if (!isFortnoxEnvironment(environmentField)) {
+        throw new HttpError(
+          400,
+          'environment must be "production" or "sandbox"',
+          { code: "invalid_environment" },
+        );
+      }
+
       return createJsonResponse(
         action === "create_from_deal"
-          ? await createFromDeal(dealId)
-          : await activate(dealId),
+          ? await createFromDeal(dealId, environmentField)
+          : await activate(dealId, environmentField),
       );
     } catch (error) {
       if (error instanceof MissingBillingDataError) {

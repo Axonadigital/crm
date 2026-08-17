@@ -1252,8 +1252,16 @@ export type CustomerPortfolioViewModel = {
  * presence of a stored token — a grant revoked inside Fortnox reads as
  * disconnected with `error` set.
  */
+/**
+ * Which Fortnox company a connection points at. Sandboxes are full Fortnox
+ * companies from the developer portal, held as a separate connection so the
+ * 15-minute invoice sync can never read test data into the production mirror.
+ */
+export type FortnoxEnvironment = "production" | "sandbox";
+
 export type FortnoxStatus = {
   connected: boolean;
+  environment?: FortnoxEnvironment;
   company_name?: string | null;
   org_number?: string | null;
   scopes?: string | null;

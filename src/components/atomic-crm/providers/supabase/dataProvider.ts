@@ -24,6 +24,7 @@ import type {
   FortnoxResultMonth,
   FortnoxSupplierInvoice,
   FortnoxStatus,
+  FortnoxEnvironment,
   CustomerBillingRow,
   Subscription,
   SubscriptionInput,
@@ -1087,7 +1088,10 @@ const dataProviderWithCustomMethods = {
    * handling, so it is reviewable in Fortnox and bills nobody until
    * `activateFortnoxRecurring` is called. Cannot run twice for the same deal.
    */
-  async createFortnoxRecurringFromDeal(dealId: Identifier): Promise<{
+  async createFortnoxRecurringFromDeal(
+    dealId: Identifier,
+    environment: FortnoxEnvironment = "production",
+  ): Promise<{
     recurring_id: string;
     customer_number: string;
     status: string;
@@ -1098,7 +1102,11 @@ const dataProviderWithCustomMethods = {
       "fortnox_recurring",
       {
         method: "POST",
-        body: { action: "create_from_deal", deal_id: Number(dealId) },
+        body: {
+          action: "create_from_deal",
+          deal_id: Number(dealId),
+          environment,
+        },
       },
     );
     if (error || !data) {
@@ -1114,7 +1122,10 @@ const dataProviderWithCustomMethods = {
    * Fortnox generates invoices on schedule. This is the step that begins
    * billing the customer — creation alone never does.
    */
-  async activateFortnoxRecurring(dealId: Identifier): Promise<{
+  async activateFortnoxRecurring(
+    dealId: Identifier,
+    environment: FortnoxEnvironment = "production",
+  ): Promise<{
     recurring_id: string;
     status: string;
     invoice_handling: string;
@@ -1124,7 +1135,7 @@ const dataProviderWithCustomMethods = {
       "fortnox_recurring",
       {
         method: "POST",
-        body: { action: "activate", deal_id: Number(dealId) },
+        body: { action: "activate", deal_id: Number(dealId), environment },
       },
     );
     if (error || !data) {
@@ -1183,10 +1194,12 @@ const dataProviderWithCustomMethods = {
    * than just reading our token row, so a grant revoked inside Fortnox shows
    * up here instead of failing silently at the next invoice sync.
    */
-  async getFortnoxStatus(): Promise<FortnoxStatus> {
+  async getFortnoxStatus(
+    environment: FortnoxEnvironment = "production",
+  ): Promise<FortnoxStatus> {
     const { data, error } = await supabase.functions.invoke("fortnox_connect", {
       method: "POST",
-      body: { action: "status" },
+      body: { action: "status", environment },
     });
     if (error || !data) {
       throw new Error("Failed to read Fortnox status");
@@ -1201,10 +1214,11 @@ const dataProviderWithCustomMethods = {
    */
   async startFortnoxAuthorization(
     reconnect = false,
+    environment: FortnoxEnvironment = "production",
   ): Promise<{ authorization_url: string }> {
     const { data, error } = await supabase.functions.invoke("fortnox_connect", {
       method: "POST",
-      body: { action: "authorize", reconnect },
+      body: { action: "authorize", reconnect, environment },
     });
     if (error || !data?.authorization_url) {
       throw new Error("Failed to start Fortnox authorization");

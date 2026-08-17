@@ -17,7 +17,9 @@ import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import {
   createFortnoxClient,
   exchangeAuthorizationCode,
+  type FortnoxEnvironment,
   FORTNOX_PROVIDER,
+  FORTNOX_SANDBOX_PROVIDER,
 } from "../_shared/fortnox/index.ts";
 
 const STATE_TTL_MS = 15 * 60 * 1000;
@@ -56,18 +58,23 @@ function page(title: string, message: string, ok: boolean): Response {
   );
 }
 
-type ConsumedState = { created_by: number | null };
+type ConsumedState = {
+  created_by: number | null;
+  environment: FortnoxEnvironment;
+};
 
 /**
  * Validates and burns the state in one step. Marking it consumed before the
  * token exchange means a replayed code cannot get a second attempt.
  */
 async function consumeState(state: string): Promise<ConsumedState | null> {
+  // The state row's provider says which Fortnox company consent was granted
+  // for, so a sandbox grant is never stored over the production connection.
   const { data, error } = await supabaseAdmin
     .from("integration_oauth_states")
-    .select("state, created_at, consumed_at, created_by")
+    .select("state, created_at, consumed_at, created_by, provider")
     .eq("state", state)
-    .eq("provider", FORTNOX_PROVIDER)
+    .in("provider", [FORTNOX_PROVIDER, FORTNOX_SANDBOX_PROVIDER])
     .maybeSingle();
 
   if (error || !data || data.consumed_at) return null;
@@ -84,7 +91,11 @@ async function consumeState(state: string): Promise<ConsumedState | null> {
   // No row updated means someone else burned it between our read and write.
   if (updateError || !updated) return null;
 
-  return { created_by: updated.created_by ?? null };
+  return {
+    created_by: updated.created_by ?? null,
+    environment:
+      data.provider === FORTNOX_SANDBOX_PROVIDER ? "sandbox" : "production",
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -126,9 +137,10 @@ Deno.serve(async (req: Request) => {
     const connection = await exchangeAuthorizationCode(
       code,
       consumed.created_by,
+      consumed.environment,
     );
 
-    const client = createFortnoxClient();
+    const client = createFortnoxClient(consumed.environment);
     const info = await client.get<{
       CompanyInformation?: { CompanyName?: string };
     }>("/3/companyinformation");

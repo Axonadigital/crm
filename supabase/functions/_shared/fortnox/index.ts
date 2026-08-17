@@ -22,11 +22,25 @@ export {
   SlidingWindowRateLimiter,
 } from "./rateLimit.ts";
 export {
+  apiBaseUrlFor,
   createFortnoxClient,
   exchangeAuthorizationCode,
   type FortnoxConnection,
+  type FortnoxEnvironment,
   FORTNOX_PROVIDER,
+  FORTNOX_SANDBOX_PROVIDER,
   getConnection,
   getFortnoxAccessToken,
   getFortnoxCredentials,
+  isFortnoxEnvironment,
+  providerKey,
 } from "./tokens.ts";
+export {
+  buildCreateRecurringPayload,
+  type InvoiceHandling,
+  RECURRINGS_PATH,
+  type RecurringInterval,
+  type RecurringStatus,
+  recurringRuleFor,
+  replaceOps,
+} from "./recurring.ts";

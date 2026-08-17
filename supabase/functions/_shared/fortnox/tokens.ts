@@ -33,6 +33,52 @@ import {
 
 export const FORTNOX_PROVIDER = "fortnox";
 
+/**
+ * Which Fortnox company a connection points at.
+ *
+ * Fortnox lets a developer account run up to 30 sandbox companies, each a full
+ * Fortnox database you authorize exactly like a real one. Keeping both
+ * connections side by side matters for more than convenience: the invoice sync
+ * runs every 15 minutes, so a single shared connection pointed at a sandbox
+ * would pull invented invoices straight into the production mirror that
+ * Kundtäckning and Likviditet read. Separate rows make that impossible —
+ * everything defaults to production and only an explicit opt-in reads sandbox.
+ */
+export type FortnoxEnvironment = "production" | "sandbox";
+
+export const FORTNOX_SANDBOX_PROVIDER = "fortnox_sandbox";
+
+/**
+ * The `integration_tokens.provider` key for an environment. `provider` is the
+ * table's primary key and carries no check constraint, so a second environment
+ * is a second row — no schema change, and production is untouched.
+ */
+export function providerKey(
+  environment: FortnoxEnvironment = "production",
+): string {
+  return environment === "sandbox"
+    ? FORTNOX_SANDBOX_PROVIDER
+    : FORTNOX_PROVIDER;
+}
+
+export function isFortnoxEnvironment(
+  value: unknown,
+): value is FortnoxEnvironment {
+  return value === "production" || value === "sandbox";
+}
+
+/**
+ * API host per environment. Fortnox's own developer docs don't state whether
+ * sandboxes answer on a different host; if it turns out they do, set
+ * FORTNOX_SANDBOX_API_BASE_URL rather than changing code.
+ */
+export function apiBaseUrlFor(
+  environment: FortnoxEnvironment = "production",
+): string | undefined {
+  if (environment !== "sandbox") return undefined;
+  return Deno.env.get("FORTNOX_SANDBOX_API_BASE_URL") || undefined;
+}
+
 export type FortnoxConnection = {
   provider: string;
   tenant_id: string | null;
@@ -100,11 +146,13 @@ async function postToken(
   return JSON.parse(rawBody) as FortnoxTokenResponse;
 }
 
-export async function getConnection(): Promise<FortnoxConnection | null> {
+export async function getConnection(
+  environment: FortnoxEnvironment = "production",
+): Promise<FortnoxConnection | null> {
   const { data, error } = await supabaseAdmin
     .from("integration_tokens")
     .select("*")
-    .eq("provider", FORTNOX_PROVIDER)
+    .eq("provider", providerKey(environment))
     .maybeSingle();
 
   if (error) {
@@ -120,6 +168,7 @@ async function persistTokens(
   token: FortnoxTokenResponse,
   existing: FortnoxConnection | null,
   connectedBySaleId?: number | null,
+  environment: FortnoxEnvironment = "production",
 ): Promise<FortnoxConnection> {
   const claims = decodeJwtPayload(token.access_token);
   const tenantId = extractTenantId(claims) ?? existing?.tenant_id ?? null;
@@ -128,7 +177,7 @@ async function persistTokens(
     .from("integration_tokens")
     .upsert(
       {
-        provider: FORTNOX_PROVIDER,
+        provider: providerKey(environment),
         tenant_id: tenantId,
         access_token: token.access_token,
         access_token_expires_at: accessTokenExpiresAt(
@@ -165,25 +214,32 @@ async function persistTokens(
 export async function exchangeAuthorizationCode(
   code: string,
   connectedBySaleId?: number | null,
+  environment: FortnoxEnvironment = "production",
 ): Promise<FortnoxConnection> {
   const { redirectUri } = getFortnoxCredentials();
   const token = await postToken(authorizationCodeBody(code, redirectUri));
-  return persistTokens(token, await getConnection(), connectedBySaleId);
+  return persistTokens(
+    token,
+    await getConnection(environment),
+    connectedBySaleId,
+    environment,
+  );
 }
 
 async function mintAccessToken(
   connection: FortnoxConnection,
+  environment: FortnoxEnvironment = "production",
 ): Promise<FortnoxConnection> {
   if (connection.tenant_id) {
     const token = await postToken(clientCredentialsBody(), {
       TenantId: connection.tenant_id,
     });
-    return persistTokens(token, connection);
+    return persistTokens(token, connection, null, environment);
   }
 
   if (connection.refresh_token) {
     const token = await postToken(refreshTokenBody(connection.refresh_token));
-    return persistTokens(token, connection);
+    return persistTokens(token, connection, null, environment);
   }
 
   throw new HttpError(
@@ -198,17 +254,28 @@ async function mintAccessToken(
  * fallback mode: Fortnox invalidates the old refresh token on every use, so a
  * parallel refresh would send an already-dead token and get invalid_grant.
  */
-const refreshSingleFlight = createSingleFlight<FortnoxConnection>();
+// One flight per environment: a shared one would let a sandbox refresh hand
+// its connection to a production caller waiting on the same promise.
+const refreshSingleFlights: Record<
+  FortnoxEnvironment,
+  ReturnType<typeof createSingleFlight<FortnoxConnection>>
+> = {
+  production: createSingleFlight<FortnoxConnection>(),
+  sandbox: createSingleFlight<FortnoxConnection>(),
+};
 
 export async function getFortnoxAccessToken(
-  options: { forceRefresh?: boolean } = {},
+  options: { forceRefresh?: boolean; environment?: FortnoxEnvironment } = {},
 ): Promise<string> {
-  const connection = await getConnection();
+  const environment = options.environment ?? "production";
+  const connection = await getConnection(environment);
 
   if (!connection) {
     throw new HttpError(
       409,
-      "Fortnox is not connected. Run the authorization flow from Settings.",
+      environment === "sandbox"
+        ? "Fortnox-testmiljön är inte kopplad. Auktorisera sandboxen från Inställningar."
+        : "Fortnox is not connected. Run the authorization flow from Settings.",
       { code: "fortnox_not_connected" },
     );
   }
@@ -221,8 +288,8 @@ export async function getFortnoxAccessToken(
     return connection.access_token;
   }
 
-  const refreshed = await refreshSingleFlight(() =>
-    mintAccessToken(connection),
+  const refreshed = await refreshSingleFlights[environment](() =>
+    mintAccessToken(connection, environment),
   );
 
   if (!refreshed.access_token) {
@@ -234,7 +301,17 @@ export async function getFortnoxAccessToken(
   return refreshed.access_token;
 }
 
-/** The client every Fortnox-facing edge function should use. */
-export function createFortnoxClient(): FortnoxClient {
-  return new FortnoxClient({ getAccessToken: getFortnoxAccessToken });
+/**
+ * The client every Fortnox-facing edge function should use. Defaults to the
+ * production company, so an existing caller cannot accidentally read or write
+ * sandbox data — reaching the sandbox takes an explicit environment.
+ */
+export function createFortnoxClient(
+  environment: FortnoxEnvironment = "production",
+): FortnoxClient {
+  return new FortnoxClient({
+    getAccessToken: (options) =>
+      getFortnoxAccessToken({ ...options, environment }),
+    baseUrl: apiBaseUrlFor(environment),
+  });
 }

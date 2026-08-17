@@ -26,10 +26,12 @@ import {
 import {
   buildAuthorizationUrl,
   createFortnoxClient,
-  FORTNOX_PROVIDER,
   FORTNOX_SCOPES,
+  type FortnoxEnvironment,
   getConnection,
   getFortnoxCredentials,
+  isFortnoxEnvironment,
+  providerKey,
 } from "../_shared/fortnox/index.ts";
 
 type CompanyInformationResponse = {
@@ -72,13 +74,13 @@ async function requireAdminSale(req: Request): Promise<CallerSale> {
  * Verifies the stored grant actually works by asking Fortnox who we are.
  * A stored row means nothing if the grant was revoked inside Fortnox.
  */
-async function probeCompany(): Promise<{
+async function probeCompany(environment: FortnoxEnvironment): Promise<{
   name?: string;
   orgNumber?: string;
   error?: string;
 }> {
   try {
-    const client = createFortnoxClient();
+    const client = createFortnoxClient(environment);
     const result = await client.get<CompanyInformationResponse>(
       "/3/companyinformation",
     );
@@ -104,18 +106,34 @@ Deno.serve((req: Request) =>
         required: true,
       });
 
-      const connection = await getConnection();
+      // Which Fortnox company this call is about. Defaults to production, so
+      // an existing caller keeps its exact behaviour and only an explicit
+      // "sandbox" reaches the test company.
+      const environmentField = body.environment ?? "production";
+      if (!isFortnoxEnvironment(environmentField)) {
+        throw new HttpError(
+          400,
+          'environment must be "production" or "sandbox"',
+          { code: "invalid_environment" },
+        );
+      }
+      const environment = environmentField;
+
+      const connection = await getConnection(environment);
       const hasStoredGrant = Boolean(
         connection?.access_token || connection?.refresh_token,
       );
 
       if (action === "status") {
-        if (!hasStoredGrant) return createJsonResponse({ connected: false });
+        if (!hasStoredGrant) {
+          return createJsonResponse({ connected: false, environment });
+        }
 
-        const company = await probeCompany();
+        const company = await probeCompany(environment);
 
         return createJsonResponse({
           connected: !company.error,
+          environment,
           company_name: company.name ?? null,
           org_number: company.orgNumber ?? null,
           scopes: connection?.scopes ?? null,
@@ -147,15 +165,18 @@ Deno.serve((req: Request) =>
       await supabaseAdmin
         .from("integration_oauth_states")
         .delete()
-        .eq("provider", FORTNOX_PROVIDER)
+        .eq("provider", providerKey(environment))
         .lt("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
 
       const state = crypto.randomUUID();
       const { error: stateError } = await supabaseAdmin
         .from("integration_oauth_states")
         .insert({
+          // The provider key carries the environment through the redirect, so
+          // the callback stores the grant against the company it was granted
+          // for rather than assuming production.
           state,
-          provider: FORTNOX_PROVIDER,
+          provider: providerKey(environment),
           created_by: sale.id,
         });
 
