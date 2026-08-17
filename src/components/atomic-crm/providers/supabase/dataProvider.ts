@@ -1052,15 +1052,20 @@ const dataProviderWithCustomMethods = {
     return data;
   },
   /**
-   * Invoices a won deal's one-time amount in Fortnox, creating the customer
-   * there first if it doesn't exist yet. The invoice is stamped with the deal
-   * reference, which is what finally gives the mirrored invoice its deal_id.
-   * Creates an unbooked draft only — never books or sends. Cannot run twice
-   * for the same deal (the database enforces it).
+   * Invoices a won deal in Fortnox, creating the customer there first if it
+   * doesn't exist yet. A deal split into installments gets one invoice per
+   * part, returning which part was billed; everything else is invoiced in full.
+   * The invoice is stamped with the deal reference, which is what finally gives
+   * the mirrored invoice its deal_id. Creates an unbooked draft only — never
+   * books or sends, and cannot bill the same part twice (the database enforces
+   * it).
    */
   async createFortnoxInvoiceFromDeal(dealId: Identifier): Promise<{
     document_number: number;
     customer_number: string;
+    installment_index?: number;
+    installment_count?: number;
+    amount?: number;
   }> {
     const { data, error } = await supabase.functions.invoke(
       "fortnox_invoices",

@@ -10,10 +10,11 @@
  * 1. It never books an invoice. A booked invoice is part of the accounting
  *    record and cannot simply be undone. Creating and sending is enough; the
  *    accountant books.
- * 2. One quote, or one deal, can only ever produce one invoice. The guard is a
- *    unique index on quotes.fortnox_invoice_number / deals.fortnox_invoice_number,
- *    so a retry or a double click loses the race instead of billing the
- *    customer twice.
+ * 2. Nothing is ever billed twice. A quote or a whole-amount deal produces one
+ *    invoice, guarded by the unique fortnox_invoice_number; a deal split into
+ *    installments produces one invoice per part, guarded by the
+ *    installments_invoiced counter. Either way a retry or a double click loses
+ *    the race instead of billing the customer twice.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { OptionsMiddleware } from "../_shared/cors.ts";
@@ -35,6 +36,7 @@ import {
 } from "../_shared/fortnox/customerSync.ts";
 import {
   dealReference,
+  installmentAmount,
   mapInvoice,
   quoteReference,
 } from "../_shared/fortnox/invoices.ts";
@@ -191,23 +193,12 @@ async function createFromDeal(dealId: number) {
   const { data: deal, error } = await supabaseAdmin
     .from("deals")
     .select(
-      "id, name, company_id, billing_company_id, amount, stage, archived_at, fortnox_invoice_number, billing_schedule_type, installment_count",
+      "id, name, company_id, billing_company_id, amount, stage, archived_at, fortnox_invoice_number, billing_schedule_type, installment_count, installments_invoiced",
     )
     .eq("id", dealId)
     .maybeSingle();
 
   if (error || !deal) throw new HttpError(404, "Affären hittades inte");
-
-  if (deal.fortnox_invoice_number) {
-    throw new HttpError(
-      409,
-      `Affären är redan fakturerad (Fortnox-faktura ${deal.fortnox_invoice_number}).`,
-      {
-        code: "already_invoiced",
-        details: { document_number: deal.fortnox_invoice_number },
-      },
-    );
-  }
 
   if (deal.stage !== "won" || deal.archived_at) {
     throw new HttpError(422, "Bara vunna, aktiva affärer kan faktureras");
@@ -220,14 +211,44 @@ async function createFromDeal(dealId: number) {
     );
   }
 
-  // An installment deal must be billed one part at a time; invoicing the whole
-  // amount here would overcharge the customer by design. Blocked until there is
-  // a per-installment flow rather than silently doing the wrong thing.
-  if (deal.billing_schedule_type === "installment") {
+  // A deal is billed either in full (one invoice, guarded by
+  // fortnox_invoice_number) or in equal parts (N invoices, guarded by the
+  // installments_invoiced counter). The two paths differ only in what gets
+  // invoiced and which guard applies; everything after this is shared.
+  const installmentCount = deal.installment_count ?? 0;
+  const isInstallment =
+    deal.billing_schedule_type === "installment" && installmentCount > 0;
+  const alreadyInvoiced = deal.installments_invoiced ?? 0;
+  const partIndex = alreadyInvoiced + 1;
+
+  if (isInstallment) {
+    if (alreadyInvoiced >= installmentCount) {
+      throw new HttpError(
+        409,
+        `Alla ${installmentCount} delfakturor är redan skapade för den här affären.`,
+        { code: "all_installments_invoiced" },
+      );
+    }
+  } else if (deal.fortnox_invoice_number) {
+    throw new HttpError(
+      409,
+      `Affären är redan fakturerad (Fortnox-faktura ${deal.fortnox_invoice_number}).`,
+      {
+        code: "already_invoiced",
+        details: { document_number: deal.fortnox_invoice_number },
+      },
+    );
+  }
+
+  const invoiceAmount = isInstallment
+    ? installmentAmount(deal.amount, installmentCount, partIndex)
+    : deal.amount;
+
+  if (!(invoiceAmount > 0)) {
     throw new HttpError(
       422,
-      `Affären är upplagd som delbetalning i ${deal.installment_count ?? "flera"} delar. Skapa delfakturorna i Fortnox tills vidare — hela beloppet får inte faktureras på en gång.`,
-      { code: "installment_not_supported" },
+      "Kunde inte räkna ut ett belopp att fakturera för den här delen",
+      { code: "installment_amount_unavailable" },
     );
   }
 
@@ -238,11 +259,18 @@ async function createFromDeal(dealId: number) {
     throw new HttpError(422, "Affären saknar kopplat företag");
   }
 
+  // The part number goes in the row text so the customer, the accountant and
+  // the Fortnox invoice itself all say which part this is — the mirror only
+  // stores a count.
+  const description = isInstallment
+    ? `${deal.name} (delbetalning ${partIndex}/${installmentCount})`
+    : deal.name;
+
   const rows = mapQuoteLineItems([
     {
-      description: deal.name,
+      description,
       quantity: 1,
-      unit_price: deal.amount,
+      unit_price: invoiceAmount,
       vat_rate: null,
     },
   ]);
@@ -272,20 +300,28 @@ async function createFromDeal(dealId: number) {
     });
   }
 
-  // Same conditional-update guard as the quote path: it only lands while the
-  // deal is still uninvoiced, so a double click surfaces the duplicate that is
-  // already sitting in Fortnox instead of hiding it.
-  const { data: linked, error: linkError } = await supabaseAdmin
-    .from("deals")
-    .update({ fortnox_invoice_number: documentNumber })
-    .eq("id", dealId)
-    .is("fortnox_invoice_number", null)
-    .select("id");
+  // Conditional update as the race guard: it only lands if the deal is still in
+  // the state we read a moment ago — uninvoiced, or with exactly this many
+  // parts already billed. A double click therefore loses the race, and because
+  // its invoice is already in Fortnox the loss must be surfaced, not swallowed.
+  const guarded = isInstallment
+    ? supabaseAdmin
+        .from("deals")
+        .update({ installments_invoiced: partIndex })
+        .eq("id", dealId)
+        .eq("installments_invoiced", alreadyInvoiced)
+    : supabaseAdmin
+        .from("deals")
+        .update({ fortnox_invoice_number: documentNumber })
+        .eq("id", dealId)
+        .is("fortnox_invoice_number", null);
+
+  const { data: linked, error: linkError } = await guarded.select("id");
 
   if (linkError || !linked || linked.length === 0) {
     throw new HttpError(
       409,
-      `Faktura ${documentNumber} skapades i Fortnox men affären var redan fakturerad. Kontrollera i Fortnox och makulera dubbletten.`,
+      `Faktura ${documentNumber} skapades i Fortnox men affären hade redan fakturerats. Kontrollera i Fortnox och makulera dubbletten.`,
       {
         code: "duplicate_invoice",
         details: { document_number: documentNumber },
@@ -304,6 +340,13 @@ async function createFromDeal(dealId: number) {
     customer_number,
     booked: false,
     sent: false,
+    ...(isInstallment
+      ? {
+          installment_index: partIndex,
+          installment_count: installmentCount,
+          amount: invoiceAmount,
+        }
+      : {}),
   };
 }
 

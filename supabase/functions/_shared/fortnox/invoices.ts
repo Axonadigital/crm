@@ -63,6 +63,31 @@ export function parseDealReference(value: unknown): number | null {
   return parseRef(value, DEAL_REF_PREFIX);
 }
 
+/**
+ * The amount for one specific installment of a deal split into equal parts.
+ *
+ * `index` is 1-based. Rounding each part independently can leave the sum a few
+ * öre short of the deal total (10000/3 = 3333.33 × 3 = 9999.99), so the final
+ * part absorbs the remainder and the parts always add up to `total` exactly.
+ *
+ * Mirrors installmentAmountForIndex in
+ * src/components/atomic-crm/fortnox/customerBilling.ts — the frontend needs the
+ * same figure to recommend what to invoice next, and the two runtimes can't
+ * share a module. Keep them in step.
+ */
+export function installmentAmount(
+  total: number,
+  count: number,
+  index: number,
+): number {
+  if (!(total > 0) || !Number.isInteger(count) || count < 1) return 0;
+  if (!Number.isInteger(index) || index < 1 || index > count) return 0;
+
+  const perPart = Math.round((total / count) * 100) / 100;
+  if (index < count) return perPart;
+  return Math.round((total - perPart * (count - 1)) * 100) / 100;
+}
+
 export function toNumber(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string" && value.trim() !== "") {

@@ -32,9 +32,12 @@ import { formatCurrency } from "./invoiceFormat";
  * the invoice carries the deal reference, so Kundtäckning stops having to guess
  * which invoice belongs to which deal from the amount alone.
  *
- * A deal can only be invoiced once; the database enforces it and the button
- * becomes a badge afterwards. Installment deals are excluded — they must be
- * billed one part at a time, which this flow doesn't do yet.
+ * A deal split into installments is billed one part at a time: the button offers
+ * the next part, and the amount comes from the deal total divided by the number
+ * of parts (the last part absorbs any rounding remainder). Everything else is
+ * invoiced in full, once. Both cases are guarded in the database, so a double
+ * click can't bill the customer twice, and the button turns into a badge once
+ * there is nothing left to invoice.
  */
 export const InvoiceDealButton = () => {
   const deal = useRecordContext<Deal>();
@@ -46,10 +49,12 @@ export const InvoiceDealButton = () => {
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => dataProvider.createFortnoxInvoiceFromDeal(deal!.id),
-    onSuccess: ({ document_number }) => {
+    onSuccess: ({ document_number, installment_index, installment_count }) => {
       setConfirming(false);
       notify(
-        `Faktura ${document_number} skapad i Fortnox som utkast — inget är bokfört eller skickat än.`,
+        installment_index
+          ? `Delfaktura ${installment_index}/${installment_count} skapad i Fortnox (nr ${document_number}) som utkast — inget är bokfört eller skickat än.`
+          : `Faktura ${document_number} skapad i Fortnox som utkast — inget är bokfört eller skickat än.`,
         { type: "info" },
       );
       queryClient.invalidateQueries({ queryKey: ["fortnox"] });
@@ -63,11 +68,44 @@ export const InvoiceDealButton = () => {
 
   if (!deal) return null;
 
-  const amount = deal.amount ?? 0;
-  const isInstallment = deal.billing_schedule_type === "installment";
-  if (deal.stage !== "won" || amount <= 0 || isInstallment) return null;
+  const total = deal.amount ?? 0;
+  if (deal.stage !== "won" || total <= 0) return null;
 
-  if (deal.fortnox_invoice_number) {
+  const partCount = deal.installment_count ?? 0;
+  const isInstallment =
+    deal.billing_schedule_type === "installment" && partCount > 0;
+  const invoicedParts = deal.installments_invoiced ?? 0;
+  const partIndex = invoicedParts + 1;
+
+  // The part amount, with the last part absorbing the rounding remainder —
+  // mirrors installmentAmount in the edge function so the dialog promises the
+  // figure that will actually be invoiced.
+  const perPart = Math.round((total / (partCount || 1)) * 100) / 100;
+  const partAmount =
+    partIndex < partCount
+      ? perPart
+      : Math.round((total - perPart * (partCount - 1)) * 100) / 100;
+  const amountToInvoice = isInstallment ? partAmount : total;
+
+  const allPartsInvoiced = isInstallment && invoicedParts >= partCount;
+
+  if (allPartsInvoiced) {
+    return (
+      <div className="flex items-center gap-2">
+        <Badge variant="outline">
+          {partCount} av {partCount} delfakturor skapade
+        </Badge>
+        <Button size="sm" variant="ghost" asChild>
+          <a href="/#/invoices">
+            <ExternalLink className="mr-2 h-3 w-3" />
+            Fakturor
+          </a>
+        </Button>
+      </div>
+    );
+  }
+
+  if (!isInstallment && deal.fortnox_invoice_number) {
     return (
       <div className="flex items-center gap-2">
         <Badge variant="outline">Faktura · {deal.fortnox_invoice_number}</Badge>
@@ -88,27 +126,46 @@ export const InvoiceDealButton = () => {
         variant="outline"
         onClick={() => setConfirming(true)}
         disabled={isPending}
-        title="Skapar ett fakturautkast i Fortnox på affärens engångsbelopp"
+        title={
+          isInstallment
+            ? `Skapar ett fakturautkast i Fortnox på delbetalning ${partIndex} av ${partCount}`
+            : "Skapar ett fakturautkast i Fortnox på affärens engångsbelopp"
+        }
       >
         <FileText className="mr-2 h-4 w-4" />
-        Skapa faktura i Fortnox
+        {isInstallment
+          ? `Skapa delfaktura ${partIndex}/${partCount}`
+          : "Skapa faktura i Fortnox"}
       </Button>
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Fakturera {formatCurrency(amount)}?</DialogTitle>
+            <DialogTitle>
+              {isInstallment
+                ? `Fakturera del ${partIndex} av ${partCount} — ${formatCurrency(amountToInvoice)}?`
+                : `Fakturera ${formatCurrency(amountToInvoice)}?`}
+            </DialogTitle>
             <DialogDescription asChild>
               <div className="space-y-2 text-sm">
                 <p>
-                  En faktura på {formatCurrency(amount)} ex moms skapas i
-                  Fortnox för <strong>{deal.name}</strong>. Saknas kunden i
-                  Fortnox läggs den upp automatiskt.
+                  En faktura på {formatCurrency(amountToInvoice)} ex moms skapas
+                  i Fortnox för <strong>{deal.name}</strong>
+                  {isInstallment
+                    ? `, märkt som delbetalning ${partIndex}/${partCount} av totalt ${formatCurrency(total)}`
+                    : ""}
+                  . Saknas kunden i Fortnox läggs den upp automatiskt.
                 </p>
                 <p>
                   Fakturan blir ett <strong>utkast</strong> — den bokförs inte
                   och skickas inte till kunden förrän du gör det i Fortnox.
                 </p>
+                {isInstallment && partIndex < partCount ? (
+                  <p className="text-muted-foreground">
+                    Efter den här delen återstår {partCount - partIndex} av{" "}
+                    {partCount}.
+                  </p>
+                ) : null}
               </div>
             </DialogDescription>
           </DialogHeader>
@@ -121,7 +178,11 @@ export const InvoiceDealButton = () => {
               Avbryt
             </Button>
             <Button onClick={() => mutate()} disabled={isPending}>
-              {isPending ? "Skapar…" : "Skapa faktura"}
+              {isPending
+                ? "Skapar…"
+                : isInstallment
+                  ? "Skapa delfaktura"
+                  : "Skapa faktura"}
             </Button>
           </DialogFooter>
         </DialogContent>

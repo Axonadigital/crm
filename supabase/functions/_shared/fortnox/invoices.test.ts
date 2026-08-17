@@ -3,6 +3,7 @@ import {
   dealReference,
   deriveStatus,
   formatLastModified,
+  installmentAmount,
   mapInvoice,
   normalizeOrgNumber,
   parseDealReference,
@@ -66,15 +67,11 @@ describe("mapInvoice", () => {
   });
 
   it("merges invoice detail rows and exact VAT from the detail endpoint", () => {
-    const row = mapInvoice(
-      { ...paidInvoice, TotalVAT: undefined },
-      NOW,
-      {
-        ...paidInvoice,
-        TotalVAT: 1775,
-        InvoiceRows: [{ Description: "Hemsida", Price: 30000 }],
-      },
-    )!;
+    const row = mapInvoice({ ...paidInvoice, TotalVAT: undefined }, NOW, {
+      ...paidInvoice,
+      TotalVAT: 1775,
+      InvoiceRows: [{ Description: "Hemsida", Price: 30000 }],
+    })!;
 
     expect(row.total_vat).toBe(1775);
     expect(row.invoice_rows).toEqual([
@@ -165,6 +162,27 @@ describe("formatLastModified", () => {
     expect(formatLastModified("2026-07-14T10:00:00.000Z")).toBe(
       "2026-07-14 09:55",
     );
+  });
+});
+
+describe("installmentAmount", () => {
+  it("splits an evenly divisible total into equal parts", () => {
+    expect(installmentAmount(15000, 3, 1)).toBe(5000);
+    expect(installmentAmount(15000, 3, 2)).toBe(5000);
+    expect(installmentAmount(15000, 3, 3)).toBe(5000);
+  });
+
+  it("lets the final part absorb the rounding remainder so the sum is exact", () => {
+    const parts = [1, 2, 3].map((i) => installmentAmount(10000, 3, i));
+    expect(parts).toEqual([3333.33, 3333.33, 3333.34]);
+    expect(parts.reduce((a, b) => a + b, 0)).toBe(10000);
+  });
+
+  it("returns 0 for an index outside the schedule rather than inventing a part", () => {
+    expect(installmentAmount(15000, 3, 0)).toBe(0);
+    expect(installmentAmount(15000, 3, 4)).toBe(0);
+    expect(installmentAmount(0, 3, 1)).toBe(0);
+    expect(installmentAmount(15000, 0, 1)).toBe(0);
   });
 });
 
