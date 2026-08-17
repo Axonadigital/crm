@@ -266,8 +266,20 @@ export type Deal = {
   billing_schedule_type?: "standard" | "installment" | null;
   installment_count?: number | null;
   installment_interval_months?: number | null;
-  /** Fortnox contract (avtal) number, once this recurring deal has one. */
+  /**
+   * Fortnox contract number from the legacy `/3/contracts` system.
+   * @deprecated Superseded by `fortnox_recurring_id`.
+   */
   fortnox_contract_number?: number | null;
+  /** UUID of this deal's recurring invoicing in Fortnox Recurring Billing. */
+  fortnox_recurring_id?: string | null;
+  /** Last known Fortnox status; DRAFT bills nobody. */
+  fortnox_recurring_status?:
+    | "DRAFT"
+    | "ACTIVE"
+    | "INACTIVE"
+    | "FINISHED"
+    | null;
   /** Fortnox invoice number for the one-time amount, once it has been invoiced. */
   fortnox_invoice_number?: number | null;
   /** How many installment invoices have been created; the next part is this + 1. */

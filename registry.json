@@ -814,6 +814,10 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/fortnox/RecurringDealButton.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/fortnox/LiquidityPage.tsx",
           "type": "registry:component"
         },
@@ -827,6 +831,10 @@
         },
         {
           "path": "src/components/atomic-crm/fortnox/InvoiceQuoteButton.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/fortnox/InvoiceDealButton.tsx",
           "type": "registry:component"
         },
         {
@@ -870,11 +878,23 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/feedback/usePendingFeedbackImages.ts",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/feedback/useGetFeedback.ts",
           "type": "registry:component"
         },
         {
           "path": "src/components/atomic-crm/feedback/index.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/feedback/feedbackImages.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/feedback/feedbackImageRules.ts",
           "type": "registry:component"
         },
         {
@@ -895,6 +915,18 @@
         },
         {
           "path": "src/components/atomic-crm/feedback/FeedbackInputBar.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/feedback/FeedbackImagePicker.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/feedback/FeedbackEditForm.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/feedback/FeedbackCategoryToggle.tsx",
           "type": "registry:component"
         },
         {

@@ -27,8 +27,8 @@ import { Separator } from "@/components/ui/separator";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { CompanyAvatar } from "../companies/CompanyAvatar";
-import { ContractDealButton } from "../fortnox/ContractDealButton";
 import { InvoiceDealButton } from "../fortnox/InvoiceDealButton";
+import { RecurringDealButton } from "../fortnox/RecurringDealButton";
 import { NextInvoiceChip } from "../fortnox/billingDisplay";
 import { dealNextInvoice } from "../fortnox/dealBilling";
 import { formatDate } from "../fortnox/invoiceFormat";
@@ -107,7 +107,7 @@ const DealShowContent = () => {
               ) : (
                 <>
                   <InvoiceDealButton />
-                  <ContractDealButton />
+                  <RecurringDealButton />
                   <ArchiveButton record={record} />
                   <EditButton />
                 </>

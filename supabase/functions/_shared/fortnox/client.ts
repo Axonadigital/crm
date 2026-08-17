@@ -24,9 +24,24 @@ export type FortnoxQuery = Record<
 >;
 
 export type FortnoxRequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   query?: FortnoxQuery;
   body?: unknown;
+  /**
+   * Extra request headers. Needed by the newer `/api/...` resources, which use
+   * `If-Match` for optimistic concurrency and their own JSON Patch media type —
+   * neither exists on the older `/3/` endpoints.
+   */
+  headers?: Record<string, string>;
+  /** Overrides Content-Type when a body is sent (e.g. a JSON Patch media type). */
+  contentType?: string;
+};
+
+/** A response plus the headers callers need, for endpoints that use ETags. */
+export type FortnoxResponse<T> = {
+  data: T;
+  /** Strong ETag of the returned representation, when the endpoint sends one. */
+  etag: string | null;
 };
 
 export type AccessTokenProvider = (options?: {
@@ -112,6 +127,13 @@ export class FortnoxClient {
     path: string,
     options: FortnoxRequestOptions = {},
   ): Promise<T> {
+    return (await this.requestWithHeaders<T>(path, options)).data;
+  }
+
+  async requestWithHeaders<T>(
+    path: string,
+    options: FortnoxRequestOptions = {},
+  ): Promise<FortnoxResponse<T>> {
     const url = buildFortnoxUrl(path, options.query, this.baseUrl);
     const method = options.method ?? "GET";
 
@@ -131,8 +153,11 @@ export class FortnoxClient {
             Authorization: `Bearer ${accessToken}`,
             Accept: "application/json",
             ...(options.body !== undefined
-              ? { "Content-Type": "application/json" }
+              ? {
+                  "Content-Type": options.contentType ?? "application/json",
+                }
               : {}),
+            ...(options.headers ?? {}),
           },
           ...(options.body !== undefined
             ? { body: JSON.stringify(options.body) }
@@ -150,10 +175,11 @@ export class FortnoxClient {
       }
 
       if (response.ok) {
-        if (response.status === 204) return undefined as T;
+        const etag = response.headers.get("ETag");
+        if (response.status === 204) return { data: undefined as T, etag };
         const text = await response.text();
-        if (text.trim().length === 0) return undefined as T;
-        return JSON.parse(text) as T;
+        if (text.trim().length === 0) return { data: undefined as T, etag };
+        return { data: JSON.parse(text) as T, etag };
       }
 
       const rawBody = await response.text();
@@ -215,5 +241,23 @@ export class FortnoxClient {
 
   put<T>(path: string, body?: unknown, query?: FortnoxQuery): Promise<T> {
     return this.request<T>(path, { method: "PUT", body, query });
+  }
+
+  /**
+   * JSON Patch against the newer `/api/...` resources. `If-Match` is mandatory
+   * there — without it the request is rejected with 428, and a stale ETag with
+   * 412 — so the caller must read the current ETag first.
+   */
+  patch<T>(
+    path: string,
+    operations: unknown,
+    options: { ifMatch: string; contentType?: string },
+  ): Promise<T> {
+    return this.request<T>(path, {
+      method: "PATCH",
+      body: operations,
+      contentType: options.contentType ?? "application/json-patch+json",
+      headers: { "If-Match": options.ifMatch },
+    });
   }
 }

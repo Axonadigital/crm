@@ -1082,9 +1082,67 @@ const dataProviderWithCustomMethods = {
     return data;
   },
   /**
+   * Sets up "Återkommande fakturering" in Fortnox for a won recurring deal,
+   * creating the customer there first if needed. Lands as a DRAFT with manual
+   * handling, so it is reviewable in Fortnox and bills nobody until
+   * `activateFortnoxRecurring` is called. Cannot run twice for the same deal.
+   */
+  async createFortnoxRecurringFromDeal(dealId: Identifier): Promise<{
+    recurring_id: string;
+    customer_number: string;
+    status: string;
+    invoice_handling: string;
+    warning: string | null;
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_recurring",
+      {
+        method: "POST",
+        body: { action: "create_from_deal", deal_id: Number(dealId) },
+      },
+    );
+    if (error || !data) {
+      throw new Error(
+        (await extractFunctionError(error)) ??
+          "Failed to create the recurring invoicing",
+      );
+    }
+    return data;
+  },
+  /**
+   * Starts the recurring invoicing: status ACTIVE and automatic handling, so
+   * Fortnox generates invoices on schedule. This is the step that begins
+   * billing the customer — creation alone never does.
+   */
+  async activateFortnoxRecurring(dealId: Identifier): Promise<{
+    recurring_id: string;
+    status: string;
+    invoice_handling: string;
+    next_invoice_date: string | null;
+  }> {
+    const { data, error } = await supabase.functions.invoke(
+      "fortnox_recurring",
+      {
+        method: "POST",
+        body: { action: "activate", deal_id: Number(dealId) },
+      },
+    );
+    if (error || !data) {
+      throw new Error(
+        (await extractFunctionError(error)) ??
+          "Failed to activate the recurring invoicing",
+      );
+    }
+    return data;
+  },
+  /**
    * Turns a won recurring deal into a Fortnox contract (avtal) that generates
    * recurring invoices. Creates the contract only — never books or sends.
    * Cannot run twice for the same deal (the database enforces it).
+   *
+   * @deprecated Targets the legacy `/3/contracts` system, which Fortnox
+   * confirmed is not the same feature as "Återkommande fakturering". Use
+   * `createFortnoxRecurringFromDeal` instead.
    */
   async createFortnoxContractFromDeal(dealId: Identifier): Promise<{
     document_number: number;
