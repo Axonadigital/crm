@@ -484,6 +484,29 @@ describe("customer billing overview", () => {
     expect(rows[0].has_overdue_invoice).toBe(true);
   });
 
+  it("only counts the months a subscription starting mid-year can be billed for", () => {
+    const rows = buildCustomerBillingOverview(
+      [
+        deal({
+          id: 80,
+          name: "SEO hantering",
+          amount: 0,
+          recurring_amount: 499,
+          recurring_interval: "monthly",
+          billing_start_date: "2026-09-01",
+        }),
+      ],
+      [],
+      new Date("2026-08-17T12:00:00"),
+    );
+
+    // September through December — the months before the deal started were
+    // never ours to invoice, so charging them to "kvar att fakturera" would
+    // overstate what is left to collect this year.
+    expect(rows[0].remaining_to_invoice_this_year).toBe(1996);
+    expect(rows[0].next_invoice_date).toBe("2026-09-01");
+  });
+
   it("does not invent a recurring schedule from a one-time deal's invoice", () => {
     const rows = buildCustomerBillingOverview(
       [

@@ -161,6 +161,25 @@ const coveredMonthsThisYear = (
   return date.getMonth() + 1;
 };
 
+/**
+ * How many of this year's months a recurring line can be billed for at all.
+ *
+ * A subscription starting in September has four billable months this year, not
+ * twelve — the months before it began were never ours to invoice, so counting
+ * them as "remaining" overstates what is left to collect. Without a start date
+ * we can't rule any month out, so the whole year stays billable.
+ */
+const billableMonthsThisYear = (
+  billingStartDate: string | null | undefined,
+  year: number,
+): number => {
+  if (!billingStartDate) return 12;
+  const start = parseDate(billingStartDate);
+  if (start.getFullYear() < year) return 12;
+  if (start.getFullYear() > year) return 0;
+  return 12 - start.getMonth();
+};
+
 export const getBillingStatus = (
   nextInvoiceDate: string | null,
   today: Date,
@@ -569,7 +588,17 @@ export const buildCustomerBillingOverview = (
           ]),
           year,
         );
-        remaining += lineMonthly * (12 - covered);
+        // Uncovered months, but never more than the line can actually be
+        // billed for this year — a line starting in September has four.
+        remaining +=
+          lineMonthly *
+          Math.max(
+            0,
+            Math.min(
+              billableMonthsThisYear(deal.billing_start_date, year),
+              12 - covered,
+            ),
+          );
 
         const nextCoveredThrough = latestDate([
           coveredThroughDate({
