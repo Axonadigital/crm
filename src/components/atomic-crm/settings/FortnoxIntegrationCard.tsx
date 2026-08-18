@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import type { CrmDataProvider } from "../providers/types";
 import type { FortnoxEnvironment } from "../types";
+import { FortnoxRecurringSandboxTest } from "./FortnoxRecurringSandboxTest";
 
 /**
  * One Fortnox connection. The consent flow runs once per company: it creates a
@@ -170,22 +171,33 @@ export const FortnoxIntegrationCard = () => (
  * connected here changes nothing about the invoice mirror or the bookkeeping
  * figures. Only a flow that explicitly asks for the test environment reaches it.
  */
-export const FortnoxSandboxCard = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2">
-        <FlaskConical className="h-4 w-4" />
-        Fortnox testmiljö
-        <ConnectedBadge environment="sandbox" />
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="space-y-4">
-      <ConnectionPanel environment="sandbox" />
-      <p className="text-xs text-muted-foreground">
-        Synkarna av fakturor, leverantörsfakturor och verifikationer läser
-        alltid skarp miljö. Testmiljön används bara av flöden som uttryckligen
-        ber om den, så inget testdata kan hamna i Kundtäckning eller Likviditet.
-      </p>
-    </CardContent>
-  </Card>
-);
+export const FortnoxSandboxCard = () => {
+  const dataProvider = useDataProvider<CrmDataProvider>();
+  const { data: sandbox } = useQuery({
+    queryKey: ["fortnox", "status", "sandbox"],
+    queryFn: () => dataProvider.getFortnoxStatus("sandbox"),
+    retry: false,
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FlaskConical className="h-4 w-4" />
+          Fortnox testmiljö
+          <ConnectedBadge environment="sandbox" />
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <ConnectionPanel environment="sandbox" />
+        {sandbox?.connected ? <FortnoxRecurringSandboxTest /> : null}
+        <p className="text-xs text-muted-foreground">
+          Synkarna av fakturor, leverantörsfakturor och verifikationer läser
+          alltid skarp miljö. Testmiljön används bara av flöden som uttryckligen
+          ber om den, så inget testdata kan hamna i Kundtäckning eller
+          Likviditet.
+        </p>
+      </CardContent>
+    </Card>
+  );
+};

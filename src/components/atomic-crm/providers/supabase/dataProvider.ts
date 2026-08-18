@@ -1125,6 +1125,8 @@ const dataProviderWithCustomMethods = {
   async activateFortnoxRecurring(
     dealId: Identifier,
     environment: FortnoxEnvironment = "production",
+    /** Required for sandbox runs, which are never recorded on the deal. */
+    recurringId?: string | null,
   ): Promise<{
     recurring_id: string;
     status: string;
@@ -1135,7 +1137,12 @@ const dataProviderWithCustomMethods = {
       "fortnox_recurring",
       {
         method: "POST",
-        body: { action: "activate", deal_id: Number(dealId), environment },
+        body: {
+          action: "activate",
+          deal_id: Number(dealId),
+          environment,
+          ...(recurringId ? { recurring_id: recurringId } : {}),
+        },
       },
     );
     if (error || !data) {
