@@ -171,13 +171,16 @@ export const SubscriptionsPage = () => {
             Det ni faktiskt betalar för — stämt av mot bokföringen.
           </p>
         </div>
-        <Button onClick={() => openCreate()}>
+        <Button data-tour="subscriptions-add" onClick={() => openCreate()}>
           <Plus className="mr-2 h-4 w-4" />
           Lägg till
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        data-tour="subscriptions-kpi"
+      >
         <StatCard
           label="Löpande kostnad"
           value={`${formatCurrency(declaredMonthly)}/mån`}
@@ -202,7 +205,7 @@ export const SubscriptionsPage = () => {
         />
       </div>
 
-      <Card>
+      <Card data-tour="subscriptions-table">
         <CardContent className="p-0">
           <div className="p-4 pb-0">
             <h2 className="font-semibold">Aktiva abonnemang</h2>
@@ -274,7 +277,7 @@ export const SubscriptionsPage = () => {
       </Card>
 
       {unregistered.length > 0 ? (
-        <Card>
+        <Card data-tour="subscriptions-unregistered">
           <CardContent className="p-0">
             <div className="p-4 pb-0">
               <h2 className="font-semibold">

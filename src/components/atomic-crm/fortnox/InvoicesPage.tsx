@@ -139,7 +139,12 @@ export const InvoicesPage = () => {
             {formatSyncedAt(stats?.last_synced_at)}
           </p>
         </div>
-        <Button variant="outline" onClick={() => sync()} disabled={isSyncing}>
+        <Button
+          variant="outline"
+          data-tour="invoices-sync"
+          onClick={() => sync()}
+          disabled={isSyncing}
+        >
           <RefreshCw
             className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`}
           />
@@ -147,7 +152,10 @@ export const InvoicesPage = () => {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        data-tour="invoices-kpi"
+      >
         <StatCard
           label="Obetalt (ink moms)"
           value={formatCurrency(stats?.unpaid_amount)}
@@ -175,7 +183,7 @@ export const InvoicesPage = () => {
         />
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" data-tour="invoices-filters">
         {CUTS.map(({ key, label }) => (
           <Button
             key={key}
@@ -188,7 +196,7 @@ export const InvoicesPage = () => {
         ))}
       </div>
 
-      <Card>
+      <Card data-tour="invoices-table">
         <CardContent className="overflow-x-auto p-0">
           {isPending ? (
             <div className="space-y-2 p-6">
