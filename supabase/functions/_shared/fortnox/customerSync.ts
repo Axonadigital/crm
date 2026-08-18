@@ -104,14 +104,27 @@ async function linkCompany(
   }
 }
 
+/**
+ * Finds or creates this company as a customer in Fortnox.
+ *
+ * `environment` decides whether the stored link may be used at all.
+ * `companies.fortnox_customer_number` identifies the customer in the *production*
+ * company, so against a sandbox it is meaningless: reusing it would address a
+ * stranger's customer number or, more often, one that doesn't exist there. And
+ * writing a sandbox number back would overwrite the production link and break
+ * invoice matching for a real customer. So a sandbox run resolves the customer
+ * by organisation number every time and never persists what it finds.
+ */
 export async function ensureFortnoxCustomer(
   supabase: SupabaseClient,
   client: FortnoxClient,
   company: CrmCompany,
+  options: { environment?: "production" | "sandbox" } = {},
 ): Promise<EnsureCustomerResult> {
   const payload: FortnoxCustomerPayload = mapCompanyToFortnoxCustomer(company);
+  const isSandbox = options.environment === "sandbox";
 
-  if (company.fortnox_customer_number) {
+  if (!isSandbox && company.fortnox_customer_number) {
     await client.put(`/3/customers/${company.fortnox_customer_number}`, {
       Customer: payload,
     });
@@ -125,7 +138,7 @@ export async function ensureFortnoxCustomer(
 
   if (existing) {
     await client.put(`/3/customers/${existing}`, { Customer: payload });
-    await linkCompany(supabase, company.id, existing);
+    if (!isSandbox) await linkCompany(supabase, company.id, existing);
     return { customer_number: existing, action: "linked" };
   }
 
@@ -140,7 +153,7 @@ export async function ensureFortnoxCustomer(
     });
   }
 
-  await linkCompany(supabase, company.id, customerNumber);
+  if (!isSandbox) await linkCompany(supabase, company.id, customerNumber);
   return { customer_number: customerNumber, action: "created" };
 }
 

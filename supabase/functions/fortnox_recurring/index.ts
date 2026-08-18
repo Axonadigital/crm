@@ -123,6 +123,7 @@ async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
     supabaseAdmin,
     client,
     company,
+    { environment },
   );
 
   const payload = buildCreateRecurringPayload({
