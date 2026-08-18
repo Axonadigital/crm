@@ -1096,6 +1096,9 @@ const dataProviderWithCustomMethods = {
     customer_number: string;
     status: string;
     invoice_handling: string;
+    start_date: string;
+    next_invoice_date: string | null;
+    starts_in_the_past: boolean;
     warning: string | null;
   }> {
     const { data, error } = await supabase.functions.invoke(

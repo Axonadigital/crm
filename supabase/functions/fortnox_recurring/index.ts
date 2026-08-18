@@ -38,6 +38,7 @@ import {
 } from "../_shared/fortnox/customerSync.ts";
 import {
   buildCreateRecurringPayload,
+  nextRecurringStartDate,
   RECURRINGS_PATH,
   replaceOps,
   type RecurringInterval,
@@ -61,7 +62,7 @@ async function requireUser(req: Request) {
 }
 
 const DEAL_FIELDS =
-  "id, name, company_id, billing_company_id, recurring_amount, recurring_interval, billing_start_date, stage, archived_at, fortnox_recurring_id, fortnox_recurring_status";
+  "id, name, company_id, billing_company_id, recurring_amount, recurring_interval, billing_start_date, invoiced_through, stage, archived_at, fortnox_recurring_id, fortnox_recurring_status";
 
 async function loadDeal(dealId: number) {
   const { data: deal, error } = await supabaseAdmin
@@ -72,11 +73,6 @@ async function loadDeal(dealId: number) {
 
   if (error || !deal) throw new HttpError(404, "Affären hittades inte");
   return deal;
-}
-
-/** `YYYY-MM-DD` for today, used when a deal has no billing start date set. */
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
@@ -126,14 +122,21 @@ async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
     { environment },
   );
 
+  // Resume where the invoicing actually stands, not where the deal began:
+  // "fakturerad t.o.m." is the authority, so a customer billed through
+  // September is not set to start again back in July.
+  const { startDate, inThePast } = nextRecurringStartDate({
+    invoicedThrough: deal.invoiced_through,
+    billingStartDate: deal.billing_start_date,
+    today: new Date(),
+  });
+
   const payload = buildCreateRecurringPayload({
     customerNumber: customer_number,
     description: deal.name,
     price: deal.recurring_amount,
     interval: deal.recurring_interval as RecurringInterval | null,
-    // Without a billing start date the schedule has to start somewhere; today
-    // is the honest default, and it is harmless while the record is a draft.
-    startDate: deal.billing_start_date ?? todayIso(),
+    startDate,
     ourReference: `crm-deal-${deal.id}`,
     invoiceHandling: "MANUAL",
   });
@@ -199,13 +202,23 @@ async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
     }
   }
 
+  // A deal behind on its invoicing has genuinely unbilled periods, so the date
+  // stands — but Fortnox may generate them all at once on activation, and that
+  // must not be a surprise.
+  const behindWarning = inThePast
+    ? `Startdatumet ${startDate} ligger bakåt i tiden eftersom affären inte är fakturerad fram till idag. Fortnox kan skapa ikapp-fakturor direkt vid aktivering — justera datumet i Fortnox först om det inte är meningen.`
+    : null;
+
   return {
     recurring_id: recurringId,
     customer_number,
     status,
     invoice_handling: "MANUAL",
     environment,
-    warning: draftWarning,
+    start_date: startDate,
+    next_invoice_date: created.data?.dates?.dates?.invoice_date ?? startDate,
+    starts_in_the_past: inThePast,
+    warning: draftWarning ?? behindWarning,
   };
 }
 

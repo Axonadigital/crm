@@ -144,6 +144,43 @@ export function buildCreateRecurringPayload(
   };
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const toDateOnly = (date: Date): string => date.toISOString().slice(0, 10);
+
+/**
+ * When the recurring should first invoice.
+ *
+ * `invoiced_through` is the authority whenever it is set: it says how far the
+ * customer has already been billed, so the schedule must resume the day after.
+ * Starting from `billing_start_date` instead would re-bill periods already
+ * paid for — a live deal invoiced through September would otherwise be set to
+ * start back in July.
+ *
+ * Falls back to the billing start date, then to today when the deal carries
+ * neither. `inThePast` is reported rather than silently corrected: a deal
+ * behind on its invoicing genuinely has unbilled periods, and skipping them
+ * would quietly forfeit revenue — but Fortnox may generate those catch-up
+ * invoices the moment it is activated, so the caller must be able to say so.
+ */
+export function nextRecurringStartDate({
+  invoicedThrough,
+  billingStartDate,
+  today,
+}: {
+  invoicedThrough?: string | null;
+  billingStartDate?: string | null;
+  today: Date;
+}): { startDate: string; inThePast: boolean } {
+  const todayIso = toDateOnly(today);
+
+  const startDate = invoicedThrough
+    ? toDateOnly(new Date(new Date(`${invoicedThrough}T00:00:00Z`).getTime() + DAY_MS))
+    : (billingStartDate ?? todayIso);
+
+  return { startDate, inThePast: startDate < todayIso };
+}
+
 /** JSON Patch operations, the only write shape PATCH accepts. */
 export function replaceOps(
   values: Record<string, string | number>,

@@ -19,6 +19,8 @@ type Result = {
   recurringId: string;
   status: string;
   handling: string;
+  startDate?: string;
+  startsInThePast?: boolean;
   nextInvoiceDate?: string | null;
   activated: boolean;
 };
@@ -54,11 +56,22 @@ export const FortnoxRecurringSandboxTest = () => {
   const { mutate: create, isPending: isCreating } = useMutation({
     mutationFn: () =>
       dataProvider.createFortnoxRecurringFromDeal(dealId, "sandbox"),
-    onSuccess: ({ recurring_id, status, invoice_handling, warning }) => {
+    onSuccess: ({
+      recurring_id,
+      status,
+      invoice_handling,
+      start_date,
+      next_invoice_date,
+      starts_in_the_past,
+      warning,
+    }) => {
       setResult({
         recurringId: recurring_id,
         status,
         handling: invoice_handling,
+        startDate: start_date,
+        startsInThePast: starts_in_the_past,
+        nextInvoiceDate: next_invoice_date,
         activated: false,
       });
       notify(
@@ -137,8 +150,9 @@ export const FortnoxRecurringSandboxTest = () => {
 
       {selected ? (
         <p className="text-xs text-muted-foreground">
-          Startdatum:{" "}
-          {selected.billing_start_date ?? "saknas — dagens datum används"}
+          {selected.invoiced_through
+            ? `Fakturerad t.o.m. ${selected.invoiced_through} — avtalet återupptas dagen efter`
+            : `Startdatum: ${selected.billing_start_date ?? "saknas, dagens datum används"}`}
         </p>
       ) : null}
 
@@ -188,8 +202,13 @@ export const FortnoxRecurringSandboxTest = () => {
           </div>
           {result.nextInvoiceDate ? (
             <div>
-              Nästa faktura hade genererats:{" "}
-              <strong>{result.nextInvoiceDate}</strong>
+              Första fakturadatum: <strong>{result.nextInvoiceDate}</strong>
+              {result.startsInThePast ? (
+                <span className="text-destructive">
+                  {" "}
+                  — bakåt i tiden, kan ge ikapp-fakturor vid aktivering
+                </span>
+              ) : null}
             </div>
           ) : null}
           <div className="font-mono text-muted-foreground">

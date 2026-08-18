@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCreateRecurringPayload,
+  nextRecurringStartDate,
   recurringRuleFor,
   replaceOps,
   RECURRINGS_PATH,
@@ -109,5 +110,50 @@ describe("RECURRINGS_PATH", () => {
   it("targets the new recurring-billing API, not the legacy /3/contracts", () => {
     expect(RECURRINGS_PATH).toBe("/api/recurring-billing/recurrings-v1");
     expect(RECURRINGS_PATH).not.toContain("/3/");
+  });
+});
+
+describe("nextRecurringStartDate", () => {
+  const today = new Date("2026-08-18T12:00:00Z");
+
+  it("resumes the day after the period already invoiced", () => {
+    // Löfvenius: billed through 1 September, so the recurring must start the
+    // 2nd — starting from billing_start_date (15 July) would re-bill periods
+    // the customer has already paid for.
+    expect(
+      nextRecurringStartDate({
+        invoicedThrough: "2026-09-01",
+        billingStartDate: "2026-07-15",
+        today,
+      }),
+    ).toEqual({ startDate: "2026-09-02", inThePast: false });
+  });
+
+  it("uses the billing start date when nothing has been invoiced yet", () => {
+    expect(
+      nextRecurringStartDate({
+        invoicedThrough: null,
+        billingStartDate: "2026-09-01",
+        today,
+      }),
+    ).toEqual({ startDate: "2026-09-01", inThePast: false });
+  });
+
+  it("flags a deal that is behind instead of skipping its unbilled periods", () => {
+    // Billed only through 25 June: those months are genuinely owed, so the date
+    // stands — but activation could generate them at once, hence the flag.
+    expect(
+      nextRecurringStartDate({
+        invoicedThrough: "2026-06-25",
+        billingStartDate: "2026-03-18",
+        today,
+      }),
+    ).toEqual({ startDate: "2026-06-26", inThePast: true });
+  });
+
+  it("falls back to today when the deal carries no dates at all", () => {
+    expect(
+      nextRecurringStartDate({ today }),
+    ).toEqual({ startDate: "2026-08-18", inThePast: false });
   });
 });
