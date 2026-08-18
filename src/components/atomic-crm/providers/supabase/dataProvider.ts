@@ -776,9 +776,13 @@ const dataProviderWithCustomMethods = {
    * Billing coverage per won-deal customer — drives the Kundtäckning page and
    * the "pengar att hämta" widget. Aggregates won deals by company and joins
    * the Fortnox-customer link + invoice presence, all from data we already
-   * hold. No deal↔invoice link exists in the data, so "invoiced" is judged at
-   * the company level (has any mirrored invoice) and "billable" by whether the
-   * company is even a Fortnox customer yet.
+   * hold. "Invoiced" is judged at the company level (has any mirrored invoice)
+   * and "billable" by whether the company is even a Fortnox customer yet.
+   *
+   * `has_contract` means the recurring deal has recurring invoicing set up in
+   * Fortnox — read from `fortnox_recurring_id`, the current Recurring Billing
+   * API. It used to read the legacy `/3/contracts` number, which no deal ever
+   * carried, so the column reported "no agreement" for everyone.
    */
   async getCustomerCoverage(): Promise<CustomerCoverage[]> {
     const INTERVAL_MONTHS: Record<string, number> = {
@@ -792,7 +796,7 @@ const dataProviderWithCustomMethods = {
     const { data: deals, error } = await supabase
       .from("deals")
       .select(
-        "company_id, billing_company_id, delivery_company_ids, amount, recurring_amount, recurring_interval, fortnox_contract_number",
+        "company_id, billing_company_id, delivery_company_ids, amount, recurring_amount, recurring_interval, fortnox_recurring_id",
       )
       .eq("stage", "won")
       .is("archived_at", null)
@@ -842,7 +846,7 @@ const dataProviderWithCustomMethods = {
         existing.recurring_monthly += monthly;
         existing.has_recurring = existing.has_recurring || monthly > 0;
         existing.has_contract =
-          existing.has_contract || !!deal.fortnox_contract_number;
+          existing.has_contract || !!deal.fortnox_recurring_id;
       } else {
         byCompany.set(key, {
           company_id: billingCompanyId,
@@ -853,7 +857,7 @@ const dataProviderWithCustomMethods = {
           won_amount: deal.amount ?? 0,
           recurring_monthly: monthly,
           has_recurring: monthly > 0,
-          has_contract: !!deal.fortnox_contract_number,
+          has_contract: !!deal.fortnox_recurring_id,
         });
       }
     }
@@ -1152,33 +1156,6 @@ const dataProviderWithCustomMethods = {
       throw new Error(
         (await extractFunctionError(error)) ??
           "Failed to activate the recurring invoicing",
-      );
-    }
-    return data;
-  },
-  /**
-   * Turns a won recurring deal into a Fortnox contract (avtal) that generates
-   * recurring invoices. Creates the contract only — never books or sends.
-   * Cannot run twice for the same deal (the database enforces it).
-   *
-   * @deprecated Targets the legacy `/3/contracts` system, which Fortnox
-   * confirmed is not the same feature as "Återkommande fakturering". Use
-   * `createFortnoxRecurringFromDeal` instead.
-   */
-  async createFortnoxContractFromDeal(dealId: Identifier): Promise<{
-    document_number: number;
-    customer_number: string;
-  }> {
-    const { data, error } = await supabase.functions.invoke(
-      "fortnox_contracts",
-      {
-        method: "POST",
-        body: { action: "create_from_deal", deal_id: Number(dealId) },
-      },
-    );
-    if (error || !data) {
-      throw new Error(
-        (await extractFunctionError(error)) ?? "Failed to create the contract",
       );
     }
     return data;

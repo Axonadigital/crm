@@ -267,8 +267,12 @@ export type Deal = {
   installment_count?: number | null;
   installment_interval_months?: number | null;
   /**
-   * Fortnox contract number from the legacy `/3/contracts` system.
-   * @deprecated Superseded by `fortnox_recurring_id`.
+   * Contract number from Fortnox's legacy `/3/contracts` system.
+   *
+   * @deprecated Superseded by `fortnox_recurring_id`. The column is kept in the
+   * database rather than dropped — it is null on every deal, so there is
+   * nothing to migrate, and removing a column is not worth the risk. Nothing
+   * reads it any more.
    */
   fortnox_contract_number?: number | null;
   /** UUID of this deal's recurring invoicing in Fortnox Recurring Billing. */
@@ -1426,7 +1430,7 @@ export type CustomerCoverage = {
   /** Recurring revenue from this company, normalised to per-month (kronor). */
   recurring_monthly: number;
   has_recurring: boolean;
-  /** A recurring deal here already has a Fortnox contract. */
+  /** A recurring deal here already has recurring invoicing set up in Fortnox. */
   has_contract: boolean;
 };
 
