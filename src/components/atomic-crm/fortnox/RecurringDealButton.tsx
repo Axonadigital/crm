@@ -33,14 +33,14 @@ const INTERVAL_LABELS: Record<string, string> = {
  * Sets up "Återkommande fakturering" in Fortnox for a won recurring deal, in
  * two deliberate steps.
  *
- * Creating lands a DRAFT with manual handling — visible and checkable in
- * Fortnox, but it bills nobody. Activating is a separate button that switches
- * it to automatic, and that is the action that actually starts invoicing the
- * customer, so it confirms first and says so plainly.
+ * Creating parks the recurring as paused with manual handling — visible and
+ * checkable in Fortnox, but billing nobody for two independent reasons.
+ * Activating is a separate button that starts the invoicing, so it confirms
+ * first and says so plainly.
  *
- * Fortnox has no "create a draft" API input (POST always persists ACTIVE), so
- * the draft state is produced by creating with manual handling and patching the
- * status down. Either way nothing can go out before activation.
+ * It is paused rather than a draft because Fortnox has no "create a draft" API
+ * input and refuses to move an activated recurring back to DRAFT. Paused is the
+ * reachable equivalent: "retained but not generating invoices".
  */
 export const RecurringDealButton = () => {
   const deal = useRecordContext<Deal>();
@@ -57,10 +57,10 @@ export const RecurringDealButton = () => {
 
   const { mutate: create, isPending: isCreating } = useMutation({
     mutationFn: () => dataProvider.createFortnoxRecurringFromDeal(deal!.id),
-    onSuccess: ({ status, warning }) => {
+    onSuccess: ({ warning }) => {
       notify(
         warning ??
-          `Återkommande fakturering upplagd i Fortnox som ${status === "DRAFT" ? "utkast" : status} — inga fakturor skickas förrän du aktiverar den.`,
+          "Återkommande fakturering upplagd i Fortnox och pausad — granska den där, inga fakturor skickas förrän du aktiverar.",
         { type: warning ? "warning" : "info" },
       );
       settled();
@@ -106,7 +106,7 @@ export const RecurringDealButton = () => {
         variant="outline"
         onClick={() => create()}
         disabled={isCreating}
-        title="Lägger upp återkommande fakturering i Fortnox som utkast — inga fakturor skickas"
+        title="Lägger upp återkommande fakturering i Fortnox, pausad — inga fakturor skickas"
       >
         <RefreshCw
           className={`mr-2 h-4 w-4 ${isCreating ? "animate-spin" : ""}`}
@@ -132,19 +132,15 @@ export const RecurringDealButton = () => {
     );
   }
 
-  if (status === "INACTIVE" || status === "FINISHED") {
-    return (
-      <Badge variant="outline">
-        Återkommande {status === "FINISHED" ? "avslutad" : "pausad"} i Fortnox
-      </Badge>
-    );
+  if (status === "FINISHED") {
+    return <Badge variant="outline">Återkommande avslutad i Fortnox</Badge>;
   }
 
-  // DRAFT (or an unknown status we haven't refreshed): offer activation.
+  // Paused (our review state), or a status we haven't refreshed: offer to start.
   return (
     <>
       <div className="flex items-center gap-2">
-        <Badge variant="outline">Återkommande: utkast</Badge>
+        <Badge variant="outline">Återkommande: ej aktiverad</Badge>
         <Button
           size="sm"
           onClick={() => setConfirmingActivate(true)}

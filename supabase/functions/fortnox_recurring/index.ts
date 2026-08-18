@@ -4,12 +4,12 @@
  *   { action: "create_from_deal", deal_id } -> reviewable draft, bills nobody
  *   { action: "activate", deal_id }         -> starts the automatic invoicing
  *
- * Why two steps. Fortnox's POST always persists a recurring with status ACTIVE;
- * there is no "create a draft" input. But ACTIVE only generates invoices when
- * `invoice_handling` is automatic or an invoice service, and MANUAL means
- * "nothing is generated automatically". So creation uses MANUAL and then
- * patches the status to DRAFT: the record is visible and checkable in Fortnox,
- * and cannot bill a customer until someone deliberately activates it here.
+ * Why two steps. Fortnox's POST always persists a recurring with status ACTIVE
+ * and offers no "create a draft" input; ACTIVE also cannot move back to DRAFT.
+ * The reachable review state is INACTIVE — "retained but not generating
+ * invoices". So creation posts with MANUAL handling and immediately pauses to
+ * INACTIVE, giving two independent reasons nothing can be billed, and the
+ * record is visible and checkable in Fortnox until someone activates it here.
  *
  * That separation is the point. Creating is safe and reversible; activating is
  * the committing action, and it is a different button with its own confirmation.
@@ -42,6 +42,7 @@ import {
   replaceOps,
   type RecurringInterval,
   type RecurringStatus,
+  REVIEW_STATUS,
 } from "../_shared/fortnox/recurring.ts";
 
 type RecurringResponse = {
@@ -80,8 +81,13 @@ function todayIso(): string {
 
 async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
   const deal = await loadDeal(dealId);
+  // A sandbox run exercises the Fortnox side only. Its ids belong to a test
+  // company, so writing them onto the production deal would mark a real deal as
+  // already set up and block the genuine one — the test must leave no trace in
+  // the CRM.
+  const isSandbox = environment === "sandbox";
 
-  if (deal.fortnox_recurring_id) {
+  if (!isSandbox && deal.fortnox_recurring_id) {
     throw new HttpError(
       409,
       `Affären har redan en återkommande fakturering i Fortnox (${deal.fortnox_recurring_status ?? "okänd status"}).`,
@@ -144,48 +150,52 @@ async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
   }
 
   // Fortnox created it ACTIVE (its only option) with MANUAL handling, so it
-  // already bills nobody. Patching to DRAFT makes it read as a draft too. If
-  // this fails the record is still safe, so report the state instead of
-  // pretending the whole operation failed.
+  // already bills nobody. Pausing it to INACTIVE adds a second, independent
+  // guarantee and makes the state obvious in Fortnox. If this fails the record
+  // is still safe on MANUAL alone, so report it instead of pretending the whole
+  // operation failed.
   let status: RecurringStatus = created.data?.status ?? "ACTIVE";
   let draftWarning: string | null = null;
   if (created.etag) {
     try {
       const patched = await client.patch<RecurringResponse>(
         `${RECURRINGS_PATH}/${recurringId}`,
-        replaceOps({ status: "DRAFT" }),
+        replaceOps({ status: REVIEW_STATUS }),
         { ifMatch: created.etag },
       );
-      status = patched?.status ?? "DRAFT";
+      status = patched?.status ?? REVIEW_STATUS;
     } catch (error) {
       draftWarning =
         error instanceof FortnoxError
-          ? `Kunde inte sätta status till utkast (${error.message}). Avtalet är upplagt med manuell hantering och skickar inga fakturor, men kontrollera statusen i Fortnox.`
-          : "Kunde inte sätta status till utkast. Avtalet skickar inga fakturor eftersom hanteringen är manuell, men kontrollera statusen i Fortnox.";
+          ? `Kunde inte pausa avtalet (${error.message}). Det är upplagt med manuell hantering och skickar därför inga fakturor, men kontrollera statusen i Fortnox.`
+          : "Kunde inte pausa avtalet. Det skickar inga fakturor eftersom hanteringen är manuell, men kontrollera statusen i Fortnox.";
     }
   } else {
     draftWarning =
-      "Fortnox skickade ingen ETag, så statusen kunde inte sättas till utkast. Avtalet skickar inga fakturor eftersom hanteringen är manuell.";
+      "Fortnox skickade ingen ETag, så avtalet kunde inte pausas. Det skickar inga fakturor eftersom hanteringen är manuell.";
   }
 
   // Conditional update: only lands while the deal has no recurring, so a double
-  // click loses the race rather than creating a second one in Fortnox.
-  const { data: linked, error: linkError } = await supabaseAdmin
-    .from("deals")
-    .update({
-      fortnox_recurring_id: recurringId,
-      fortnox_recurring_status: status,
-    })
-    .eq("id", dealId)
-    .is("fortnox_recurring_id", null)
-    .select("id");
+  // click loses the race rather than creating a second one in Fortnox. Skipped
+  // for sandbox runs, which must not touch production CRM state at all.
+  if (!isSandbox) {
+    const { data: linked, error: linkError } = await supabaseAdmin
+      .from("deals")
+      .update({
+        fortnox_recurring_id: recurringId,
+        fortnox_recurring_status: status,
+      })
+      .eq("id", dealId)
+      .is("fortnox_recurring_id", null)
+      .select("id");
 
-  if (linkError || !linked || linked.length === 0) {
-    throw new HttpError(
-      409,
-      `Återkommande fakturering skapades i Fortnox (${recurringId}) men affären hade redan en. Kontrollera i Fortnox och ta bort dubbletten.`,
-      { code: "duplicate_recurring", details: { recurring_id: recurringId } },
-    );
+    if (linkError || !linked || linked.length === 0) {
+      throw new HttpError(
+        409,
+        `Återkommande fakturering skapades i Fortnox (${recurringId}) men affären hade redan en. Kontrollera i Fortnox och ta bort dubbletten.`,
+        { code: "duplicate_recurring", details: { recurring_id: recurringId } },
+      );
+    }
   }
 
   return {
@@ -193,6 +203,7 @@ async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
     customer_number,
     status,
     invoice_handling: "MANUAL",
+    environment,
     warning: draftWarning,
   };
 }
@@ -202,14 +213,27 @@ async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
  * AUTOMATIC, so Fortnox generates invoices on the schedule. This is the step
  * that actually starts billing the customer.
  */
-async function activate(dealId: number, environment: FortnoxEnvironment) {
+async function activate(
+  dealId: number,
+  environment: FortnoxEnvironment,
+  recurringIdOverride?: string | null,
+) {
   const deal = await loadDeal(dealId);
+  const isSandbox = environment === "sandbox";
 
-  const recurringId = deal.fortnox_recurring_id;
+  // A sandbox draft was never recorded on the deal, so its id has to be passed
+  // in explicitly — which also keeps a test activation from ever resolving to
+  // the production recurring by accident.
+  const recurringId = isSandbox
+    ? recurringIdOverride
+    : (recurringIdOverride ?? deal.fortnox_recurring_id);
+
   if (!recurringId) {
     throw new HttpError(
       422,
-      "Affären har ingen återkommande fakturering i Fortnox att aktivera",
+      isSandbox
+        ? "Ange recurring_id för att aktivera ett avtal i testmiljön"
+        : "Affären har ingen återkommande fakturering i Fortnox att aktivera",
       { code: "no_recurring" },
     );
   }
@@ -245,13 +269,16 @@ async function activate(dealId: number, environment: FortnoxEnvironment) {
   );
 
   const status = patched?.status ?? "ACTIVE";
-  await supabaseAdmin
-    .from("deals")
-    .update({ fortnox_recurring_status: status })
-    .eq("id", dealId);
+  if (!isSandbox) {
+    await supabaseAdmin
+      .from("deals")
+      .update({ fortnox_recurring_status: status })
+      .eq("id", dealId);
+  }
 
   return {
     recurring_id: recurringId,
+    environment,
     status,
     invoice_handling: patched?.invoice_handling ?? "AUTOMATIC",
     next_invoice_date: patched?.dates?.dates?.invoice_date ?? null,
@@ -289,10 +316,13 @@ Deno.serve((req: Request) =>
         );
       }
 
+      const recurringIdOverride =
+        typeof body.recurring_id === "string" ? body.recurring_id : null;
+
       return createJsonResponse(
         action === "create_from_deal"
           ? await createFromDeal(dealId, environmentField)
-          : await activate(dealId, environmentField),
+          : await activate(dealId, environmentField, recurringIdOverride),
       );
     } catch (error) {
       if (error instanceof MissingBillingDataError) {

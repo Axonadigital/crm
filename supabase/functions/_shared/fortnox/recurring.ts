@@ -10,11 +10,12 @@
  * Two facts from the spec shape how this module is used:
  *
  * 1. POST always persists with status ACTIVE — there is no "create a draft"
- *    input. But ACTIVE only generates invoices "if automatic or invoice
- *    service", and `invoice_handling: MANUAL` means "nothing is generated
- *    automatically". Creating with MANUAL therefore puts a reviewable record in
- *    Fortnox that cannot bill anyone, and a follow-up PATCH can set status
- *    DRAFT so it also *reads* as a draft.
+ *    input, and ACTIVE cannot be moved back to DRAFT (verified against a
+ *    sandbox: "Recurring in state ACTIVE cannot transition to DRAFT"). The
+ *    reachable review state is INACTIVE, which the spec defines as "retained
+ *    but not generating invoices". So creation posts with MANUAL handling and
+ *    immediately pauses to INACTIVE — two independent reasons nothing can go
+ *    out — and activation flips it to ACTIVE + AUTOMATIC.
  * 2. `frequency` only accepts MONTH or WEEK, so a quarterly or yearly cadence is
  *    expressed as a month interval (3 and 12), not its own frequency.
  */
@@ -29,6 +30,13 @@ export const RECURRING_VAT_PERCENTAGE = 25;
 export type RecurringInterval = "monthly" | "quarterly" | "yearly";
 
 export type RecurringStatus = "DRAFT" | "ACTIVE" | "INACTIVE" | "FINISHED";
+
+/**
+ * The state a newly created recurring is parked in for review. Not DRAFT:
+ * Fortnox only allows DRAFT before a recurring has ever been activated, and
+ * POST always activates.
+ */
+export const REVIEW_STATUS: RecurringStatus = "INACTIVE";
 
 export type InvoiceHandling =
   | "MANUAL"
