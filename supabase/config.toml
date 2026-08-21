@@ -219,3 +219,7 @@ verify_jwt = false
 verify_jwt = false
 [functions.fortnox_contracts]
 verify_jwt = false
+
+# Mission Control heartbeat-mottagare; auth via x-cron-secret i koden.
+[functions.mc_heartbeat]
+verify_jwt = false
