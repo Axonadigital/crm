@@ -223,3 +223,5 @@ verify_jwt = false
 # Mission Control heartbeat-mottagare; auth via x-cron-secret i koden.
 [functions.mc_heartbeat]
 verify_jwt = false
+[functions.mc_submit]
+verify_jwt = false
