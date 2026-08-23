@@ -16,14 +16,27 @@ import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 Deno.serve((req) => OptionsMiddleware(req, handle));
 
 async function handle(req: Request): Promise<Response> {
-  // Två godkända anropare: cron med x-cron-secret, eller VPS:ens service role
-  // (samma nyckel som all annan MC-skrivning därifrån — ingen ny hemlighet).
+  // Två godkända anropare: cron med x-cron-secret, eller VPS:ens service-nyckel.
+  // Nyckeln jämförs inte mot env (edge-miljön har nytt nyckelformat, VPS:en
+  // legacy-JWT) utan VALIDERAS genom att användas mot auth-admin-API:t —
+  // bara en äkta service-nyckel passerar det.
   const secret = Deno.env.get("CRON_SECRET");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const viaSecret =
     Boolean(secret) && req.headers.get("x-cron-secret") === secret;
-  const viaServiceRole =
-    Boolean(serviceKey) && req.headers.get("x-service-key") === serviceKey;
+  let viaServiceRole = false;
+  const providedKey = req.headers.get("x-service-key");
+  if (!viaSecret && providedKey) {
+    const check = await fetch(
+      `${Deno.env.get("SUPABASE_URL")}/auth/v1/admin/users?per_page=1`,
+      {
+        headers: {
+          apikey: providedKey,
+          Authorization: `Bearer ${providedKey}`,
+        },
+      },
+    );
+    viaServiceRole = check.ok;
+  }
   if (!viaSecret && !viaServiceRole) {
     return createErrorResponse(401, "Unauthorized");
   }
