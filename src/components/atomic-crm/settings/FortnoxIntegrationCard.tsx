@@ -149,7 +149,7 @@ const ConnectedBadge = ({
 };
 
 export const FortnoxIntegrationCard = () => (
-  <Card>
+  <Card data-tour="settings-fortnox">
     <CardHeader>
       <CardTitle className="flex items-center gap-2">
         Fortnox
@@ -180,7 +180,7 @@ export const FortnoxSandboxCard = () => {
   });
 
   return (
-    <Card>
+    <Card data-tour="settings-fortnox-sandbox">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FlaskConical className="h-4 w-4" />

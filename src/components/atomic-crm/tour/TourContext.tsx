@@ -5,6 +5,12 @@ import type { TourDefinition } from "./types";
 /** Persisted (per browser) under the `CRM.` store prefix. */
 export const OVERVIEW_SEEN_KEY = "tour.overview.done";
 
+/**
+ * Separate flag for the "what's new" tour so existing users get introduced to
+ * the Fortnox billing features without replaying the whole 18-step overview.
+ */
+export const WHATS_NEW_SEEN_KEY = "tour.whatsnew.fortnox.done";
+
 export type TourContextValue = {
   /** Tours available for the current layout (desktop vs mobile). */
   tours: TourDefinition[];

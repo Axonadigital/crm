@@ -39,6 +39,7 @@ import { NoteCreate } from "../notes/NoteCreate";
 import { NotesIterator } from "../notes/NotesIterator";
 import { NoteCreateSheet } from "../notes/NoteCreateSheet";
 import { useConfigurationContext } from "../root/ConfigurationContext";
+import { TourHelpButton } from "../tour";
 import type { Deal } from "../types";
 import { ContactList } from "./ContactList";
 import { DealEditSheet } from "./DealEditSheet";
@@ -98,7 +99,10 @@ const DealShowContent = () => {
               </ReferenceField>
               <h2 className="text-2xl font-semibold">{record.name}</h2>
             </div>
-            <div className={`flex gap-2 ${record.archived_at ? "" : "pr-12"}`}>
+            <div
+              className={`flex gap-2 ${record.archived_at ? "" : "pr-12"}`}
+              data-tour="deal-actions"
+            >
               {record.archived_at ? (
                 <>
                   <UnarchiveButton record={record} />
@@ -108,6 +112,10 @@ const DealShowContent = () => {
                 <>
                   <InvoiceDealButton />
                   <RecurringDealButton />
+                  <TourHelpButton
+                    tourId="deal-billing"
+                    label="Så fakturerar du den här affären"
+                  />
                   <ArchiveButton record={record} />
                   <EditButton />
                 </>
@@ -167,7 +175,10 @@ const DealShowContent = () => {
                   const schedule = dealNextInvoice(record);
                   if (!schedule && !record.invoiced_through) return null;
                   return (
-                    <div className="flex flex-col mr-10">
+                    <div
+                      className="flex flex-col mr-10"
+                      data-tour="deal-next-invoice"
+                    >
                       <span className="text-xs text-muted-foreground tracking-wide">
                         Nästa faktura
                       </span>
