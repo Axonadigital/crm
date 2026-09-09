@@ -176,13 +176,25 @@ async function scoreWebsiteQuality(websiteUrl: string): Promise<{
     }
 
     // 5. Parking/placeholder page (-50)
+    // Domänparkering — INTE bilparkering. "parkering" ensamt gav -50 och
+    // website_quality "poor" på sajter som skriver om parkering (t.ex.
+    // kommuner, fastighetsbolag). Samma frasslista som scannerns quality.ts.
+    const PARKED_PHRASES = [
+      "domänen är parkerad",
+      "domain is parked",
+      "parked domain",
+      "this domain is for sale",
+      "domain is for sale",
+      "domain for sale",
+      "denna domän är till salu",
+      "köp denna domän",
+      "köp domänen",
+      "under construction",
+      "coming soon",
+      "sidan är under uppbyggnad",
+    ];
     const isParked =
-      htmlLower.includes("parkering") ||
-      htmlLower.includes("domain is for sale") ||
-      htmlLower.includes("under construction") ||
-      htmlLower.includes("coming soon") ||
-      htmlLower.includes("denna domän") ||
-      htmlLower.includes("köp denna") ||
+      PARKED_PHRASES.some((phrase) => htmlLower.includes(phrase)) ||
       html.length < 2000;
     if (isParked) {
       deductions += 50;
