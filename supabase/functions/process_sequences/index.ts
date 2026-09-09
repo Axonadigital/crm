@@ -656,6 +656,24 @@ Deno.serve(async (req: Request) =>
 
     const startedAt = new Date().toISOString();
     const settings = await loadSettings();
+    // pg_cron-wrappern skapar en mc_runs-rad och skickar id:t hit, så
+    // Mission Control kan visa utfallet per körning — inte bara heartbeatet.
+    const body = (await req.clone().json().catch(() => null)) as Row | null;
+    const mcRunId =
+      body && typeof body.mc_run_id === "number" ? body.mc_run_id : null;
+    const finishRun = async (status: "succeeded" | "failed", summary: string) => {
+      if (mcRunId == null) return;
+      const { error } = await supabaseAdmin
+        .from("mc_runs")
+        .update({
+          status,
+          finished_at: new Date().toISOString(),
+          summary: summary.slice(0, 500),
+          error: status === "failed" ? summary.slice(0, 500) : null,
+        })
+        .eq("id", mcRunId);
+      if (error) console.error("mc_runs update failed:", error.message);
+    };
     const counters: TickCounters = {
       processed: 0,
       sent: 0,
@@ -679,6 +697,7 @@ Deno.serve(async (req: Request) =>
 
       if (fetchErr) {
         await heartbeat("failed", startedAt, `fetch: ${fetchErr.message}`, { settings });
+        await finishRun("failed", `fetch: ${fetchErr.message}`);
         return createErrorResponse(500, "Failed to fetch enrollments");
       }
 
@@ -700,17 +719,15 @@ Deno.serve(async (req: Request) =>
       }
 
       const mode = settings.dryRun ? "TORRLÄGE" : "skarpt";
-      await heartbeat(
-        "ok",
-        startedAt,
-        `${mode}: ${counters.processed} förfallna, ${counters.sent} skickade, ${counters.suppressed} spärrade, ${counters.dryRun} torrkörda`,
-        { ...counters, settings },
-      );
+      const summary = `${mode}: ${counters.processed} förfallna, ${counters.sent} skickade, ${counters.suppressed} spärrade, ${counters.dryRun} torrkörda`;
+      await heartbeat("ok", startedAt, summary, { ...counters, settings });
+      await finishRun(counters.failed > 0 ? "failed" : "succeeded", summary);
       return createJsonResponse({ mode, ...counters });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("process_sequences error:", error);
       await heartbeat("failed", startedAt, message, { ...counters, settings });
+      await finishRun("failed", message);
       return createErrorResponse(500, `Failed: ${message}`);
     }
   }),

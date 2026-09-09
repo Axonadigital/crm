@@ -1317,15 +1317,56 @@ async function handleAutoScrape(req: Request) {
   }
 }
 
+/**
+ * Avslutar en Mission Control-körning (mc_runs) om anroparen skickade
+ * mc_run_id — det gör public.run_auto_scrape() (pg_cron). Icke-fatalt.
+ */
+async function completeMcRun(
+  runId: number | undefined,
+  response: Response,
+): Promise<Response> {
+  if (!runId) return response;
+  try {
+    const clone = response.clone();
+    const payload = (await clone.json().catch(() => null)) as
+      | { summary?: Record<string, unknown>; message?: string }
+      | null;
+    const ok = response.ok && payload?.summary != null;
+    const summary = payload?.summary
+      ? `${payload.summary.total_new_leads ?? 0} nya leads, ${payload.summary.total_enriched ?? 0} berikade, ${payload.summary.total_duplicates_skipped ?? 0} dubbletter`
+      : (payload?.message ?? `HTTP ${response.status}`);
+    await supabaseAdmin
+      .from("mc_runs")
+      .update({
+        status: ok ? "succeeded" : "failed",
+        finished_at: new Date().toISOString(),
+        summary: summary.slice(0, 500),
+        error: ok ? null : summary.slice(0, 500),
+      })
+      .eq("id", runId);
+  } catch (err) {
+    console.error("completeMcRun failed:", err);
+  }
+  return response;
+}
+
 Deno.serve(async (req: Request) =>
-  OptionsMiddleware(req, async (req) =>
-    AuthMiddleware(req, async (req) =>
-      UserMiddleware(req, async (req, _user) => {
-        if (req.method !== "POST") {
-          return createErrorResponse(405, "Metod ej tillåten");
-        }
-        return handleAutoScrape(req);
-      }),
-    ),
-  ),
+  OptionsMiddleware(req, async (req) => {
+    if (req.method !== "POST") {
+      return createErrorResponse(405, "Metod ej tillåten");
+    }
+    // Två vägar in: pg_cron med x-cron-secret (leadkretsens påfyllning,
+    // public.run_auto_scrape) eller en inloggad användare från CRM:et.
+    const cronSecret = Deno.env.get("CRON_SECRET");
+    const provided = req.headers.get("x-cron-secret");
+    if (cronSecret && provided && provided === cronSecret) {
+      const peek = await req.clone().json().catch(() => null);
+      const runId =
+        peek && typeof peek.mc_run_id === "number" ? peek.mc_run_id : undefined;
+      return completeMcRun(runId, await handleAutoScrape(req));
+    }
+    return AuthMiddleware(req, async (req) =>
+      UserMiddleware(req, async (req, _user) => handleAutoScrape(req)),
+    );
+  }),
 );
