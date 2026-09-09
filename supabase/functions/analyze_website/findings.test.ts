@@ -73,7 +73,7 @@ describe("computeFindings", () => {
     expect(missing?.description).toContain("mindre relevant");
   });
 
-  it("flags missing schema.org and llms.txt as AI-search opportunities", () => {
+  it("flags missing schema.org as an AI-search opportunity — never llms.txt", () => {
     const findings = computeFindings({
       ...healthySite,
       seoChecks: {
@@ -82,16 +82,12 @@ describe("computeFindings", () => {
         llms_txt: false,
       },
     });
-    expect(findings.map((f) => f.key)).toEqual(
-      expect.arrayContaining(["missing_schema_org", "missing_llms_txt"]),
-    );
+    expect(findings.map((f) => f.key)).toContain("missing_schema_org");
+    // Google använder inte llms.txt — den får aldrig bli ett fynd.
+    expect(findings.map((f) => f.key)).not.toContain("missing_llms_txt");
     expect(
-      findings
-        .filter((f) =>
-          ["missing_schema_org", "missing_llms_txt"].includes(f.key),
-        )
-        .every((f) => f.service === "AI-sök-optimering"),
-    ).toBe(true);
+      findings.find((f) => f.key === "missing_schema_org")?.service,
+    ).toBe("AI-sök-optimering");
   });
 
   it("flags an explicit noindex directive as a high SEO issue", () => {

@@ -109,14 +109,6 @@ export const REMEDIATION_CATALOG: Record<string, RemediationEntry> = {
       "Lägg Service- och FAQPage-schema på relevanta sidor så AI och Google förstår utbudet.",
     ],
   },
-  missing_llms_txt: {
-    codeFixable: true,
-    area: "AI-sök",
-    steps: [
-      "Skapa public/llms.txt enligt llmstxt.org: kort företagsbeskrivning, tjänster, kontaktinfo och länkar till nyckelsidor.",
-      "Håll den uppdaterad så AI-modeller kan citera korrekt info om företaget.",
-    ],
-  },
 
   // --- Innehåll ------------------------------------------------------------
   missing_og_tags: {

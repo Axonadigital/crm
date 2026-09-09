@@ -302,16 +302,10 @@ export function computeFindings(input: AnalysisInput): Finding[] {
         service: SERVICES.aiSearch,
       });
     }
-    if (!seoChecks.llms_txt) {
-      findings.push({
-        key: "missing_llms_txt",
-        severity: "low",
-        title: "Saknar llms.txt",
-        description:
-          "Allt fler kunder söker via AI (ChatGPT, Claude, Gemini). En llms.txt gör sajten läsbar för AI-sök och är en enkel konkurrensfördel.",
-        service: SERVICES.aiSearch,
-      });
-    }
+    // llms.txt genererar inget fynd längre (2026-09-09): Google skriver
+    // själva i "Optimizing your website for generative AI features" att
+    // Search inte använder den. Fältet seoChecks.llms_txt finns kvar som
+    // rådata; UI och kundmail filtrerade redan bort nyckeln.
     if (!seoChecks.sitemap) {
       findings.push({
         key: "missing_sitemap",
