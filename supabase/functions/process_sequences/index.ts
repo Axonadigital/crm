@@ -1,128 +1,293 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
-import { createErrorResponse } from "../_shared/utils.ts";
+import { OptionsMiddleware } from "../_shared/cors.ts";
+import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import { checkGate, type GateVerdict } from "../_shared/outreachGate.ts";
 
 /**
  * Process Sequences Edge Function
  *
- * Triggered by external cron (e.g. cron-job.org, GitHub Actions).
- * Finds all active enrollments with next_action_at <= now(),
- * executes the current step, and advances or completes the enrollment.
+ * Anropas var 5:e minut av pg_cron via public.run_process_sequences()
+ * (migration 20260909120000). Hittar aktiva enrollments med förfallet
+ * next_action_at, kör nästa steg och flyttar fram — MED tre skydd som
+ * saknades i den första versionen:
  *
- * Auth: Uses a shared secret (CRON_SECRET) since there's no user context.
+ *  1. Grinden: public.is_suppressed() frågas för varje enrollment innan
+ *     något steg körs. Befintlig kund, sagt nej, enskild firma utan
+ *     samtycke, studs, avregistrerad → enrollment pausas, inget skickas.
+ *  2. Torrläge: mc_settings.sequences.dry_run (default true). I torrläge
+ *     renderas mejlet, loggas i sequence_run_log, men INGET skickas och
+ *     INGET tillstånd ändras. Loggen är granskningsytan innan skarpt läge.
+ *  3. Dygnstak: mc_settings.sequences.daily_cap — skyddar avsändarryktet
+ *     hos Resend medan volymen trappas upp.
+ *
+ * Varje körning lämnar ett heartbeat i mc_job_heartbeats så MC ser jobbet.
+ * Auth: x-cron-secret (ingen användarkontext).
  */
 
 const BATCH_SIZE = 50;
+const JOB_NAME = "process-sequences";
+const DEFAULT_DAILY_CAP = 30;
+const CAP_LOG_DEDUPE_MINUTES = 60;
 
-// --- Step Executors ---
+type Row = Record<string, unknown>;
+type Outcome =
+  | "sent"
+  | "executed"
+  | "dry_run"
+  | "skipped_suppressed"
+  | "skipped_cap"
+  | "completed"
+  | "failed";
 
-async function executeSendEmail(
-  step: Record<string, unknown>,
-  enrollment: Record<string, unknown>,
-): Promise<{ success: boolean; error?: string }> {
-  const templateId = step.template_id;
-  if (!templateId) {
-    return { success: false, error: "No template_id on step" };
+interface Settings {
+  dryRun: boolean;
+  dailyCap: number;
+}
+
+interface StepResult {
+  success: boolean;
+  error?: string;
+}
+
+interface PreparedEmail {
+  to: string;
+  subject: string;
+  body: string;
+  templateId: number;
+  companyId: number | null;
+}
+
+// --- Inställningar, logg, heartbeat ---
+
+/** Saknas raden eller är den trasig → torrläge. Fail-safe åt det hållet. */
+async function loadSettings(): Promise<Settings> {
+  const { data } = await supabaseAdmin
+    .from("mc_settings")
+    .select("value")
+    .eq("key", "sequences")
+    .maybeSingle();
+  const value = (data?.value ?? {}) as Row;
+  const cap = Number(value.daily_cap);
+  return {
+    dryRun: value.dry_run !== false,
+    dailyCap: Number.isFinite(cap) && cap > 0 ? cap : DEFAULT_DAILY_CAP,
+  };
+}
+
+async function logRun(entry: {
+  enrollment: Row;
+  step: number;
+  actionType: string | null;
+  outcome: Outcome;
+  reasons?: string[];
+  detail?: Row;
+}): Promise<void> {
+  const { error } = await supabaseAdmin.from("sequence_run_log").insert({
+    enrollment_id: entry.enrollment.id,
+    sequence_id: entry.enrollment.sequence_id,
+    contact_id: entry.enrollment.contact_id,
+    company_id: entry.enrollment.company_id ?? null,
+    step: entry.step,
+    action_type: entry.actionType,
+    outcome: entry.outcome,
+    reasons: entry.reasons ?? [],
+    detail: entry.detail ?? null,
+  });
+  if (error) console.error("sequence_run_log insert failed:", error.message);
+}
+
+/** Torrläge och tak loggar bara en gång per (enrollment, steg, fönster). */
+async function recentlyLogged(
+  enrollmentId: unknown,
+  step: number,
+  outcome: Outcome,
+  withinMinutes: number | null,
+): Promise<boolean> {
+  let query = supabaseAdmin
+    .from("sequence_run_log")
+    .select("id")
+    .eq("enrollment_id", enrollmentId)
+    .eq("step", step)
+    .eq("outcome", outcome)
+    .limit(1);
+  if (withinMinutes != null) {
+    query = query.gte(
+      "created_at",
+      new Date(Date.now() - withinMinutes * 60_000).toISOString(),
+    );
+  }
+  const { data } = await query;
+  return (data?.length ?? 0) > 0;
+}
+
+async function sentToday(): Promise<number> {
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const { count } = await supabaseAdmin
+    .from("sequence_run_log")
+    .select("id", { count: "exact", head: true })
+    .eq("outcome", "sent")
+    .gte("created_at", start.toISOString());
+  return count ?? 0;
+}
+
+async function heartbeat(
+  status: "ok" | "failed",
+  startedAt: string,
+  message: string,
+  meta: Row,
+): Promise<void> {
+  const { error } = await supabaseAdmin.from("mc_job_heartbeats").insert({
+    job: JOB_NAME,
+    status,
+    started_at: startedAt,
+    finished_at: new Date().toISOString(),
+    message: message.slice(0, 500),
+    meta,
+  });
+  if (error) console.error("heartbeat insert failed:", error.message);
+}
+
+// --- Grinden ---
+
+async function gateFor(enrollment: Row): Promise<{
+  verdict: GateVerdict;
+  email: string | null;
+}> {
+  const { data: contact } = await supabaseAdmin
+    .from("contacts")
+    .select("id, email_jsonb, company_id")
+    .eq("id", enrollment.contact_id)
+    .maybeSingle();
+  const emailJsonb = (contact?.email_jsonb ?? null) as
+    | Array<{ email?: string }>
+    | null;
+  const email = emailJsonb?.[0]?.email ?? null;
+  const companyId =
+    (enrollment.company_id as number | null) ??
+    (contact?.company_id as number | null) ??
+    null;
+
+  let company: Row | null = null;
+  if (companyId != null) {
+    const { data } = await supabaseAdmin
+      .from("companies")
+      .select("id, org_number, website")
+      .eq("id", companyId)
+      .maybeSingle();
+    company = data;
   }
 
-  const resendApiKey = Deno.env.get("RESEND_API_KEY");
-  if (!resendApiKey) {
-    return { success: false, error: "RESEND_API_KEY not configured" };
-  }
+  const verdict = await checkGate(supabaseAdmin, {
+    email,
+    website: (company?.website as string | null) ?? null,
+    orgNumber: (company?.org_number as string | null) ?? null,
+    companyId,
+  });
+  return { verdict, email };
+}
 
-  // Fetch template
-  const { data: template, error: templateErr } = await supabaseAdmin
+// --- Steg: förbereda och skicka mejl ---
+
+async function prepareEmail(
+  step: Row,
+  enrollment: Row,
+): Promise<{ ok: true; email: PreparedEmail } | { ok: false; error: string }> {
+  const templateId = step.template_id as number | null;
+  if (!templateId) return { ok: false, error: "No template_id on step" };
+
+  const { data: template } = await supabaseAdmin
     .from("email_templates")
-    .select("*")
+    .select("subject, body")
     .eq("id", templateId)
-    .single();
+    .maybeSingle();
+  if (!template) return { ok: false, error: "Template not found" };
 
-  if (templateErr || !template) {
-    return { success: false, error: "Template not found" };
-  }
-
-  // Fetch contact
-  const { data: contact, error: contactErr } = await supabaseAdmin
+  const { data: contact } = await supabaseAdmin
     .from("contacts")
     .select("*")
     .eq("id", enrollment.contact_id)
-    .single();
+    .maybeSingle();
+  if (!contact) return { ok: false, error: "Contact not found" };
 
-  if (contactErr || !contact) {
-    return { success: false, error: "Contact not found" };
-  }
+  const emailJsonb = contact.email_jsonb as Array<{ email: string }> | null;
+  const to = emailJsonb?.[0]?.email;
+  if (!to) return { ok: false, error: "Contact has no email" };
 
-  const emailJsonb = contact.email_jsonb as Array<{
-    email: string;
-    type: string;
-  }> | null;
-  const primaryEmail = emailJsonb?.[0]?.email;
-  if (!primaryEmail) {
-    return { success: false, error: "Contact has no email" };
-  }
-
-  // Fetch company if linked
-  let company = null;
+  let company: Row | null = null;
   if (contact.company_id) {
     const { data } = await supabaseAdmin
       .from("companies")
       .select("name, website, industry")
       .eq("id", contact.company_id)
-      .single();
+      .maybeSingle();
     company = data;
   }
 
-  // Build variables
   const variables: Record<string, string> = {
     first_name: contact.first_name || "",
     last_name: contact.last_name || "",
     full_name: `${contact.first_name || ""} ${contact.last_name || ""}`.trim(),
-    email: primaryEmail,
+    email: to,
     title: contact.title || "",
-    company_name: company?.name || "",
-    company_website: company?.website || "",
-    company_industry: company?.industry || "",
+    company_name: (company?.name as string) || "",
+    company_website: (company?.website as string) || "",
+    company_industry: (company?.industry as string) || "",
   };
-
-  // Render
-  const renderTemplate = (tmpl: string) =>
+  const render = (tmpl: string) =>
     tmpl.replace(
       /\{\{(\w+)\}\}/g,
       (_m: string, key: string) => variables[key] ?? `{{${key}}}`,
     );
 
-  const renderedSubject = renderTemplate(template.subject);
-  const renderedBody = renderTemplate(template.body);
+  return {
+    ok: true,
+    email: {
+      to,
+      subject: render(template.subject),
+      body: render(template.body),
+      templateId,
+      companyId: (contact.company_id as number | null) ?? null,
+    },
+  };
+}
+
+async function sendPrepared(
+  email: PreparedEmail,
+  enrollment: Row,
+  stepNumber: number,
+): Promise<StepResult> {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendApiKey) {
+    return { success: false, error: "RESEND_API_KEY not configured" };
+  }
   const fromEmail =
     Deno.env.get("RESEND_FROM_EMAIL") || "noreply@axonadigital.se";
 
-  // Log in email_sends
   const { data: emailSend, error: insertErr } = await supabaseAdmin
     .from("email_sends")
     .insert({
-      template_id: templateId,
+      template_id: email.templateId,
       contact_id: enrollment.contact_id,
-      company_id: contact.company_id || null,
-      subject: renderedSubject,
-      body: renderedBody,
-      to_email: primaryEmail,
+      company_id: email.companyId,
+      subject: email.subject,
+      body: email.body,
+      to_email: email.to,
       from_email: fromEmail,
       status: "queued",
       metadata: {
         sequence_id: enrollment.sequence_id,
-        sequence_step: enrollment.current_step,
+        sequence_step: stepNumber,
         enrollment_id: enrollment.id,
       },
     })
     .select()
     .single();
-
   if (insertErr || !emailSend) {
     return { success: false, error: "Failed to create email_sends record" };
   }
 
-  // Send via Resend
   const resendResponse = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -131,14 +296,14 @@ async function executeSendEmail(
     },
     body: JSON.stringify({
       from: `Axona Digital <${fromEmail}>`,
-      to: [primaryEmail],
-      subject: renderedSubject,
-      html: renderedBody.replace(/\n/g, "<br>"),
-      text: renderedBody,
+      to: [email.to],
+      subject: email.subject,
+      html: email.body.replace(/\n/g, "<br>"),
+      text: email.body,
       tags: [
         {
           name: "sequence",
-          value: `${enrollment.sequence_id}_step_${enrollment.current_step}`,
+          value: `${enrollment.sequence_id}_step_${stepNumber}`,
         },
       ],
     }),
@@ -165,28 +330,26 @@ async function executeSendEmail(
       postmark_message_id: resendResult.id,
     })
     .eq("id", emailSend.id);
-
   return { success: true };
 }
 
-async function executeCreateTask(
-  step: Record<string, unknown>,
-  enrollment: Record<string, unknown>,
-): Promise<{ success: boolean; error?: string }> {
-  const config = (step.action_config || {}) as Record<string, unknown>;
+// --- Steg: interna åtgärder ---
 
+async function executeCreateTask(
+  step: Row,
+  enrollment: Row,
+  stepNumber: number,
+): Promise<StepResult> {
+  const config = (step.action_config || {}) as Row;
   const { error } = await supabaseAdmin.from("tasks").insert({
     contact_id: enrollment.contact_id,
     type: config.task_type || "Email",
-    text:
-      config.task_text ||
-      `Sekvens uppföljning (steg ${enrollment.current_step})`,
+    text: config.task_text || `Sekvens uppföljning (steg ${stepNumber})`,
     due_date: new Date(
       Date.now() + ((config.due_days as number) || 1) * 86400000,
     ).toISOString(),
     done_date: null,
   });
-
   if (error) {
     return { success: false, error: `Failed to create task: ${error.message}` };
   }
@@ -194,24 +357,18 @@ async function executeCreateTask(
 }
 
 async function executeUpdateLeadStatus(
-  step: Record<string, unknown>,
-  enrollment: Record<string, unknown>,
-): Promise<{ success: boolean; error?: string }> {
-  const config = (step.action_config || {}) as Record<string, unknown>;
+  step: Row,
+  enrollment: Row,
+): Promise<StepResult> {
+  const config = (step.action_config || {}) as Row;
   const newStatus = config.lead_status as string;
-
   if (!newStatus || !enrollment.company_id) {
-    return {
-      success: false,
-      error: "Missing lead_status or company_id",
-    };
+    return { success: false, error: "Missing lead_status or company_id" };
   }
-
   const { error } = await supabaseAdmin
     .from("companies")
     .update({ lead_status: newStatus })
     .eq("id", enrollment.company_id);
-
   if (error) {
     return {
       success: false,
@@ -221,176 +378,311 @@ async function executeUpdateLeadStatus(
   return { success: true };
 }
 
-// --- Main Handler ---
+// --- Tillståndsövergångar ---
+
+async function advanceOrComplete(
+  enrollment: Row,
+  stepNumber: number,
+  now: string,
+): Promise<"advanced" | "completed"> {
+  const { data: futureStep } = await supabaseAdmin
+    .from("sequence_steps")
+    .select("step_number, delay_days, delay_hours")
+    .eq("sequence_id", enrollment.sequence_id)
+    .eq("step_number", stepNumber + 1)
+    .maybeSingle();
+
+  if (futureStep) {
+    const delayMs =
+      ((futureStep.delay_days || 0) * 86400 +
+        (futureStep.delay_hours || 0) * 3600) *
+      1000;
+    await supabaseAdmin
+      .from("sequence_enrollments")
+      .update({
+        current_step: stepNumber,
+        next_action_at: new Date(Date.now() + delayMs).toISOString(),
+      })
+      .eq("id", enrollment.id);
+    return "advanced";
+  }
+
+  await supabaseAdmin
+    .from("sequence_enrollments")
+    .update({
+      current_step: stepNumber,
+      status: "completed",
+      completed_at: now,
+      next_action_at: null,
+    })
+    .eq("id", enrollment.id);
+  return "completed";
+}
+
+async function pause(
+  enrollment: Row,
+  now: string,
+  status: "paused" | "unsubscribed" = "paused",
+): Promise<void> {
+  await supabaseAdmin
+    .from("sequence_enrollments")
+    .update({ status, paused_at: now, next_action_at: null })
+    .eq("id", enrollment.id);
+}
+
+// --- En enrollment per varv ---
+
+interface TickCounters {
+  processed: number;
+  sent: number;
+  executed: number;
+  dryRun: number;
+  suppressed: number;
+  capped: number;
+  completed: number;
+  failed: number;
+}
+
+async function processEnrollment(
+  enrollment: Row,
+  settings: Settings,
+  counters: TickCounters,
+  now: string,
+): Promise<void> {
+  counters.processed += 1;
+  const stepNumber = (enrollment.current_step as number) + 1;
+
+  const { data: step } = await supabaseAdmin
+    .from("sequence_steps")
+    .select("*")
+    .eq("sequence_id", enrollment.sequence_id)
+    .eq("step_number", stepNumber)
+    .maybeSingle();
+
+  // Inga fler steg → klar. Ingen utgående effekt, men torrläget rör inget.
+  if (!step) {
+    if (settings.dryRun) {
+      if (!(await recentlyLogged(enrollment.id, stepNumber, "dry_run", null))) {
+        await logRun({
+          enrollment,
+          step: stepNumber,
+          actionType: "complete",
+          outcome: "dry_run",
+          detail: { would: "complete enrollment (no more steps)" },
+        });
+        counters.dryRun += 1;
+      }
+      return;
+    }
+    await supabaseAdmin
+      .from("sequence_enrollments")
+      .update({ status: "completed", completed_at: now, next_action_at: null })
+      .eq("id", enrollment.id);
+    await logRun({ enrollment, step: stepNumber, actionType: "complete", outcome: "completed" });
+    counters.completed += 1;
+    return;
+  }
+
+  const actionType = step.action_type as string;
+
+  // 1. Grinden — före ALLA stegtyper. En kund ska inte heller få en
+  //    uppföljningsuppgift skapad ur en kall sekvens.
+  const { verdict } = await gateFor(enrollment);
+  if (verdict.suppressed) {
+    counters.suppressed += 1;
+    if (settings.dryRun) {
+      if (!(await recentlyLogged(enrollment.id, stepNumber, "skipped_suppressed", null))) {
+        await logRun({
+          enrollment,
+          step: stepNumber,
+          actionType,
+          outcome: "skipped_suppressed",
+          reasons: verdict.reasons,
+          detail: { would: "pause enrollment" },
+        });
+      }
+      return;
+    }
+    await pause(
+      enrollment,
+      now,
+      verdict.reasons.includes("unsubscribed") ? "unsubscribed" : "paused",
+    );
+    await logRun({
+      enrollment,
+      step: stepNumber,
+      actionType,
+      outcome: "skipped_suppressed",
+      reasons: verdict.reasons,
+    });
+    return;
+  }
+
+  // 2. Dygnstak — bara för utgående mejl. Enrollment lämnas förfallen och
+  //    plockas upp nästa dygn.
+  if (actionType === "send_email" && !settings.dryRun) {
+    const sent = await sentToday();
+    if (sent >= settings.dailyCap) {
+      counters.capped += 1;
+      if (!(await recentlyLogged(enrollment.id, stepNumber, "skipped_cap", CAP_LOG_DEDUPE_MINUTES))) {
+        await logRun({
+          enrollment,
+          step: stepNumber,
+          actionType,
+          outcome: "skipped_cap",
+          detail: { sent_today: sent, daily_cap: settings.dailyCap },
+        });
+      }
+      return;
+    }
+  }
+
+  // 3. Torrläge — rendera och logga, rör inget.
+  if (settings.dryRun) {
+    if (await recentlyLogged(enrollment.id, stepNumber, "dry_run", null)) return;
+    let detail: Row;
+    let outcome: Outcome = "dry_run";
+    if (actionType === "send_email") {
+      const prepared = await prepareEmail(step, enrollment);
+      if (prepared.ok) {
+        detail = {
+          would: "send email",
+          to: prepared.email.to,
+          subject: prepared.email.subject,
+          body_preview: prepared.email.body.slice(0, 400),
+        };
+      } else {
+        outcome = "failed";
+        detail = { would: "send email", error: prepared.error };
+      }
+    } else {
+      detail = { would: actionType, action_config: step.action_config ?? null };
+    }
+    await logRun({ enrollment, step: stepNumber, actionType, outcome, detail });
+    if (outcome === "failed") counters.failed += 1;
+    else counters.dryRun += 1;
+    return;
+  }
+
+  // 4. Skarpt läge.
+  let result: StepResult;
+  switch (actionType) {
+    case "send_email": {
+      const prepared = await prepareEmail(step, enrollment);
+      result = prepared.ok
+        ? await sendPrepared(prepared.email, enrollment, stepNumber)
+        : { success: false, error: prepared.error };
+      break;
+    }
+    case "create_task":
+      result = await executeCreateTask(step, enrollment, stepNumber);
+      break;
+    case "update_lead_status":
+      result = await executeUpdateLeadStatus(step, enrollment);
+      break;
+    default:
+      result = { success: false, error: `Unknown action: ${actionType}` };
+  }
+
+  if (!result.success) {
+    await pause(enrollment, now);
+    await logRun({
+      enrollment,
+      step: stepNumber,
+      actionType,
+      outcome: "failed",
+      detail: { error: result.error },
+    });
+    counters.failed += 1;
+    return;
+  }
+
+  const transition = await advanceOrComplete(enrollment, stepNumber, now);
+  await logRun({
+    enrollment,
+    step: stepNumber,
+    actionType,
+    outcome: actionType === "send_email" ? "sent" : "executed",
+    detail: { transition },
+  });
+  if (actionType === "send_email") counters.sent += 1;
+  else counters.executed += 1;
+  if (transition === "completed") counters.completed += 1;
+}
+
+// --- Main ---
 
 Deno.serve(async (req: Request) =>
   OptionsMiddleware(req, async (req) => {
-    // Auth: check CRON_SECRET header (no JWT for cron jobs)
     const cronSecret = Deno.env.get("CRON_SECRET");
     const providedSecret =
       req.headers.get("x-cron-secret") ||
       new URL(req.url).searchParams.get("secret");
-
     if (!cronSecret || providedSecret !== cronSecret) {
       return createErrorResponse(401, "Unauthorized");
     }
-
     if (req.method !== "POST") {
       return createErrorResponse(405, "Method Not Allowed");
     }
 
-    try {
-      const now = new Date().toISOString();
+    const startedAt = new Date().toISOString();
+    const settings = await loadSettings();
+    const counters: TickCounters = {
+      processed: 0,
+      sent: 0,
+      executed: 0,
+      dryRun: 0,
+      suppressed: 0,
+      capped: 0,
+      completed: 0,
+      failed: 0,
+    };
 
-      // Find all active enrollments with due actions
-      const { data: dueEnrollments, error: fetchErr } = await supabaseAdmin
+    try {
+      const { data: due, error: fetchErr } = await supabaseAdmin
         .from("sequence_enrollments")
         .select("*, sequences!inner(status)")
         .eq("status", "active")
-        .lte("next_action_at", now)
+        .lte("next_action_at", startedAt)
         .eq("sequences.status", "active")
+        .order("next_action_at", { ascending: true })
         .limit(BATCH_SIZE);
 
       if (fetchErr) {
-        console.error("Fetch enrollments error:", fetchErr);
+        await heartbeat("failed", startedAt, `fetch: ${fetchErr.message}`, { settings });
         return createErrorResponse(500, "Failed to fetch enrollments");
       }
 
-      if (!dueEnrollments || dueEnrollments.length === 0) {
-        return new Response(
-          JSON.stringify({ processed: 0, message: "No due enrollments" }),
-          { headers: { "Content-Type": "application/json", ...corsHeaders } },
-        );
-      }
-
-      const results: Array<{
-        enrollment_id: number;
-        step: number;
-        action: string;
-        success: boolean;
-        error?: string;
-      }> = [];
-
-      for (const enrollment of dueEnrollments) {
-        const nextStep = enrollment.current_step + 1;
-
-        // Fetch the next step for this sequence
-        const { data: step, error: stepErr } = await supabaseAdmin
-          .from("sequence_steps")
-          .select("*")
-          .eq("sequence_id", enrollment.sequence_id)
-          .eq("step_number", nextStep)
-          .single();
-
-        if (stepErr || !step) {
-          // No more steps — complete the enrollment
-          await supabaseAdmin
-            .from("sequence_enrollments")
-            .update({
-              status: "completed",
-              completed_at: now,
-              next_action_at: null,
-            })
-            .eq("id", enrollment.id);
-
-          results.push({
-            enrollment_id: enrollment.id,
-            step: nextStep,
-            action: "completed",
-            success: true,
+      for (const enrollment of due ?? []) {
+        try {
+          await processEnrollment(enrollment, settings, counters, startedAt);
+        } catch (err) {
+          counters.failed += 1;
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`enrollment ${enrollment.id} failed:`, message);
+          await logRun({
+            enrollment,
+            step: (enrollment.current_step as number) + 1,
+            actionType: null,
+            outcome: "failed",
+            detail: { error: message },
           });
-          continue;
         }
-
-        // Execute the step action
-        let result: { success: boolean; error?: string };
-
-        switch (step.action_type) {
-          case "send_email":
-            result = await executeSendEmail(step, enrollment);
-            break;
-          case "create_task":
-            result = await executeCreateTask(step, enrollment);
-            break;
-          case "update_lead_status":
-            result = await executeUpdateLeadStatus(step, enrollment);
-            break;
-          default:
-            result = {
-              success: false,
-              error: `Unknown action: ${step.action_type}`,
-            };
-        }
-
-        if (result.success) {
-          // Check if there's a next step after this one
-          const { data: futureStep } = await supabaseAdmin
-            .from("sequence_steps")
-            .select("step_number, delay_days, delay_hours")
-            .eq("sequence_id", enrollment.sequence_id)
-            .eq("step_number", nextStep + 1)
-            .single();
-
-          if (futureStep) {
-            // Schedule next step
-            const delayMs =
-              ((futureStep.delay_days || 0) * 86400 +
-                (futureStep.delay_hours || 0) * 3600) *
-              1000;
-            const nextActionAt = new Date(Date.now() + delayMs).toISOString();
-
-            await supabaseAdmin
-              .from("sequence_enrollments")
-              .update({
-                current_step: nextStep,
-                next_action_at: nextActionAt,
-              })
-              .eq("id", enrollment.id);
-          } else {
-            // This was the last step — complete
-            await supabaseAdmin
-              .from("sequence_enrollments")
-              .update({
-                current_step: nextStep,
-                status: "completed",
-                completed_at: now,
-                next_action_at: null,
-              })
-              .eq("id", enrollment.id);
-          }
-        } else {
-          // On failure (e.g. bounce), pause the enrollment
-          await supabaseAdmin
-            .from("sequence_enrollments")
-            .update({
-              status: "paused",
-              paused_at: now,
-            })
-            .eq("id", enrollment.id);
-        }
-
-        results.push({
-          enrollment_id: enrollment.id,
-          step: nextStep,
-          action: step.action_type,
-          success: result.success,
-          error: result.error,
-        });
       }
 
-      return new Response(
-        JSON.stringify({
-          processed: results.length,
-          results,
-        }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders } },
+      const mode = settings.dryRun ? "TORRLÄGE" : "skarpt";
+      await heartbeat(
+        "ok",
+        startedAt,
+        `${mode}: ${counters.processed} förfallna, ${counters.sent} skickade, ${counters.suppressed} spärrade, ${counters.dryRun} torrkörda`,
+        { ...counters, settings },
       );
+      return createJsonResponse({ mode, ...counters });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
       console.error("process_sequences error:", error);
-      return createErrorResponse(
-        500,
-        `Failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      await heartbeat("failed", startedAt, message, { ...counters, settings });
+      return createErrorResponse(500, `Failed: ${message}`);
     }
   }),
 );

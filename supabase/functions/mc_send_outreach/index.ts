@@ -12,6 +12,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { OptionsMiddleware } from "../_shared/cors.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
+import { checkGate } from "../_shared/outreachGate.ts";
 
 Deno.serve((req) => OptionsMiddleware(req, handle));
 
@@ -58,13 +59,18 @@ async function handle(req: Request): Promise<Response> {
     return createErrorResponse(400, "to_email, subject och body krävs");
   }
 
-  const { data: suppressed } = await supabaseAdmin
-    .from("mc_outreach_suppressions")
-    .select("email")
-    .eq("email", toEmail)
-    .maybeSingle();
-  if (suppressed) {
-    return createJsonResponse({ sent: false, suppressed: true });
+  // Grinden (is_suppressed) täcker även legacy-tabellen mc_outreach_suppressions,
+  // plus befintlig kund, sagt nej, enskild firma utan samtycke, studs m.m.
+  const verdict = await checkGate(supabaseAdmin, {
+    email: toEmail,
+    companyId: companyId as number | null,
+  });
+  if (verdict.suppressed) {
+    return createJsonResponse({
+      sent: false,
+      suppressed: true,
+      reasons: verdict.reasons,
+    });
   }
 
   const resendApiKey = Deno.env.get("RESEND_API_KEY");

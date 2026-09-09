@@ -227,3 +227,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.mc_send_outreach]
 verify_jwt = false
+
+[functions.process_sequences]
+verify_jwt = false

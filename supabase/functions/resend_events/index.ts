@@ -120,7 +120,7 @@ Deno.serve(async (req: Request) => {
     // (stored in postmark_message_id column — reused for Resend ID)
     const { data: emailSend, error: findError } = await supabaseAdmin
       .from("email_sends")
-      .select("id, status")
+      .select("id, status, to_email")
       .eq("postmark_message_id", emailId)
       .single();
 
@@ -179,6 +179,35 @@ Deno.serve(async (req: Request) => {
       case "email.complained":
         updateData.status = "complained";
         break;
+    }
+
+    // Studs och klagomål stänger adressen för ALLA kanaler via grinden —
+    // tidigare markerades bara email_sends, och nästa sekvens kunde skicka igen.
+    if (
+      (eventType === "email.bounced" || eventType === "email.complained") &&
+      typeof emailSend.to_email === "string" &&
+      emailSend.to_email.includes("@")
+    ) {
+      const reason = eventType === "email.bounced" ? "bounced" : "complained";
+      const { error: suppressError } = await supabaseAdmin
+        .from("outreach_suppressions")
+        .upsert(
+          {
+            email: emailSend.to_email.trim().toLowerCase(),
+            reason,
+            source: "resend",
+            note: `email_sends #${emailSend.id}`,
+          },
+          { onConflict: "email,reason", ignoreDuplicates: true },
+        );
+      if (suppressError) {
+        // Spärren är viktigare än webhook-svaret — logga högt, men låt
+        // statusuppdateringen nedan gå igenom.
+        console.error(
+          "outreach_suppressions upsert failed:",
+          suppressError.message,
+        );
+      }
     }
 
     if (Object.keys(updateData).length > 0) {
