@@ -21,4 +21,5 @@ export const sequenceTriggerLabels: Record<string, string> = {
   manual: "Manuell",
   new_lead: "Ny lead",
   segment_change: "Segmentändring",
+  scan_result: "Scan-resultat (automatisk)",
 };

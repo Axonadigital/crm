@@ -190,6 +190,16 @@ async function gateFor(enrollment: Row): Promise<{
 
 // --- Steg: förbereda och skicka mejl ---
 
+const GENERIC_MAILBOXES = new Set([
+  "info", "kontakt", "kontakta", "hej", "post", "office", "mail", "hello",
+  "admin", "kundtjanst", "kundservice", "support", "bokning", "order", "sales",
+]);
+
+function isGenericMailbox(firstName: string): boolean {
+  const key = firstName.trim().toLowerCase();
+  return key.length === 0 || GENERIC_MAILBOXES.has(key);
+}
+
 async function prepareEmail(
   step: Row,
   enrollment: Row,
@@ -216,6 +226,7 @@ async function prepareEmail(
   if (!to) return { ok: false, error: "Contact has no email" };
 
   let company: Row | null = null;
+  let scan: Row | null = null;
   if (contact.company_id) {
     const { data } = await supabaseAdmin
       .from("companies")
@@ -223,17 +234,35 @@ async function prepareEmail(
       .eq("id", contact.company_id)
       .maybeSingle();
     company = data;
+    // Senaste scan (vyn company_latest_scan) — ger rapportlänk och poäng
+    // till mallen, så mejlet kan peka på något konkret från första raden.
+    const { data: latest } = await supabaseAdmin
+      .from("company_latest_scan")
+      .select("total_score, report_slug, verdict")
+      .eq("company_id", contact.company_id)
+      .maybeSingle();
+    scan = latest;
   }
 
+  const firstName = (contact.first_name as string) || "";
+  const scannerBase = (
+    Deno.env.get("SCANNER_PUBLIC_URL") || "https://axona-scanner.vercel.app"
+  ).replace(/\/$/, "");
   const variables: Record<string, string> = {
-    first_name: contact.first_name || "",
+    first_name: firstName,
     last_name: contact.last_name || "",
-    full_name: `${contact.first_name || ""} ${contact.last_name || ""}`.trim(),
+    full_name: `${firstName} ${contact.last_name || ""}`.trim(),
+    // Auto-skapade kontakter från companies.email heter "info"/"kontakt" —
+    // då hälsar vi utan namn i stället för "Hej info".
+    greeting: isGenericMailbox(firstName) ? "Hej!" : `Hej ${firstName}!`,
     email: to,
     title: contact.title || "",
     company_name: (company?.name as string) || "",
     company_website: (company?.website as string) || "",
     company_industry: (company?.industry as string) || "",
+    scan_score: scan?.total_score != null ? String(scan.total_score) : "",
+    scan_verdict: (scan?.verdict as string) || "",
+    report_url: scan?.report_slug ? `${scannerBase}/r/${scan.report_slug}` : "",
   };
   const render = (tmpl: string) =>
     tmpl.replace(
