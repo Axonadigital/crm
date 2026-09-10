@@ -280,3 +280,30 @@ describe("toOutreachSignature", () => {
     expect(out).toContain("P.S Hör av dig!");
   });
 });
+
+describe("rewriteSenderAddress — Gmails <wbr>-fälla", () => {
+  it("tar bort <wbr> före matchning, annars blir adressen dubblerad", () => {
+    // Exakt formen som gav "rasmus@axonadigital.comcom" i produktion.
+    const html = 'rasmus@axonadigital.<wbr>com';
+    expect(rewriteSenderAddress(html, "rasmus@axonadigital.com")).toBe(
+      "rasmus@axonadigital.com",
+    );
+  });
+
+  it("är idempotent — rätt adress in ger rätt adress ut", () => {
+    const html = '<a href="mailto:rasmus@axonadigital.com">rasmus@axonadigital.com</a>';
+    expect(rewriteSenderAddress(html, "rasmus@axonadigital.com")).toBe(html);
+  });
+
+  it("rör inte en avhuggen adress som slutar på punkt", () => {
+    expect(rewriteSenderAddress("rasmus@axonadigital.", "rasmus@x.com")).toBe(
+      "rasmus@axonadigital.",
+    );
+  });
+
+  it("skriver fortfarande om en riktigt felaktig adress", () => {
+    expect(
+      rewriteSenderAddress("rasmus@axonadigital.se", "rasmus@axonadigital.com"),
+    ).toBe("rasmus@axonadigital.com");
+  });
+});

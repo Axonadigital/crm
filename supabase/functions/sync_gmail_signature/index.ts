@@ -167,7 +167,12 @@ Deno.serve(async (req: Request) =>
         html_length: outreachHtml.length,
         images: (outreachHtml.match(/<img/gi) || []).length,
         removed_phrases: removePhrases,
-        address_rewritten: html !== outreachHtml,
+        // Jämför adressen specifikt. Att bara jämföra HTML:en gav falskt
+        // utslag, eftersom <wbr>-städningen ensam ändrar strängen.
+        address_rewritten:
+          html.includes(gmail.fromEmail) !==
+            outreachHtml.includes(gmail.fromEmail) ||
+          !html.includes(gmail.fromEmail),
         text_preview: htmlSignatureToText(outreachHtml).slice(0, 400),
       });
     } catch (error) {

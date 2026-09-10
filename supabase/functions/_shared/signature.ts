@@ -174,11 +174,22 @@ export function renderHtmlSignature(cfg: SignatureConfig): string {
 export function rewriteSenderAddress(html: string, fromEmail: string): string {
   const local = fromEmail.split("@")[0];
   if (!local || !fromEmail.includes("@")) return html;
+
+  // Gmail stoppar in <wbr> i långa adresser som brytpunkter för radbrytning.
+  // Utan att ta bort dem först matchar mönstret bara fram till taggen och
+  // ersätter en HALV adress — vilket gav "rasmus@axonadigital.comcom" i prod.
+  // <wbr> är rent typografiskt och kan tas bort utan att något går förlorat.
+  const cleaned = html.replace(/<wbr\s*\/?>/gi, "");
+
   const pattern = new RegExp(
     `${local.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}@[A-Za-z0-9.-]+`,
     "g",
   );
-  return html.replace(pattern, fromEmail);
+  return cleaned.replace(pattern, (match) =>
+    // En träff som slutar på punkt eller bindestreck är en avhuggen adress,
+    // inte en riktig. Rör den inte — hellre orörd än trasig.
+    /[.-]$/.test(match) ? match : fromEmail,
+  );
 }
 
 /**
