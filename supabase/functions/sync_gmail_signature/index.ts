@@ -49,14 +49,15 @@ const RULES_KEY = "outreach_signature_rules";
 /**
  * Rader som stryks ur signaturen för kall utkorg.
  *
- * "Hemsidor, AI & automation" innehåller ordet AI, som mäter -36 %
- * svarsfrekvens över 85 miljoner kalla mejl. P.S.-raden behålls med flit —
- * Rasmus vill ha den, och det finns ingen mätning som talar emot den.
+ * Normalfallet är TOM lista: Rasmus har en egen signatur i Gmail för
+ * outreach-adressen, och den ska gå ut ordagrant. Han styr innehållet där,
+ * inte vi här.
  *
- * Ligger i mc_settings så listan kan ändras utan att röra koden.
+ * Listan finns kvar för det fall en rad ska bort utan att han bygger om
+ * signaturen. En uttryckligen tom lista betyder tom — inte "använd
+ * standarden". Det var en bugg i första versionen: det gick inte att stänga
+ * av strykningen, eftersom en tom lista föll tillbaka på förvalet.
  */
-const DEFAULT_REMOVE_PHRASES = ["Hemsidor, AI & automation"];
-
 async function loadRemovePhrases(): Promise<string[]> {
   const { data } = await supabaseAdmin
     .from("mc_settings")
@@ -65,9 +66,8 @@ async function loadRemovePhrases(): Promise<string[]> {
     .maybeSingle();
   const value = (data?.value ?? null) as Record<string, unknown> | null;
   const list = value?.remove_phrases;
-  if (!Array.isArray(list)) return DEFAULT_REMOVE_PHRASES;
-  const phrases = list.filter((p): p is string => typeof p === "string");
-  return phrases.length > 0 ? phrases : DEFAULT_REMOVE_PHRASES;
+  if (!Array.isArray(list)) return [];
+  return list.filter((p): p is string => typeof p === "string");
 }
 
 Deno.serve(async (req: Request) =>
@@ -130,8 +130,10 @@ Deno.serve(async (req: Request) =>
         });
       }
 
-      // Outreach-varianten härleds vid varje synk, så Rasmus fortfarande bara
-      // har EN signatur att underhålla i Gmail. Ändrar han där, följer det med.
+      // Signaturen går ut som Rasmus byggt den. Enda ingreppet som sker per
+      // automatik är adressomskrivningen, och den är en korrekthetsregel:
+      // signaturen MÅSTE visa den adress vi faktiskt skickar från, annars
+      // hamnar ett svar utanför tråden och svarsläsaren missar det.
       const removePhrases = await loadRemovePhrases();
       const outreachHtml = toOutreachSignature(
         html,
