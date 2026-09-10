@@ -30,7 +30,12 @@
 --    avsiktligt två meningar: Gong mäter att korta uppföljningar ger ungefär
 --    dubbelt så många svar som femmeningarsvarianter.
 --
--- 7. SIGNATUREN LIGGER INTE I MALLARNA. Den byggs i _shared/signature.ts och
+-- 7. INGEN GENITIV PÅ BOLAGSNAMN. "PO i Jämtland ABs hemsida" och
+--    "Mälardalens bygg & måleris hemsida" skorrar båda, och sådant avslöjar
+--    en mall direkt. Därför "hemsidan för {{company_name}}", som fungerar
+--    med alla namn.
+--
+-- 8. SIGNATUREN LIGGER INTE I MALLARNA. Den byggs i _shared/signature.ts och
 --    läggs på vid sändning, i både text och HTML. Fyra mallar med varsin
 --    kopierad signatur hade varit fyra ställen att hålla i synk.
 --
@@ -43,9 +48,9 @@ UPDATE public.email_templates SET
   subject = '{{company_name}}: {{scan_finding_lower}}',
   body = '{{greeting}}
 
-Jag tittade på {{company_name}}s hemsida häromdagen och hittade en sak jag tror du vill veta om. {{scan_finding_why}}
+Jag tittade på hemsidan för {{company_name}} häromdagen och hittade en sak jag tror du vill veta om. {{scan_finding_why}}
 
-Vill du att jag skickar exakt vad som behöver ändras? Det kostar inget, och det är {{scan_finding_effort}}.
+Vill du att jag skickar exakt vad som behöver ändras? Det kostar inget, och det här är {{scan_finding_effort}}.
 
 Vill du inte höra mer från mig räcker det att säga till.'
 WHERE id = 1;

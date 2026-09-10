@@ -258,10 +258,10 @@ function findingVars(raw: unknown): Record<string, string> {
     ),
     scan_finding_why: firstSentence(top?.why || ""),
     scan_finding_fix: top?.fix || "",
-    // "en kvart" vs "ett större jobb" — en ärlig storleksangivelse gör
-    // erbjudandet trovärdigt utan att lova bort arbetet.
+    // Formuleras så den funkar i meningen "det här är ...". En ärlig
+    // storleksangivelse gör erbjudandet trovärdigt utan att lova bort arbetet.
     scan_finding_effort:
-      top?.effort === "quick" ? "en kvart" : "ett större jobb",
+      top?.effort === "quick" ? "snabbt fixat" : "ett större jobb",
     scan_finding_2: second?.title || "",
     scan_finding_2_lower: lowerFirst(second?.title || ""),
     scan_finding_2_why: firstSentence(second?.why || ""),
