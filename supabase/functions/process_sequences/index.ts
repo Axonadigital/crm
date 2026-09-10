@@ -8,6 +8,7 @@ import {
   scanTopIssue,
   websiteHost,
 } from "../_shared/templateVars.ts";
+import { gmailConfigFromEnv, sendViaGmail } from "../_shared/gmail.ts";
 
 /**
  * Process Sequences Edge Function
@@ -24,7 +25,12 @@ import {
  *     renderas mejlet, loggas i sequence_run_log, men INGET skickas och
  *     INGET tillstånd ändras. Loggen är granskningsytan innan skarpt läge.
  *  3. Dygnstak: mc_settings.sequences.daily_cap — skyddar avsändarryktet
- *     hos Resend medan volymen trappas upp.
+ *     på utkorgsdomänen medan volymen trappas upp.
+ *
+ * Utkorgen skickas via Gmail-API:t från axonadigital.com (se _shared/gmail.ts),
+ * ALDRIG via Resend. Resends villkor förbjuder kall utkorg och skiljer inte på
+ * marknadsföring och transaktionsmejl, så ett stängt konto hade tagit offerter,
+ * avtalsmejl och kundrapporter med sig.
  *
  * Varje körning lämnar ett heartbeat i mc_job_heartbeats så MC ser jobbet.
  * Auth: x-cron-secret (ingen användarkontext).
@@ -312,12 +318,19 @@ async function sendPrepared(
   enrollment: Row,
   stepNumber: number,
 ): Promise<StepResult> {
-  const resendApiKey = Deno.env.get("RESEND_API_KEY");
-  if (!resendApiKey) {
-    return { success: false, error: "RESEND_API_KEY not configured" };
+  // Utkorgen går via Gmail, aldrig via Resend. Resends villkor förbjuder
+  // ordagrant kall utkorg och skiljer inte på marknadsföring och
+  // transaktionsmejl — ett stängt konto hade tagit offerter, avtalsmejl och
+  // kundrapporter med sig. Se _shared/gmail.ts.
+  const gmail = gmailConfigFromEnv((k) => Deno.env.get(k));
+  if (!gmail) {
+    return {
+      success: false,
+      error:
+        "Gmail är inte konfigurerat (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, " +
+        "GMAIL_REFRESH_TOKEN, GMAIL_FROM_EMAIL). Utkorgen skickas inte via Resend.",
+    };
   }
-  const fromEmail =
-    Deno.env.get("RESEND_FROM_EMAIL") || "noreply@axonadigital.se";
 
   const { data: emailSend, error: insertErr } = await supabaseAdmin
     .from("email_sends")
@@ -328,12 +341,13 @@ async function sendPrepared(
       subject: email.subject,
       body: email.body,
       to_email: email.to,
-      from_email: fromEmail,
+      from_email: gmail.fromEmail,
       status: "queued",
       metadata: {
         sequence_id: enrollment.sequence_id,
         sequence_step: stepNumber,
         enrollment_id: enrollment.id,
+        channel: "gmail",
       },
     })
     .select()
@@ -342,46 +356,39 @@ async function sendPrepared(
     return { success: false, error: "Failed to create email_sends record" };
   }
 
-  const resendResponse = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${resendApiKey}`,
-    },
-    body: JSON.stringify({
-      from: `Axona Digital <${fromEmail}>`,
-      to: [email.to],
+  let sent: { messageId: string; threadId: string };
+  try {
+    sent = await sendViaGmail(gmail, {
+      to: email.to,
       subject: email.subject,
-      html: email.body.replace(/\n/g, "<br>"),
       text: email.body,
-      tags: [
-        {
-          name: "sequence",
-          value: `${enrollment.sequence_id}_step_${stepNumber}`,
-        },
-      ],
-    }),
-  });
-
-  if (!resendResponse.ok) {
-    const errText = await resendResponse.text();
+    });
+  } catch (err) {
+    const errText = err instanceof Error ? err.message : String(err);
     await supabaseAdmin
       .from("email_sends")
       .update({
-        status: "bounced",
-        metadata: { ...emailSend.metadata, resend_error: errText },
+        status: "failed",
+        metadata: { ...emailSend.metadata, gmail_error: errText },
       })
       .eq("id", emailSend.id);
-    return { success: false, error: `Resend error: ${errText}` };
+    return { success: false, error: errText };
   }
 
-  const resendResult = await resendResponse.json();
   await supabaseAdmin
     .from("email_sends")
     .update({
       status: "sent",
       sent_at: new Date().toISOString(),
-      postmark_message_id: resendResult.id,
+      postmark_message_id: sent.messageId,
+      // Trådens id är nyckeln till svarsdetektering: kommer det ett nytt
+      // meddelande i tråden som inte är vårt, har mottagaren svarat. Ingen
+      // spårningspixel behövs för det, och det går inte att förfalska.
+      metadata: {
+        ...emailSend.metadata,
+        gmail_message_id: sent.messageId,
+        gmail_thread_id: sent.threadId,
+      },
     })
     .eq("id", emailSend.id);
   return { success: true };
