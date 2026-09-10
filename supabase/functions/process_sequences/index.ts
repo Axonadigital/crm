@@ -381,6 +381,9 @@ async function sendPrepared(
       status: "sent",
       sent_at: new Date().toISOString(),
       postmark_message_id: sent.messageId,
+      // Egen kolumn, inte bara metadata: svarsläsaren pollar på den och ett
+      // jsonb-fält går inte att indexera vettigt för det urvalet.
+      gmail_thread_id: sent.threadId,
       // Trådens id är nyckeln till svarsdetektering: kommer det ett nytt
       // meddelande i tråden som inte är vårt, har mottagaren svarat. Ingen
       // spårningspixel behövs för det, och det går inte att förfalska.
