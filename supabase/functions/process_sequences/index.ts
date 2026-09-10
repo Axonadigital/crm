@@ -8,6 +8,12 @@ import {
   scanTopIssue,
   websiteHost,
 } from "../_shared/templateVars.ts";
+import {
+  firstSentence,
+  quickWinCount,
+  secondFinding,
+  topFinding,
+} from "../_shared/scanFindings.ts";
 import { gmailConfigFromEnv, sendViaGmail } from "../_shared/gmail.ts";
 
 /**
@@ -228,6 +234,35 @@ function isGenericMailbox(firstName: string): boolean {
   return key.length === 0 || GENERIC_MAILBOXES.has(key);
 }
 
+/**
+ * Mallvariabler ur skanningens fynd.
+ *
+ * Varje variabel har ett fallback som fungerar i en mening, så en mall aldrig
+ * renderas med en tom lucka mitt i en formulering. Saknas fynden helt pekar
+ * texten på rapporten i stället — samma princip som scanTopIssue.
+ */
+function findingVars(raw: unknown): Record<string, string> {
+  const top = topFinding(raw);
+  const second = secondFinding(raw);
+  const quick = quickWinCount(raw);
+  return {
+    scan_finding: top?.title || "Det som står överst i rapporten",
+    scan_finding_lower: lowerFirst(
+      top?.title || "det som står överst i rapporten",
+    ),
+    scan_finding_why: firstSentence(top?.why || ""),
+    scan_finding_fix: top?.fix || "",
+    // "en kvart" vs "ett större jobb" — en ärlig storleksangivelse gör
+    // erbjudandet trovärdigt utan att lova bort arbetet.
+    scan_finding_effort:
+      top?.effort === "quick" ? "en kvart" : "ett större jobb",
+    scan_finding_2: second?.title || "",
+    scan_finding_2_lower: lowerFirst(second?.title || ""),
+    scan_finding_2_why: firstSentence(second?.why || ""),
+    scan_quick_wins: String(quick),
+  };
+}
+
 async function prepareEmail(
   step: Row,
   enrollment: Row,
@@ -266,7 +301,10 @@ async function prepareEmail(
     // till mallen, så mejlet kan peka på något konkret från första raden.
     const { data: latest } = await supabaseAdmin
       .from("company_latest_scan")
-      .select("total_score, report_slug, verdict")
+      // findings är det mejlet öppnar med — strukturerade fynd med rubrik,
+      // konsekvens i klartext och insats. Totalpoängen säger inget till en
+      // målare i Hackås; "Sajten är blockerad från Google" gör det.
+      .select("total_score, report_slug, verdict, findings")
       .eq("company_id", contact.company_id)
       .maybeSingle();
     scan = latest;
@@ -297,6 +335,7 @@ async function prepareEmail(
     scan_top_issue_lower: lowerFirst(
       scanTopIssue((scan?.verdict as string) || ""),
     ),
+    ...findingVars(scan?.findings),
     report_url: scan?.report_slug ? `${scannerBase}/r/${scan.report_slug}` : "",
   };
   const render = (tmpl: string) =>
