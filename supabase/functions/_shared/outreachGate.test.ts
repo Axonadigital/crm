@@ -100,3 +100,28 @@ describe("parseVerdict", () => {
     expect(parseVerdict("nope").suppressed).toBe(true);
   });
 });
+
+describe("parseVerdict — bolagsform", () => {
+  it("läser company_form ur svaret", () => {
+    expect(
+      parseVerdict({ suppressed: false, reasons: [], company_form: "juridisk" })
+        .companyForm,
+    ).toBe("juridisk");
+  });
+
+  it("okänd bolagsform spärrar med eget skäl", () => {
+    const v = parseVerdict({
+      suppressed: true,
+      reasons: ["unverified_company_form"],
+      company_form: "okand",
+    });
+    expect(v.suppressed).toBe(true);
+    expect(v.reasons).toContain("unverified_company_form");
+    expect(v.companyForm).toBe("okand");
+  });
+
+  it("skräpvärde i company_form ignoreras i stället för att läcka ut", () => {
+    expect(parseVerdict({ suppressed: false, reasons: [], company_form: "AB" })
+      .companyForm).toBeUndefined();
+  });
+});
