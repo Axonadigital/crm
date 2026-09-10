@@ -7,6 +7,7 @@ import {
   bouncedRecipient,
   classifyMessage,
   decodePlainText,
+  fetchProfile,
   fetchThread,
   headerValue,
   isNegativeReply,
@@ -73,13 +74,28 @@ async function heartbeat(
   if (error) console.error("heartbeat insert failed:", error.message);
 }
 
-/** Adresser som är våra egna, så vi inte läser vårt eget utskick som ett svar. */
-function ourAddresses(fromEmail: string): string[] {
+/**
+ * Adresser som är våra egna, så vi inte läser vårt eget utskick som ett svar.
+ *
+ * Tre källor, och alla tre behövs. Avsändaradressen är aliaset vi skickar
+ * från (rasmus@axonadigital.com). Brevlådan är kontot aliaset sitter på
+ * (info@axonadigital.se) — svarar Isak eller jag från info@ inne i tråden
+ * är det inte kunden som hört av sig, och utan den här raden hade det
+ * pausat sekvensen och lagt en falsk uppgift. GMAIL_OUR_ADDRESSES är till
+ * för resten av våra adresser den dagen vi har fler.
+ */
+function ourAddresses(fromEmail: string, mailbox: string): string[] {
   const extra = (Deno.env.get("GMAIL_OUR_ADDRESSES") || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  return [fromEmail.toLowerCase(), ...extra];
+  return [
+    ...new Set(
+      [fromEmail, mailbox, ...extra]
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 /** Spärrar en adress i grinden. Tyst om raden redan finns. */
@@ -328,6 +344,20 @@ Deno.serve(async (req: Request) =>
         return createErrorResponse(500, msg);
       }
 
+      // Hälsokoll före urvalet: går profilen igenom har vi läsrättighet.
+      // Utan den hade en körning utan trådar sett grön ut även om scopet
+      // saknades, och vi hade upptäckt det först vid första riktiga svaret.
+      let mailbox = "";
+      try {
+        const profile = await fetchProfile(accessToken);
+        mailbox = profile.emailAddress;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await heartbeat("failed", startedAt, msg, {});
+        await finishRun("failed", msg);
+        return createErrorResponse(500, msg);
+      }
+
       const cutoff = new Date(
         Date.now() - MAX_AGE_DAYS * 86400000,
       ).toISOString();
@@ -349,7 +379,7 @@ Deno.serve(async (req: Request) =>
         return createErrorResponse(500, "Failed to fetch sends");
       }
 
-      const ours = ourAddresses(gmail.fromEmail);
+      const ours = ourAddresses(gmail.fromEmail, mailbox);
 
       for (const send of sends ?? []) {
         if (Date.now() > deadline) break;
@@ -383,7 +413,7 @@ Deno.serve(async (req: Request) =>
         `${counters.threads} trådar · ${counters.replies} svar ` +
         `(${counters.saidNo} nej) · ${counters.bounces} studsar · ` +
         `${counters.autoReplies} frånvaro`;
-      await heartbeat("ok", startedAt, summary, { ...counters });
+      await heartbeat("ok", startedAt, summary, { ...counters, mailbox });
       await finishRun(counters.failed > 0 ? "failed" : "succeeded", summary);
       return createJsonResponse({ ...counters });
     } catch (error) {

@@ -234,6 +234,43 @@ export function bouncedRecipient(
   return match ? parseAddress(match[1]) : null;
 }
 
+export interface GmailProfile {
+  emailAddress: string;
+  messagesTotal: number;
+  threadsTotal: number;
+}
+
+/**
+ * Brevlådans profil. Kräver gmail.readonly — med bara gmail.send svarar
+ * Google 403 "insufficient authentication scopes".
+ *
+ * Därför duger den som hälsokoll: så länge den går igenom vet vi att
+ * svarsläsningen kan läsa, även de dygn då ingen tråd behövde kollas.
+ */
+export async function fetchProfile(
+  accessToken: string,
+): Promise<GmailProfile> {
+  const response = await fetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      response.status === 403
+        ? "Gmail nekar läsning — refresh-token saknar scopet gmail.readonly. " +
+          "Auktorisera om med både gmail.send och gmail.readonly."
+        : `Gmail-profilen kunde inte läsas (${response.status}): ${body.slice(0, 200)}`,
+    );
+  }
+  const json = (await response.json()) as Partial<GmailProfile>;
+  return {
+    emailAddress: json.emailAddress ?? "",
+    messagesTotal: json.messagesTotal ?? 0,
+    threadsTotal: json.threadsTotal ?? 0,
+  };
+}
+
 /** Hämtar en hel tråd med rubriker och brödtext. */
 export async function fetchThread(
   accessToken: string,
