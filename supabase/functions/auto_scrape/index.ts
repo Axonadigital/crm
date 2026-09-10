@@ -410,6 +410,10 @@ async function scoreWebsiteQuality(websiteUrl: string): Promise<{
 interface ScrapeResult {
   places: GoogleMapsPlace[];
   nextPageToken: string | null;
+  /** Antal träffar i textsökningen, före dedupe. 0 = sidan är slut. */
+  totalFound: number;
+  /** Träffar som redan finns i CRM:et — kostade inget detaljuppslag. */
+  knownSkipped: number;
 }
 
 async function scrapeGoogleMaps(
@@ -441,16 +445,27 @@ async function scrapeGoogleMaps(
   }
   if (searchData.status === "INVALID_REQUEST" && pageToken) {
     // Page token expired or invalid — reset and start from the beginning
-    return { places: [], nextPageToken: null };
+    return { places: [], nextPageToken: null, totalFound: 0, knownSkipped: 0 };
   }
   if (!searchData.results || searchData.results.length === 0) {
-    return { places: [], nextPageToken: null };
+    return { places: [], nextPageToken: null, totalFound: 0, knownSkipped: 0 };
   }
 
   const results = searchData.results.slice(0, limit);
+
+  // Dedupe FÖRE detaljuppslagen: en uttömd profil (allt redan i CRM:et)
+  // kostar då en textsökning i stället för 20 detaljanrop, och sidtoken
+  // bläddrar vidare så nästa körning ser nästa sida i stället för samma.
+  const candidateIds = results
+    .map((r: { place_id?: string }) => r.place_id)
+    .filter((id: string | undefined): id is string => !!id);
+  const known = await getExistingPlaceIds(candidateIds);
+  const fresh = results.filter(
+    (r: { place_id?: string }) => r.place_id && !known.has(r.place_id),
+  );
   const places: GoogleMapsPlace[] = [];
 
-  for (const result of results) {
+  for (const result of fresh) {
     try {
       const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${result.place_id}&fields=name,formatted_address,formatted_phone_number,website,rating,user_ratings_total,types,geometry&key=${apiKey}`;
       const detailsResponse = await fetch(detailsUrl);
@@ -479,6 +494,8 @@ async function scrapeGoogleMaps(
   return {
     places,
     nextPageToken: searchData.next_page_token || null,
+    totalFound: results.length,
+    knownSkipped: results.length - fresh.length,
   };
 }
 
@@ -732,10 +749,7 @@ async function enrichCompany(companyId: number): Promise<boolean> {
 
     // Google Places API fallback for phone number
     const googleMapsApiKey = Deno.env.get("GOOGLE_MAPS_API_KEY");
-    if (
-      googleMapsApiKey &&
-      company.name
-    ) {
+    if (googleMapsApiKey && company.name) {
       try {
         const placeQuery = company.city
           ? `${company.name} ${company.city}`
@@ -925,7 +939,10 @@ async function enrichCompany(companyId: number): Promise<boolean> {
         : [],
       discoveredPhoneNumbers,
     );
-    const primaryPhone = choosePrimaryPhone(company.phone_number, finalPhoneNumbers);
+    const primaryPhone = choosePrimaryPhone(
+      company.phone_number,
+      finalPhoneNumbers,
+    );
 
     if (primaryPhone) score += 5;
     if (company.email || discoveredEmail) score += 5;
@@ -996,12 +1013,12 @@ async function enrichCompany(companyId: number): Promise<boolean> {
       company_id: companyId,
       source: "auto_scrape",
       status: "success",
-        enrichment_data: {
-          social: socialResults,
-          phone_numbers: finalPhoneNumbers,
-          website_score: websiteScore,
-          website_quality: websiteQuality,
-          allabolag: allabolagData,
+      enrichment_data: {
+        social: socialResults,
+        phone_numbers: finalPhoneNumbers,
+        website_score: websiteScore,
+        website_quality: websiteQuality,
+        allabolag: allabolagData,
         lead_score: score,
         segment,
         search_quota_exhausted: searchQuotaExhausted,
@@ -1047,21 +1064,25 @@ async function processProfile(
 
   try {
     // Use stored page token to continue where we left off
-    const { places, nextPageToken } = await scrapeGoogleMaps(
-      query,
-      profile.max_results,
-      apiKey,
-      (profile as any).next_page_token || null,
-    );
-    result.total_found = places.length;
+    const { places, nextPageToken, totalFound, knownSkipped } =
+      await scrapeGoogleMaps(
+        query,
+        profile.max_results,
+        apiKey,
+        (profile as any).next_page_token || null,
+      );
+    result.total_found = totalFound;
 
-    if (places.length === 0) {
-      // No more results — reset page token so next run starts fresh
+    if (totalFound === 0) {
+      // Sökningen är slut (eller sidtoken dog) — börja om från sida 1 nästa
+      // gång. last_run_at sätts så profilen hamnar sist i rotationen igen.
       await supabaseAdmin
         .from("search_profiles")
         .update({
           next_page_token: null,
           pages_scraped: 0,
+          last_run_at: new Date().toISOString(),
+          last_run_results: 0,
           updated_at: new Date().toISOString(),
         })
         .eq("id", profile.id);
@@ -1083,7 +1104,8 @@ async function processProfile(
     const newPlaces = ratingFiltered.filter(
       (p) => p.place_id && !existingIds.has(p.place_id),
     );
-    result.duplicates_skipped = ratingFiltered.length - newPlaces.length;
+    result.duplicates_skipped =
+      knownSkipped + (ratingFiltered.length - newPlaces.length);
 
     // Step 1: Import all new companies
     const importedIds: number[] = [];
@@ -1251,10 +1273,18 @@ async function handleAutoScrape(req: Request) {
     const action = body
       ? getEnumField(body, "action", ["re_enrich"] as const)
       : undefined;
+    const mode = body
+      ? getEnumField(body, "mode", ["refill"] as const)
+      : undefined;
 
     // Handle re-enrich action
     if (action === "re_enrich") {
       return handleReEnrich(req);
+    }
+
+    // Leadkretsens påfyllning: jaga ett dagsmål över flera profiler.
+    if (mode === "refill" && body) {
+      return handleRefill(body, apiKey);
     }
 
     // Fetch active search profiles
@@ -1317,6 +1347,102 @@ async function handleAutoScrape(req: Request) {
   }
 }
 
+// Påfyllningens tidsbudget: edge-runtimen har en väggklocka (150 s på lägsta
+// planen) och pg_net väntar 150 s — vi startar ingen ny profil efter 100 s.
+const REFILL_TIME_BUDGET_MS = 100_000;
+const REFILL_DEFAULT_TARGET = 10;
+const REFILL_DEFAULT_MAX_PROFILES = 6;
+
+/**
+ * Påfyllning med dagsmål (mode = "refill", anropas av public.run_auto_scrape()):
+ * går igenom aktiva sökprofiler i rotationsordning (aldrig körd först, sedan
+ * äldst körd) tills target_new nya leads är importerade, max_profiles profiler
+ * är avverkade eller tidsbudgeten är slut. En uttömd profil kostar bara en
+ * textsökning (dedupe före detaljuppslagen) och rotationen går vidare direkt,
+ * så en dag går inte förlorad på en bransch som redan ligger i CRM:et.
+ */
+async function handleRefill(body: Record<string, unknown>, apiKey: string) {
+  const clamp = (v: unknown, d: number, lo: number, hi: number) => {
+    const n = typeof v === "number" && Number.isFinite(v) ? Math.floor(v) : d;
+    return Math.min(hi, Math.max(lo, n));
+  };
+  const targetNew = clamp(body.target_new, REFILL_DEFAULT_TARGET, 1, 50);
+  const maxProfiles = clamp(
+    body.max_profiles,
+    REFILL_DEFAULT_MAX_PROFILES,
+    1,
+    20,
+  );
+  const startedAt = Date.now();
+
+  const { data: profiles, error } = await supabaseAdmin
+    .from("search_profiles")
+    .select("*")
+    .eq("is_active", true)
+    .order("last_run_at", { ascending: true, nullsFirst: true })
+    .order("id", { ascending: true })
+    .limit(maxProfiles);
+
+  if (error) {
+    return createErrorResponse(
+      500,
+      `Kunde inte läsa sökprofiler: ${error.message}`,
+    );
+  }
+  if (!profiles || profiles.length === 0) {
+    return createJsonResponse({
+      success: true,
+      message: "Inga aktiva sökprofiler hittades",
+      results: [],
+    });
+  }
+
+  const results: ScrapeRunResult[] = [];
+  const errors: Array<{ profile: string; error: string }> = [];
+  let totalNew = 0;
+  let stoppedReason = "profiles_exhausted";
+
+  for (const profile of profiles as SearchProfile[]) {
+    if (totalNew >= targetNew) {
+      stoppedReason = "target_reached";
+      break;
+    }
+    if (Date.now() - startedAt > REFILL_TIME_BUDGET_MS) {
+      stoppedReason = "time_budget";
+      break;
+    }
+    try {
+      const result = await processProfile(profile, apiKey);
+      results.push(result);
+      totalNew += result.new_imported;
+    } catch (err) {
+      errors.push({ profile: profile.name, error: String(err) });
+    }
+  }
+  if (totalNew >= targetNew) stoppedReason = "target_reached";
+
+  return createJsonResponse({
+    success: true,
+    summary: {
+      mode: "refill",
+      target_new: targetNew,
+      profiles_processed: results.length,
+      profile_names: results.map((r) => r.profile_name),
+      total_new_leads: totalNew,
+      total_enriched: results.reduce((sum, r) => sum + r.auto_enriched, 0),
+      total_duplicates_skipped: results.reduce(
+        (sum, r) => sum + r.duplicates_skipped,
+        0,
+      ),
+      stopped_reason: stoppedReason,
+      elapsed_ms: Date.now() - startedAt,
+      errors: errors.length,
+    },
+    results,
+    errors: errors.length > 0 ? errors : undefined,
+  });
+}
+
 /**
  * Avslutar en Mission Control-körning (mc_runs) om anroparen skickade
  * mc_run_id — det gör public.run_auto_scrape() (pg_cron). Icke-fatalt.
@@ -1328,12 +1454,21 @@ async function completeMcRun(
   if (!runId) return response;
   try {
     const clone = response.clone();
-    const payload = (await clone.json().catch(() => null)) as
-      | { summary?: Record<string, unknown>; message?: string }
-      | null;
+    const payload = (await clone.json().catch(() => null)) as {
+      summary?: Record<string, unknown>;
+      message?: string;
+    } | null;
     const ok = response.ok && payload?.summary != null;
-    const summary = payload?.summary
-      ? `${payload.summary.total_new_leads ?? 0} nya leads, ${payload.summary.total_enriched ?? 0} berikade, ${payload.summary.total_duplicates_skipped ?? 0} dubbletter`
+    const s = payload?.summary;
+    const names = Array.isArray(s?.profile_names)
+      ? (s!.profile_names as string[]).join(", ")
+      : "";
+    const summary = s
+      ? `${s.total_new_leads ?? 0} nya leads` +
+        (s.target_new != null ? ` (mål ${s.target_new})` : "") +
+        `, ${s.total_enriched ?? 0} berikade, ${s.total_duplicates_skipped ?? 0} redan kända` +
+        (names ? ` · ${s.profiles_processed} profiler: ${names}` : "") +
+        (s.stopped_reason === "time_budget" ? " · stoppad på tidsbudget" : "")
       : (payload?.message ?? `HTTP ${response.status}`);
     await supabaseAdmin
       .from("mc_runs")
@@ -1360,7 +1495,10 @@ Deno.serve(async (req: Request) =>
     const cronSecret = Deno.env.get("CRON_SECRET");
     const provided = req.headers.get("x-cron-secret");
     if (cronSecret && provided && provided === cronSecret) {
-      const peek = await req.clone().json().catch(() => null);
+      const peek = await req
+        .clone()
+        .json()
+        .catch(() => null);
       const runId =
         peek && typeof peek.mc_run_id === "number" ? peek.mc_run_id : undefined;
       return completeMcRun(runId, await handleAutoScrape(req));

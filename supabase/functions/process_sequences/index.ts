@@ -3,6 +3,11 @@ import { OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { checkGate, type GateVerdict } from "../_shared/outreachGate.ts";
+import {
+  lowerFirst,
+  scanTopIssue,
+  websiteHost,
+} from "../_shared/templateVars.ts";
 
 /**
  * Process Sequences Edge Function
@@ -160,9 +165,9 @@ async function gateFor(enrollment: Row): Promise<{
     .select("id, email_jsonb, company_id")
     .eq("id", enrollment.contact_id)
     .maybeSingle();
-  const emailJsonb = (contact?.email_jsonb ?? null) as
-    | Array<{ email?: string }>
-    | null;
+  const emailJsonb = (contact?.email_jsonb ?? null) as Array<{
+    email?: string;
+  }> | null;
   const email = emailJsonb?.[0]?.email ?? null;
   const companyId =
     (enrollment.company_id as number | null) ??
@@ -191,8 +196,21 @@ async function gateFor(enrollment: Row): Promise<{
 // --- Steg: förbereda och skicka mejl ---
 
 const GENERIC_MAILBOXES = new Set([
-  "info", "kontakt", "kontakta", "hej", "post", "office", "mail", "hello",
-  "admin", "kundtjanst", "kundservice", "support", "bokning", "order", "sales",
+  "info",
+  "kontakt",
+  "kontakta",
+  "hej",
+  "post",
+  "office",
+  "mail",
+  "hello",
+  "admin",
+  "kundtjanst",
+  "kundservice",
+  "support",
+  "bokning",
+  "order",
+  "sales",
 ]);
 
 function isGenericMailbox(firstName: string): boolean {
@@ -230,7 +248,7 @@ async function prepareEmail(
   if (contact.company_id) {
     const { data } = await supabaseAdmin
       .from("companies")
-      .select("name, website, industry")
+      .select("name, website, industry, city")
       .eq("id", contact.company_id)
       .maybeSingle();
     company = data;
@@ -259,9 +277,16 @@ async function prepareEmail(
     title: contact.title || "",
     company_name: (company?.name as string) || "",
     company_website: (company?.website as string) || "",
+    company_website_host: websiteHost((company?.website as string) || ""),
     company_industry: (company?.industry as string) || "",
+    // "När någon i {{company_city}} söker …" — utan stad blir det "närheten".
+    company_city: ((company?.city as string) || "").trim() || "närheten",
     scan_score: scan?.total_score != null ? String(scan.total_score) : "",
     scan_verdict: (scan?.verdict as string) || "",
+    scan_top_issue: scanTopIssue((scan?.verdict as string) || ""),
+    scan_top_issue_lower: lowerFirst(
+      scanTopIssue((scan?.verdict as string) || ""),
+    ),
     report_url: scan?.report_slug ? `${scannerBase}/r/${scan.report_slug}` : "",
   };
   const render = (tmpl: string) =>
@@ -507,7 +532,12 @@ async function processEnrollment(
       .from("sequence_enrollments")
       .update({ status: "completed", completed_at: now, next_action_at: null })
       .eq("id", enrollment.id);
-    await logRun({ enrollment, step: stepNumber, actionType: "complete", outcome: "completed" });
+    await logRun({
+      enrollment,
+      step: stepNumber,
+      actionType: "complete",
+      outcome: "completed",
+    });
     counters.completed += 1;
     return;
   }
@@ -520,7 +550,14 @@ async function processEnrollment(
   if (verdict.suppressed) {
     counters.suppressed += 1;
     if (settings.dryRun) {
-      if (!(await recentlyLogged(enrollment.id, stepNumber, "skipped_suppressed", null))) {
+      if (
+        !(await recentlyLogged(
+          enrollment.id,
+          stepNumber,
+          "skipped_suppressed",
+          null,
+        ))
+      ) {
         await logRun({
           enrollment,
           step: stepNumber,
@@ -553,7 +590,14 @@ async function processEnrollment(
     const sent = await sentToday();
     if (sent >= settings.dailyCap) {
       counters.capped += 1;
-      if (!(await recentlyLogged(enrollment.id, stepNumber, "skipped_cap", CAP_LOG_DEDUPE_MINUTES))) {
+      if (
+        !(await recentlyLogged(
+          enrollment.id,
+          stepNumber,
+          "skipped_cap",
+          CAP_LOG_DEDUPE_MINUTES,
+        ))
+      ) {
         await logRun({
           enrollment,
           step: stepNumber,
@@ -568,7 +612,8 @@ async function processEnrollment(
 
   // 3. Torrläge — rendera och logga, rör inget.
   if (settings.dryRun) {
-    if (await recentlyLogged(enrollment.id, stepNumber, "dry_run", null)) return;
+    if (await recentlyLogged(enrollment.id, stepNumber, "dry_run", null))
+      return;
     let detail: Row;
     let outcome: Outcome = "dry_run";
     if (actionType === "send_email") {
@@ -658,10 +703,16 @@ Deno.serve(async (req: Request) =>
     const settings = await loadSettings();
     // pg_cron-wrappern skapar en mc_runs-rad och skickar id:t hit, så
     // Mission Control kan visa utfallet per körning — inte bara heartbeatet.
-    const body = (await req.clone().json().catch(() => null)) as Row | null;
+    const body = (await req
+      .clone()
+      .json()
+      .catch(() => null)) as Row | null;
     const mcRunId =
       body && typeof body.mc_run_id === "number" ? body.mc_run_id : null;
-    const finishRun = async (status: "succeeded" | "failed", summary: string) => {
+    const finishRun = async (
+      status: "succeeded" | "failed",
+      summary: string,
+    ) => {
       if (mcRunId == null) return;
       const { error } = await supabaseAdmin
         .from("mc_runs")
@@ -696,7 +747,9 @@ Deno.serve(async (req: Request) =>
         .limit(BATCH_SIZE);
 
       if (fetchErr) {
-        await heartbeat("failed", startedAt, `fetch: ${fetchErr.message}`, { settings });
+        await heartbeat("failed", startedAt, `fetch: ${fetchErr.message}`, {
+          settings,
+        });
         await finishRun("failed", `fetch: ${fetchErr.message}`);
         return createErrorResponse(500, "Failed to fetch enrollments");
       }

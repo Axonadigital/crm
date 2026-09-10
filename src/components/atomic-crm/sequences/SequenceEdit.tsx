@@ -32,14 +32,24 @@ const triggerOptions = [
 const DEFAULT_MAX_SCORE = 50;
 const DEFAULT_MAX_SCAN_AGE_DAYS = 60;
 
-function buildTriggerConfig(triggerType: string, maxScore: string) {
+/**
+ * Formuläret visar bara max_score; övriga nycklar (min_score,
+ * include_no_website …) kan vara satta i databasen — t.ex. sekvensen för
+ * "ingen riktig hemsida" — och ska överleva en redigering här.
+ */
+function buildTriggerConfig(
+  triggerType: string,
+  maxScore: string,
+  existing: Record<string, unknown> | null | undefined,
+) {
   if (triggerType !== "scan_result") return {};
   const parsed = Number(maxScore);
   return {
-    max_score: Number.isFinite(parsed) ? parsed : DEFAULT_MAX_SCORE,
     min_score: 0,
     max_scan_age_days: DEFAULT_MAX_SCAN_AGE_DAYS,
     include_no_website: false,
+    ...(existing ?? {}),
+    max_score: Number.isFinite(parsed) ? parsed : DEFAULT_MAX_SCORE,
   };
 }
 
@@ -86,7 +96,9 @@ export const SequenceEdit = () => {
       setName(sequence.name || "");
       setDescription(sequence.description || "");
       setTriggerType(sequence.trigger_type || "manual");
-      const configured = (sequence.trigger_config as { max_score?: number } | null)?.max_score;
+      const configured = (
+        sequence.trigger_config as { max_score?: number } | null
+      )?.max_score;
       if (configured != null) setMaxScore(String(configured));
       setStatus(sequence.status || "draft");
       setInitialized(true);
@@ -124,7 +136,11 @@ export const SequenceEdit = () => {
             name,
             description,
             trigger_type: triggerType,
-            trigger_config: buildTriggerConfig(triggerType, maxScore),
+            trigger_config: buildTriggerConfig(
+              triggerType,
+              maxScore,
+              sequence?.trigger_config as Record<string, unknown> | null,
+            ),
             status,
           },
           previousData: sequence,
