@@ -4,10 +4,16 @@ import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { gmailConfigFromEnv, getAccessToken } from "../_shared/gmail.ts";
 import {
+  decodeHtmlPart,
+  fetchMessage,
   fetchSendAsAliases,
+  searchMessages,
   signatureForAddress,
 } from "../_shared/gmailRead.ts";
-import { htmlSignatureToText } from "../_shared/signature.ts";
+import {
+  extractSignatureHtml,
+  htmlSignatureToText,
+} from "../_shared/signature.ts";
 
 /**
  * Hämtar Rasmus signatur ur Gmail och lägger den i mc_settings.
@@ -19,6 +25,16 @@ import { htmlSignatureToText } from "../_shared/signature.ts";
  *
  * Att LÄSA den gör däremot stor nytta: Rasmus designar signaturen i Gmail som
  * vanligt, och den följer med hit. Ett ställe att underhålla, inte två.
+ *
+ * TVÅ KÄLLOR, i den ordningen:
+ *
+ *  1. sendAs-inställningen. Fungerar bara om signaturen ligger i API:ts egen
+ *     slot. Gmails nyare namngivna flersignaturfunktion syns INTE där — API:t
+ *     hanterar en signatur per adress, skild från listan i webbgränssnittet.
+ *
+ *  2. Ett mejl Rasmus skickat till sig själv med bara signaturen i. Det är
+ *     vägen som faktiskt fungerar när han designat signaturen i webbläsaren:
+ *     vi läser HTML-delen ur meddelandet och plockar ut signaturblocket.
  *
  * Signaturen sparas i mc_settings så sekvensmotorn slipper ett API-anrop per
  * utskick. Kör den här funktionen igen när signaturen ändrats i Gmail.
@@ -49,14 +65,37 @@ Deno.serve(async (req: Request) =>
     try {
       const accessToken = await getAccessToken(gmail);
       const aliases = await fetchSendAsAliases(accessToken);
-      const html = signatureForAddress(aliases, gmail.fromEmail);
+      let html = signatureForAddress(aliases, gmail.fromEmail);
+      let source = "gmail_send_as";
+
+      // Reserv: mejlet Rasmus skickat till sig själv. Nyast först, och bara
+      // det senaste dygnets — annars riskerar vi att plocka en gammal version
+      // av signaturen han redan bytt ut.
+      if (!html) {
+        const query = `from:${gmail.fromEmail} subject:signatur newer_than:2d`;
+        const ids = await searchMessages(accessToken, query, 3);
+        for (const id of ids) {
+          const message = await fetchMessage(accessToken, id);
+          const candidate = extractSignatureHtml(
+            decodeHtmlPart(message?.payload),
+          );
+          if (candidate) {
+            html = candidate;
+            source = "gmail_message";
+            break;
+          }
+        }
+      }
 
       if (!html) {
         // Inget fel — men värt att säga rakt ut, annars ser det ut att ha
         // fungerat medan mejlen fortsätter gå ut osignerade.
         return createJsonResponse({
           ok: false,
-          reason: "Ingen signatur satt i Gmail för någon av avsändaradresserna",
+          reason:
+            "Hittade ingen signatur. Sätt den i Gmails inställningar, eller " +
+            `skicka ett mejl från ${gmail.fromEmail} till dig själv med ordet ` +
+            '"signatur" i ämnesraden och bara signaturen i brödtexten.',
           from_email: gmail.fromEmail,
           addresses: aliases.map((a) => ({
             email: a.sendAsEmail,
@@ -71,7 +110,7 @@ Deno.serve(async (req: Request) =>
           html,
           text: htmlSignatureToText(html),
           from_email: gmail.fromEmail,
-          source: "gmail_send_as",
+          source,
           synced_at: new Date().toISOString(),
         },
         updated_at: new Date().toISOString(),
@@ -82,6 +121,7 @@ Deno.serve(async (req: Request) =>
 
       return createJsonResponse({
         ok: true,
+        source,
         from_email: gmail.fromEmail,
         html_length: html.length,
         images: (html.match(/<img/gi) || []).length,

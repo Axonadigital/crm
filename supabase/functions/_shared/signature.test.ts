@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   escapeHtml,
+  extractSignatureHtml,
   hasSignature,
   htmlSignatureToText,
   renderHtmlEmail,
@@ -174,5 +175,43 @@ describe("renderWithGmailSignature", () => {
     const { html } = renderWithGmailSignature("Bygg & Co", sig);
     expect(html).toContain("Bygg &amp; Co");
     expect(html).toContain("<b>Rasmus Joonsson</b>");
+  });
+});
+
+describe("extractSignatureHtml", () => {
+  it("plockar ut Gmails signaturbehållare när den finns", () => {
+    const html =
+      '<div dir="ltr"><div class="gmail_signature" data-smartmail="gmail_signature">' +
+      "<b>Rasmus</b><br>070 123 45 67</div></div>";
+    const out = extractSignatureHtml(html);
+    expect(out).toContain("<b>Rasmus</b>");
+    expect(out).not.toContain("gmail_signature");
+  });
+
+  it("faller tillbaka på hela kroppen när markören saknas", () => {
+    expect(extractSignatureHtml("<div><b>Rasmus</b></div>")).toContain(
+      "<b>Rasmus</b>",
+    );
+  });
+
+  it("klipper bort citerad text", () => {
+    const html =
+      '<div class="gmail_signature">Rasmus</div>' +
+      '<div class="gmail_quote">Gammalt mejl</div>';
+    expect(extractSignatureHtml(html)).not.toContain("Gammalt mejl");
+  });
+
+  it("strippar skript och stilblock — de hör inte hemma i en signatur", () => {
+    const html =
+      '<div class="gmail_signature">Rasmus' +
+      "<script>alert(1)</script><style>b{color:red}</style></div>";
+    const out = extractSignatureHtml(html);
+    expect(out).not.toContain("script");
+    expect(out).not.toContain("style");
+    expect(out).toContain("Rasmus");
+  });
+
+  it("tom in, tom ut", () => {
+    expect(extractSignatureHtml("")).toBe("");
   });
 });

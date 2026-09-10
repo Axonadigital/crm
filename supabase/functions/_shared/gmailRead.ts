@@ -238,6 +238,67 @@ export function bouncedRecipient(message: GmailApiMessage): string | null {
   return match ? parseAddress(match[1]) : null;
 }
 
+/**
+ * Hämtar HTML-delen ur ett meddelande.
+ *
+ * Motsatsen till decodePlainText: här vill vi ha markupen, inte texten.
+ * Används för att läsa ut Rasmus signatur ur ett mejl han skickat till sig
+ * själv — Gmail-API:t lämnar nämligen inte ut signaturer som skapats med
+ * webbgränssnittets namngivna flersignaturfunktion.
+ */
+export function decodeHtmlPart(payload: GmailPayload | undefined): string {
+  if (!payload) return "";
+  if (payload.mimeType === "text/html" && payload.body?.data) {
+    return decodeBase64Url(payload.body.data);
+  }
+  for (const part of payload.parts ?? []) {
+    const found = decodeHtmlPart(part);
+    if (found) return found;
+  }
+  return "";
+}
+
+/** Söker i brevlådan. Returnerar meddelande-id, nyast först. */
+export async function searchMessages(
+  accessToken: string,
+  query: string,
+  limit = 5,
+): Promise<string[]> {
+  const url =
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages" +
+    `?q=${encodeURIComponent(query)}&maxResults=${limit}`;
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Gmail-sökningen misslyckades (${response.status}): ${body.slice(0, 200)}`,
+    );
+  }
+  const json = (await response.json()) as { messages?: { id: string }[] };
+  return (json.messages ?? []).map((m) => m.id);
+}
+
+/** Hämtar ett enskilt meddelande med hela nyttolasten. */
+export async function fetchMessage(
+  accessToken: string,
+  messageId: string,
+): Promise<GmailApiMessage | null> {
+  const response = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Meddelandet kunde inte läsas (${response.status}): ${body.slice(0, 200)}`,
+    );
+  }
+  return (await response.json()) as GmailApiMessage;
+}
+
 export interface SendAsAlias {
   sendAsEmail: string;
   displayName: string;

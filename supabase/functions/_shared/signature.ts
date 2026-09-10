@@ -159,6 +159,40 @@ export function renderHtmlSignature(cfg: SignatureConfig): string {
 }
 
 /**
+ * Städar HTML:en från ett mejl som bara innehåller signaturen.
+ *
+ * Gmail lindar brödtexten i <div dir="ltr"> och lägger till en osynlig
+ * <div class="gmail_signature"> runt signaturen. Vi plockar ut just den när
+ * den finns, och faller annars tillbaka på hela kroppen — mejlet innehöll
+ * ändå bara signaturen.
+ *
+ * Skript, stilblock och spårningspixlar strippas: de hör inte hemma i en
+ * signatur och det vore oansvarigt att vidarebefordra dem till mottagare.
+ */
+export function extractSignatureHtml(messageHtml: string): string {
+  if (!messageHtml.trim()) return "";
+
+  let html = messageHtml
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
+
+  // Gmails egen signaturbehållare, när den finns.
+  const marked = html.match(
+    /<div[^>]*class="[^"]*gmail_signature[^"]*"[^>]*>([\s\S]*)$/i,
+  );
+  if (marked) html = marked[1];
+
+  // Allt från en citatmarkör och framåt är inte signatur.
+  html = html.split(/<div[^>]*class="[^"]*gmail_quote/i)[0];
+
+  // Bilder utan storlek hoppar när de laddas. En signaturbild ska ha båda.
+  return html
+    .replace(/<body[^>]*>|<\/body>|<html[^>]*>|<\/html>/gi, "")
+    .trim();
+}
+
+/**
  * Gör en läsbar textrad-signatur av Gmails HTML.
  *
  * Behövs för att textdelen av mejlet ska bära samma avsändarinformation som
