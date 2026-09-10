@@ -13,6 +13,7 @@ import {
 import {
   extractSignatureHtml,
   htmlSignatureToText,
+  toOutreachSignature,
 } from "../_shared/signature.ts";
 
 /**
@@ -43,6 +44,31 @@ import {
  */
 
 const SETTING_KEY = "outreach_signature";
+const RULES_KEY = "outreach_signature_rules";
+
+/**
+ * Rader som stryks ur signaturen för kall utkorg.
+ *
+ * "Hemsidor, AI & automation" innehåller ordet AI, som mäter -36 %
+ * svarsfrekvens över 85 miljoner kalla mejl. P.S.-raden behålls med flit —
+ * Rasmus vill ha den, och det finns ingen mätning som talar emot den.
+ *
+ * Ligger i mc_settings så listan kan ändras utan att röra koden.
+ */
+const DEFAULT_REMOVE_PHRASES = ["Hemsidor, AI & automation"];
+
+async function loadRemovePhrases(): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from("mc_settings")
+    .select("value")
+    .eq("key", RULES_KEY)
+    .maybeSingle();
+  const value = (data?.value ?? null) as Record<string, unknown> | null;
+  const list = value?.remove_phrases;
+  if (!Array.isArray(list)) return DEFAULT_REMOVE_PHRASES;
+  const phrases = list.filter((p): p is string => typeof p === "string");
+  return phrases.length > 0 ? phrases : DEFAULT_REMOVE_PHRASES;
+}
 
 Deno.serve(async (req: Request) =>
   OptionsMiddleware(req, async (req) => {
@@ -104,11 +130,24 @@ Deno.serve(async (req: Request) =>
         });
       }
 
+      // Outreach-varianten härleds vid varje synk, så Rasmus fortfarande bara
+      // har EN signatur att underhålla i Gmail. Ändrar han där, följer det med.
+      const removePhrases = await loadRemovePhrases();
+      const outreachHtml = toOutreachSignature(
+        html,
+        gmail.fromEmail,
+        removePhrases,
+      );
+
       const { error } = await supabaseAdmin.from("mc_settings").upsert({
         key: SETTING_KEY,
         value: {
-          html,
-          text: htmlSignatureToText(html),
+          html: outreachHtml,
+          text: htmlSignatureToText(outreachHtml),
+          // Originalet sparas så vi kan se vad omvandlingen utgick från när
+          // något ser fel ut, utan att fråga Gmail igen.
+          raw_html: html,
+          removed_phrases: removePhrases,
           from_email: gmail.fromEmail,
           source,
           synced_at: new Date().toISOString(),
@@ -123,9 +162,11 @@ Deno.serve(async (req: Request) =>
         ok: true,
         source,
         from_email: gmail.fromEmail,
-        html_length: html.length,
-        images: (html.match(/<img/gi) || []).length,
-        text_preview: htmlSignatureToText(html).slice(0, 300),
+        html_length: outreachHtml.length,
+        images: (outreachHtml.match(/<img/gi) || []).length,
+        removed_phrases: removePhrases,
+        address_rewritten: html !== outreachHtml,
+        text_preview: htmlSignatureToText(outreachHtml).slice(0, 400),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";

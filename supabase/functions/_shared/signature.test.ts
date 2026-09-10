@@ -8,7 +8,10 @@ import {
   renderWithGmailSignature,
   renderHtmlSignature,
   renderTextEmail,
+  removeTextRun,
   renderTextSignature,
+  rewriteSenderAddress,
+  toOutreachSignature,
   signatureConfigFromEnv,
   type SignatureConfig,
 } from "./signature";
@@ -213,5 +216,67 @@ describe("extractSignatureHtml", () => {
 
   it("tom in, tom ut", () => {
     expect(extractSignatureHtml("")).toBe("");
+  });
+});
+
+describe("rewriteSenderAddress", () => {
+  it("skriver om både mailto och synlig text", () => {
+    const html =
+      '<a href="mailto:rasmus@axonadigital.se">rasmus@axonadigital.se</a>';
+    expect(rewriteSenderAddress(html, "rasmus@axonadigital.com")).toBe(
+      '<a href="mailto:rasmus@axonadigital.com">rasmus@axonadigital.com</a>',
+    );
+  });
+
+  it("rör inte andras adresser", () => {
+    const html = "info@axonadigital.se och isak@axonadigital.se";
+    expect(rewriteSenderAddress(html, "rasmus@axonadigital.com")).toBe(html);
+  });
+
+  it("tål en trasig avsändaradress", () => {
+    expect(rewriteSenderAddress("<p>x</p>", "inte-en-adress")).toBe("<p>x</p>");
+  });
+});
+
+describe("removeTextRun", () => {
+  // Exakt formen ur Rasmus riktiga signatur: taglinen och P.S. i SAMMA div.
+  const real =
+    '<div style="font-size:11.5px">' +
+    '<span style="font-weight:bold">//</span>  Hemsidor, AI &amp; automation — byggt för svenska företag<br>' +
+    "<br>P.S Behöver du hjälp med något, säg till, jag kanske kan hjälpa dig!</div>";
+
+  it("stryker taglinen men behåller P.S.-raden", () => {
+    const out = removeTextRun(real, "Hemsidor, AI & automation");
+    expect(out).not.toContain("Hemsidor");
+    expect(out).not.toContain("automation");
+    expect(out).toContain("P.S Behöver du hjälp");
+  });
+
+  it("tar med dekor-spannet och radbrytningarna, så inget tomrum blir kvar", () => {
+    const out = removeTextRun(real, "Hemsidor, AI & automation");
+    expect(out).not.toContain("//");
+    expect(out).toBe(
+      '<div style="font-size:11.5px">P.S Behöver du hjälp med något, säg till, jag kanske kan hjälpa dig!</div>',
+    );
+  });
+
+  it("lämnar HTML:en orörd när frasen inte finns", () => {
+    expect(removeTextRun(real, "finns inte")).toBe(real);
+  });
+});
+
+describe("toOutreachSignature", () => {
+  it("gör om huvudsignaturen till outreach-varianten i ett steg", () => {
+    const html =
+      '<a href="mailto:rasmus@axonadigital.se">rasmus@axonadigital.se</a>' +
+      '<div><span>//</span>  Hemsidor, AI &amp; automation — byggt för svenska företag<br>' +
+      "<br>P.S Hör av dig!</div>";
+    const out = toOutreachSignature(html, "rasmus@axonadigital.com", [
+      "Hemsidor, AI & automation",
+    ]);
+    expect(out).toContain("rasmus@axonadigital.com");
+    expect(out).not.toContain("axonadigital.se");
+    expect(out).not.toContain("Hemsidor");
+    expect(out).toContain("P.S Hör av dig!");
   });
 });

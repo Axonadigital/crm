@@ -159,6 +159,79 @@ export function renderHtmlSignature(cfg: SignatureConfig): string {
 }
 
 /**
+ * Skriver om avsändaradressen i signaturen till den vi FAKTISKT skickar från.
+ *
+ * Inte kosmetik. Signaturen pekade på rasmus@axonadigital.se medan utkorgen
+ * går från rasmus@axonadigital.com. Klickar mottagaren på adressen i
+ * signaturen i stället för att svara, kommer svaret som ett nytt meddelande
+ * utanför tråden — och svarsläsaren matchar på tråd. Då fortsätter sekvensen
+ * mejla någon som redan hört av sig, vilket är precis det fel svarsläsaren
+ * finns för att undvika.
+ *
+ * Nyckeln är den lokala delen: rasmus@vilken-domän-som-helst blir
+ * rasmus@rätt-domän. info@ och isak@ rörs inte.
+ */
+export function rewriteSenderAddress(html: string, fromEmail: string): string {
+  const local = fromEmail.split("@")[0];
+  if (!local || !fromEmail.includes("@")) return html;
+  const pattern = new RegExp(
+    `${local.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}@[A-Za-z0-9.-]+`,
+    "g",
+  );
+  return html.replace(pattern, fromEmail);
+}
+
+/**
+ * Tar bort en textrad ur signaturen utan att röra resten av raden.
+ *
+ * Behövs för att taglinen och P.S.-raden ligger i SAMMA div — Rasmus vill
+ * behålla den ena och stryka den andra. Funktionen klipper därför texten
+ * plus det inledande inline-elementet (Gmails "//"-span) och de omedelbart
+ * följande radbrytningarna, i stället för att kasta hela elementet.
+ */
+export function removeTextRun(html: string, phrase: string): string {
+  const needle = phrase.replace(/&/g, "&amp;");
+  const at = html.indexOf(needle);
+  if (at === -1) return html;
+
+  // Vänster: tillbaka till slutet av föregående tagg …
+  let start = html.lastIndexOf(">", at);
+  start = start === -1 ? 0 : start + 1;
+  // … och förbi ett inledande inline-element som bara är dekor ("//").
+  const before = html.slice(0, start);
+  const decor = before.match(/<span\b[^>]*>[^<]{0,8}<\/span>\s*$/i);
+  if (decor) start -= decor[0].length;
+
+  // Höger: HELA textnoden, inte bara den matchade frasen. Frasen är en
+  // sökterm — raden fortsätter ofta efter den ("— byggt för svenska
+  // företag") och att lämna den resten kvar vore värre än att inte klippa.
+  const nextTag = html.indexOf("<", at + needle.length);
+  let end = nextTag === -1 ? html.length : nextTag;
+  const rest = html.slice(end);
+  const breaks = rest.match(/^(?:\s*<br\s*\/?>){1,2}\s*/i);
+  if (breaks) end += breaks[0].length;
+
+  return html.slice(0, start) + html.slice(end);
+}
+
+/**
+ * Outreach-varianten av signaturen: samma design, rätt adress, och de rader
+ * Rasmus inte vill ha i kall utkorg borttagna.
+ *
+ * Härleds vid varje synk i stället för att underhållas separat, så han
+ * fortfarande bara har EN signatur att designa i Gmail.
+ */
+export function toOutreachSignature(
+  html: string,
+  fromEmail: string,
+  removePhrases: readonly string[],
+): string {
+  let out = rewriteSenderAddress(html, fromEmail);
+  for (const phrase of removePhrases) out = removeTextRun(out, phrase);
+  return out;
+}
+
+/**
  * Städar HTML:en från ett mejl som bara innehåller signaturen.
  *
  * Gmail lindar brödtexten i <div dir="ltr"> och lägger till en osynlig
