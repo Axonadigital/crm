@@ -71,14 +71,40 @@ describe("buildMimeMessage", () => {
     expect(mime.toLowerCase()).not.toContain("list-unsubscribe");
   });
 
-  it("har ingen HTML-del och ingen spårningspixel", () => {
+  it("är ren text när ingen HTML anges", () => {
     const mime = buildMimeMessage(config, {
       to: "info@exempel.se",
       subject: "Test",
       text: "Hej",
     });
     expect(mime).not.toContain("text/html");
-    expect(mime).not.toContain("<img");
+    expect(mime).not.toContain("multipart");
+    expect(header(mime, "Content-Type")).toBe('text/plain; charset="UTF-8"');
+  });
+
+  it("skickar multipart/alternative med TEXTEN FÖRST när HTML anges", () => {
+    const mime = buildMimeMessage(config, {
+      to: "info@exempel.se",
+      subject: "Test",
+      text: "Hej i text",
+      html: "<p>Hej i html</p>",
+    });
+    expect(header(mime, "Content-Type")).toMatch(
+      /^multipart\/alternative; boundary="axona_[a-f0-9]{32}"$/,
+    );
+    // RFC 2046: sista delen är den mest önskade. Text före HTML.
+    expect(mime.indexOf("text/plain")).toBeLessThan(mime.indexOf("text/html"));
+    expect(mime.trimEnd().endsWith("--")).toBe(true);
+  });
+
+  it("aldrig HTML utan textdel — det poängsätts av filter", () => {
+    const mime = buildMimeMessage(config, {
+      to: "a@b.se",
+      subject: "x",
+      text: "riktig text",
+      html: "<p>x</p>",
+    });
+    expect(mime).toContain('Content-Type: text/plain; charset="UTF-8"');
   });
 
   it("behåller svenska tecken i kroppen", () => {

@@ -24,7 +24,11 @@
  *  - Spårningspixel. Apples bildproxy förhandshämtar, så ungefär halva
  *    öppningssiffran är påhittad, och pixeln sänker leveransbarheten. Klick på
  *    rapportlänken mäter samma sak ärligare.
- *  - HTML-del. Ren text ser ut som ett personligt mejl, vilket det ska.
+ *  - Spårningspixel (se ovan).
+ *
+ * HTML-delen tillkom 2026-09-10 för Axonas signatur. Den skickas som
+ * multipart/alternative MED en riktig textdel — aldrig HTML ensamt. Se
+ * _shared/signature.ts för mätningarna bakom det beslutet.
  */
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -45,6 +49,8 @@ export interface GmailMessage {
   subject: string;
   /** Ren text. Radbrytningar normaliseras till CRLF. */
   text: string;
+  /** Valfri HTML-del. Anges den skickas meddelandet som multipart/alternative. */
+  html?: string;
   replyTo?: string;
 }
 
@@ -103,30 +109,63 @@ function formatAddress(name: string, email: string): string {
     : `${encoded} <${email}>`;
 }
 
-/** Bygger ett RFC 5322-meddelande i ren text. */
+/** Base64 i rader om 76 tecken, som standarden kräver. */
+function encodePart(text: string): string {
+  const encoded = base64UrlEncode(new TextEncoder().encode(text))
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
+  return padded.match(/.{1,76}/g)?.join("\r\n") ?? padded;
+}
+
+/**
+ * Bygger ett RFC 5322-meddelande.
+ *
+ * Utan html: ren text, som tidigare. Med html: multipart/alternative med
+ * textdelen FÖRST — ordningen är inte kosmetisk, RFC 2046 säger att den
+ * sista delen är den mest önskade, så text först och HTML sist är det som
+ * gör att klienter som kan HTML visar HTML och övriga får läsbar text.
+ */
 export function buildMimeMessage(
   config: GmailConfig,
   message: GmailMessage,
 ): string {
-  const body = message.text.replace(/\r?\n/g, "\r\n");
+  const text = message.text.replace(/\r?\n/g, "\r\n");
   const headers = [
     `From: ${formatAddress(config.fromName, config.fromEmail)}`,
     `To: ${message.to}`,
     `Subject: ${encodeHeader(message.subject)}`,
     "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64",
   ];
   if (message.replyTo) headers.push(`Reply-To: ${message.replyTo}`);
 
-  // Base64 i rader om 76 tecken, som standarden kräver.
-  const encoded = base64UrlEncode(new TextEncoder().encode(body))
-    .replace(/-/g, "+")
-    .replace(/_/g, "/");
-  const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
-  const wrapped = padded.match(/.{1,76}/g)?.join("\r\n") ?? padded;
+  if (!message.html) {
+    headers.push(
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+    );
+    return `${headers.join("\r\n")}\r\n\r\n${encodePart(text)}`;
+  }
 
-  return `${headers.join("\r\n")}\r\n\r\n${wrapped}`;
+  const boundary = `axona_${crypto.randomUUID().replace(/-/g, "")}`;
+  headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+  const html = message.html.replace(/\r?\n/g, "\r\n");
+
+  const body = [
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    encodePart(text),
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    encodePart(html),
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  return `${headers.join("\r\n")}\r\n\r\n${body}`;
 }
 
 /**

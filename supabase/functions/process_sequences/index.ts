@@ -9,6 +9,12 @@ import {
   websiteHost,
 } from "../_shared/templateVars.ts";
 import {
+  hasSignature,
+  renderHtmlEmail,
+  renderTextEmail,
+  signatureConfigFromEnv,
+} from "../_shared/signature.ts";
+import {
   firstSentence,
   quickWinCount,
   secondFinding,
@@ -375,6 +381,15 @@ async function sendPrepared(
     };
   }
 
+  // Signaturen läggs på HÄR, inte i mallen. Gmails webbsignatur appliceras
+  // inte på API-sändningar, och att ha den i mallen hade betytt fyra kopior
+  // att hålla i synk. Saknas konfigurationen skickas ren text som förut.
+  const signature = signatureConfigFromEnv((k) => Deno.env.get(k));
+  const body = renderTextEmail(email.body, signature);
+  const htmlBody = hasSignature(signature)
+    ? renderHtmlEmail(email.body, signature)
+    : undefined;
+
   const { data: emailSend, error: insertErr } = await supabaseAdmin
     .from("email_sends")
     .insert({
@@ -382,7 +397,8 @@ async function sendPrepared(
       contact_id: enrollment.contact_id,
       company_id: email.companyId,
       subject: email.subject,
-      body: email.body,
+      // Det som loggas ska vara det som gick ut, signaturen inräknad.
+      body,
       to_email: email.to,
       from_email: gmail.fromEmail,
       status: "queued",
@@ -404,7 +420,8 @@ async function sendPrepared(
     sent = await sendViaGmail(gmail, {
       to: email.to,
       subject: email.subject,
-      text: email.body,
+      text: body,
+      html: htmlBody,
     });
   } catch (err) {
     const errText = err instanceof Error ? err.message : String(err);
