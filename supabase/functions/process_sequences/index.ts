@@ -44,6 +44,10 @@ const CAP_LOG_DEDUPE_MINUTES = 60;
 type Row = Record<string, unknown>;
 type Outcome =
   | "sent"
+  // Anspråket på steget, skrivet före Gmail-anropet. Se claimSend().
+  | "sending"
+  // Steget var redan skickat — vi flyttar fram i stället för att skicka igen.
+  | "skipped_duplicate"
   | "executed"
   | "dry_run"
   | "skipped_suppressed"
@@ -503,8 +507,78 @@ interface TickCounters {
   dryRun: number;
   suppressed: number;
   capped: number;
+  duplicates: number;
   completed: number;
   failed: number;
+}
+
+/** Hur länge en påbörjad sändning får hänga innan den räknas som strandad. */
+const STALE_CLAIM_MINUTES = 15;
+
+type ClaimResult =
+  | { kind: "claimed"; logId: number }
+  | { kind: "already_sent" }
+  | { kind: "in_flight" }
+  | { kind: "stale" };
+
+/**
+ * Tar anspråk på steget INNAN mejlet skickas.
+ *
+ * Det partiella unika indexet sequence_run_log_send_claim_idx gör det omöjligt
+ * för två körningar att båda få anspråket. Det är hela dubbelsändningsskyddet:
+ * tidigare skickade motorn först och flyttade fram enrollmenten efteråt, så en
+ * databasskrivning som missade efter ett lyckat Gmail-anrop gav samma mejl en
+ * gång till vid nästa tick.
+ */
+async function claimSend(
+  enrollment: Row,
+  stepNumber: number,
+): Promise<ClaimResult> {
+  const { data, error } = await supabaseAdmin
+    .from("sequence_run_log")
+    .insert({
+      enrollment_id: enrollment.id,
+      sequence_id: enrollment.sequence_id,
+      contact_id: enrollment.contact_id,
+      company_id: enrollment.company_id,
+      step: stepNumber,
+      action_type: "send_email",
+      outcome: "sending",
+    })
+    .select("id")
+    .single();
+
+  if (!error && data) return { kind: "claimed", logId: data.id as number };
+  if (error && error.code !== "23505") throw new Error(error.message);
+
+  // Någon annan håller eller höll anspråket. Vad vi gör beror på vad de kom
+  // fram till.
+  const { data: blocker } = await supabaseAdmin
+    .from("sequence_run_log")
+    .select("outcome, created_at")
+    .eq("enrollment_id", enrollment.id)
+    .eq("step", stepNumber)
+    .in("outcome", ["sending", "sent"])
+    .maybeSingle();
+
+  if (!blocker || blocker.outcome === "sent") return { kind: "already_sent" };
+  const age = Date.now() - new Date(blocker.created_at as string).getTime();
+  return age > STALE_CLAIM_MINUTES * 60_000
+    ? { kind: "stale" }
+    : { kind: "in_flight" };
+}
+
+/** Stänger anspråksraden. 'failed' lämnar indexet, så återförsök går. */
+async function finishSendLog(
+  logId: number,
+  outcome: "sent" | "failed",
+  detail: Row,
+): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("sequence_run_log")
+    .update({ outcome, detail })
+    .eq("id", logId);
+  if (error) console.error("finishSendLog failed:", error.message);
 }
 
 async function processEnrollment(
@@ -650,12 +724,67 @@ async function processEnrollment(
 
   // 4. Skarpt läge.
   let result: StepResult;
+  // Sätts bara för mejlsteg: anspråksraden som redan ligger i loggen och som
+  // ska stängas med utfallet i stället för att en ny rad skrivs.
+  let sendLogId: number | null = null;
   switch (actionType) {
     case "send_email": {
       const prepared = await prepareEmail(step, enrollment);
-      result = prepared.ok
-        ? await sendPrepared(prepared.email, enrollment, stepNumber)
-        : { success: false, error: prepared.error };
+      if (!prepared.ok) {
+        result = { success: false, error: prepared.error };
+        break;
+      }
+
+      // Anspråket tas FÖRE Gmail-anropet. Utan det kunde ett lyckat utskick
+      // följt av en missad databasskrivning ge samma mejl en gång till vid
+      // nästa tick.
+      const claim = await claimSend(enrollment, stepNumber);
+
+      if (claim.kind === "in_flight") {
+        // En parallell körning håller på just nu. Rör ingenting — den
+        // avslutar och flyttar fram enrollmenten själv.
+        return;
+      }
+
+      if (claim.kind === "already_sent") {
+        // Mejlet gick ut, men enrollmenten hann aldrig flyttas fram. Det är
+        // precis det felet låset finns för. Flytta fram i stället för att
+        // skicka igen.
+        const transition = await advanceOrComplete(enrollment, stepNumber, now);
+        await logRun({
+          enrollment,
+          step: stepNumber,
+          actionType,
+          outcome: "skipped_duplicate",
+          detail: { transition, reason: "steget var redan skickat" },
+        });
+        counters.duplicates += 1;
+        if (transition === "completed") counters.completed += 1;
+        return;
+      }
+
+      if (claim.kind === "stale") {
+        // Funktionen dog mitt i en sändning. Vi vet inte om mejlet gick ut,
+        // så vi skickar inte igen — men vi låter det inte heller tystna.
+        await pause(enrollment, now);
+        await logRun({
+          enrollment,
+          step: stepNumber,
+          actionType,
+          outcome: "failed",
+          detail: {
+            error:
+              "Strandat sändningsanspråk äldre än " +
+              `${STALE_CLAIM_MINUTES} min — okänt om mejlet gick ut. ` +
+              "Kontrollera brevlådan och återuppta manuellt.",
+          },
+        });
+        counters.failed += 1;
+        return;
+      }
+
+      sendLogId = claim.logId;
+      result = await sendPrepared(prepared.email, enrollment, stepNumber);
       break;
     }
     case "create_task":
@@ -670,25 +799,34 @@ async function processEnrollment(
 
   if (!result.success) {
     await pause(enrollment, now);
-    await logRun({
-      enrollment,
-      step: stepNumber,
-      actionType,
-      outcome: "failed",
-      detail: { error: result.error },
-    });
+    if (sendLogId !== null) {
+      // 'failed' lämnar det unika indexet, så ett återförsök går igenom.
+      await finishSendLog(sendLogId, "failed", { error: result.error });
+    } else {
+      await logRun({
+        enrollment,
+        step: stepNumber,
+        actionType,
+        outcome: "failed",
+        detail: { error: result.error },
+      });
+    }
     counters.failed += 1;
     return;
   }
 
   const transition = await advanceOrComplete(enrollment, stepNumber, now);
-  await logRun({
-    enrollment,
-    step: stepNumber,
-    actionType,
-    outcome: actionType === "send_email" ? "sent" : "executed",
-    detail: { transition },
-  });
+  if (sendLogId !== null) {
+    await finishSendLog(sendLogId, "sent", { transition });
+  } else {
+    await logRun({
+      enrollment,
+      step: stepNumber,
+      actionType,
+      outcome: "executed",
+      detail: { transition },
+    });
+  }
   if (actionType === "send_email") counters.sent += 1;
   else counters.executed += 1;
   if (transition === "completed") counters.completed += 1;
@@ -742,6 +880,7 @@ Deno.serve(async (req: Request) =>
       dryRun: 0,
       suppressed: 0,
       capped: 0,
+      duplicates: 0,
       completed: 0,
       failed: 0,
     };
@@ -782,7 +921,7 @@ Deno.serve(async (req: Request) =>
       }
 
       const mode = settings.dryRun ? "TORRLÄGE" : "skarpt";
-      const summary = `${mode}: ${counters.processed} förfallna, ${counters.sent} skickade, ${counters.suppressed} spärrade, ${counters.dryRun} torrkörda`;
+      const summary = `${mode}: ${counters.processed} förfallna, ${counters.sent} skickade, ${counters.suppressed} spärrade, ${counters.dryRun} torrkörda, ${counters.duplicates} dubbletter stoppade`;
       await heartbeat("ok", startedAt, summary, { ...counters, settings });
       await finishRun(counters.failed > 0 ? "failed" : "succeeded", summary);
       return createJsonResponse({ mode, ...counters });
