@@ -158,6 +158,75 @@ export function renderHtmlSignature(cfg: SignatureConfig): string {
   );
 }
 
+/**
+ * Gör en läsbar textrad-signatur av Gmails HTML.
+ *
+ * Behövs för att textdelen av mejlet ska bära samma avsändarinformation som
+ * HTML-delen. Utan den skulle den som läser i ren text få ett mejl utan
+ * avsändare — och textdelen är den vi ALLTID skickar.
+ */
+export function htmlSignatureToText(html: string): string {
+  if (!html.trim()) return "";
+  return html
+    // Bilder blir inget alls i text — inte "[bild]".
+    .replace(/<img[^>]*>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
+    .replace(
+      /&(nbsp|amp|lt|gt|quot|apos|aring|auml|ouml|Aring|Auml|Ouml);/g,
+      (whole, name) => TEXT_ENTITIES[name] ?? whole,
+    )
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line, i, all) => line !== "" || (i > 0 && all[i - 1] !== ""))
+    .join("\n")
+    .trim();
+}
+
+const TEXT_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  aring: "\u00e5",
+  auml: "\u00e4",
+  ouml: "\u00f6",
+  Aring: "\u00c5",
+  Auml: "\u00c4",
+  Ouml: "\u00d6",
+};
+
+/**
+ * Bygger mejlet från Gmails egen signatur-HTML i stället för konfigurationen.
+ *
+ * Det här är den väg vi vill gå: Rasmus designar signaturen i Gmail som
+ * vanligt, och den följer med hit. Ett ställe att underhålla, inte två.
+ */
+export function renderWithGmailSignature(
+  bodyText: string,
+  signatureHtml: string,
+): { text: string; html: string } {
+  const font =
+    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;" +
+    "font-size:15px;line-height:1.55;color:#111827;";
+  const sigText = htmlSignatureToText(signatureHtml);
+  return {
+    text: sigText ? `${bodyText.trimEnd()}\n\n${sigText}` : bodyText,
+    html:
+      `<div style="${font}max-width:560px;">` +
+      paragraphs(bodyText) +
+      (signatureHtml ? `<div style="margin-top:22px;">${signatureHtml}</div>` : "") +
+      `</div>`,
+  };
+}
+
 /** Hela HTML-mejlet: brödtexten som stycken plus signaturen. */
 export function renderHtmlEmail(
   bodyText: string,

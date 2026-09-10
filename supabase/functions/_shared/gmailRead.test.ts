@@ -6,6 +6,7 @@ import {
   headerValue,
   isNegativeReply,
   parseAddress,
+  signatureForAddress,
   stripQuotedReply,
   type GmailApiMessage,
   type GmailPayload,
@@ -234,5 +235,50 @@ describe("bouncedRecipient", () => {
   it("returnerar null när adressen inte går att utläsa", () => {
     const m = msg({ From: "mailer-daemon@googlemail.com" }, { snippet: "fel" });
     expect(bouncedRecipient(m)).toBeNull();
+  });
+});
+
+describe("signatureForAddress", () => {
+  const aliases = [
+    {
+      sendAsEmail: "info@axonadigital.se",
+      displayName: "Axona Digital",
+      signature: "<p>KONTOTS signatur</p>",
+      isDefault: true,
+      isPrimary: true,
+      verificationStatus: "accepted",
+    },
+    {
+      sendAsEmail: "rasmus@axonadigital.com",
+      displayName: "Rasmus Joonsson",
+      signature: "<p>ALIASETS signatur</p>",
+      isDefault: false,
+      isPrimary: false,
+      verificationStatus: "accepted",
+    },
+  ];
+
+  it("tar aliasets signatur, inte kontots", () => {
+    // Kontot är info@ och aliaset rasmus@ — utkorgen ska bära aliasets.
+    expect(signatureForAddress(aliases, "rasmus@axonadigital.com")).toBe(
+      "<p>ALIASETS signatur</p>",
+    );
+  });
+
+  it("är skiftlägesokänslig", () => {
+    expect(signatureForAddress(aliases, "  Rasmus@AxonaDigital.COM ")).toBe(
+      "<p>ALIASETS signatur</p>",
+    );
+  });
+
+  it("faller tillbaka på standardadressen när aliaset saknar signatur", () => {
+    const utan = [aliases[0], { ...aliases[1], signature: "" }];
+    expect(signatureForAddress(utan, "rasmus@axonadigital.com")).toBe(
+      "<p>KONTOTS signatur</p>",
+    );
+  });
+
+  it("tom sträng när ingen signatur finns alls", () => {
+    expect(signatureForAddress([], "rasmus@axonadigital.com")).toBe("");
   });
 });

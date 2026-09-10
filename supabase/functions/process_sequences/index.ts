@@ -12,6 +12,7 @@ import {
   hasSignature,
   renderHtmlEmail,
   renderTextEmail,
+  renderWithGmailSignature,
   signatureConfigFromEnv,
 } from "../_shared/signature.ts";
 import {
@@ -362,6 +363,18 @@ async function prepareEmail(
   };
 }
 
+/** Rasmus Gmail-signatur, synkad till mc_settings av sync_gmail_signature. */
+async function loadGmailSignature(): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("mc_settings")
+    .select("value")
+    .eq("key", "outreach_signature")
+    .maybeSingle();
+  const value = (data?.value ?? null) as Row | null;
+  const html = value && typeof value.html === "string" ? value.html : "";
+  return html.trim() ? html : null;
+}
+
 async function sendPrepared(
   email: PreparedEmail,
   enrollment: Row,
@@ -383,12 +396,27 @@ async function sendPrepared(
 
   // Signaturen läggs på HÄR, inte i mallen. Gmails webbsignatur appliceras
   // inte på API-sändningar, och att ha den i mallen hade betytt fyra kopior
-  // att hålla i synk. Saknas konfigurationen skickas ren text som förut.
-  const signature = signatureConfigFromEnv((k) => Deno.env.get(k));
-  const body = renderTextEmail(email.body, signature);
-  const htmlBody = hasSignature(signature)
-    ? renderHtmlEmail(email.body, signature)
-    : undefined;
+  // att hålla i synk.
+  //
+  // Två källor, i prioritetsordning:
+  //  1. Rasmus riktiga Gmail-signatur, hämtad av sync_gmail_signature. Det är
+  //     den vi vill använda — han underhåller den där han redan gör det.
+  //  2. Miljövariablerna, som reserv om synken inte körts.
+  // Saknas båda skickas ren text precis som förut.
+  const gmailSignature = await loadGmailSignature();
+  let body: string;
+  let htmlBody: string | undefined;
+  if (gmailSignature) {
+    const rendered = renderWithGmailSignature(email.body, gmailSignature);
+    body = rendered.text;
+    htmlBody = rendered.html;
+  } else {
+    const signature = signatureConfigFromEnv((k) => Deno.env.get(k));
+    body = renderTextEmail(email.body, signature);
+    htmlBody = hasSignature(signature)
+      ? renderHtmlEmail(email.body, signature)
+      : undefined;
+  }
 
   const { data: emailSend, error: insertErr } = await supabaseAdmin
     .from("email_sends")

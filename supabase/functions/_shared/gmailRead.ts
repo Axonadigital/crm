@@ -72,7 +72,10 @@ export function parseAddress(raw: string | null | undefined): string | null {
 
 /** Gmails base64url, med de radbrytningar som API:t stoppar in. */
 function decodeBase64Url(data: string): string {
-  const normalized = data.replace(/-/g, "+").replace(/_/g, "/").replace(/\s/g, "");
+  const normalized = data
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .replace(/\s/g, "");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   try {
     const binary = atob(padded);
@@ -133,7 +136,8 @@ export function decodePlainText(payload: GmailPayload | undefined): string {
   return "";
 }
 
-const DAEMON = /(mailer-daemon|postmaster|no-?reply@.*(google|outlook|protection))/i;
+const DAEMON =
+  /(mailer-daemon|postmaster|no-?reply@.*(google|outlook|protection))/i;
 
 const AUTO_SUBJECT =
   /(auto(matiskt)?[\s-]*svar|autosvar|automatic reply|auto[\s-]*reply|out of office|frånvar|semester|föräldraledig|tjänstledig|ur kontoret)/i;
@@ -198,7 +202,9 @@ export function stripQuotedReply(text: string): string {
     const l = line.trim();
     return (
       l.startsWith(">") ||
-      /^-{2,}\s*(ursprungligt meddelande|original message|vidarebefordrat)/i.test(l) ||
+      /^-{2,}\s*(ursprungligt meddelande|original message|vidarebefordrat)/i.test(
+        l,
+      ) ||
       /^(den|on)\s.+\b(skrev|wrote)\b.*:\s*$/i.test(l) ||
       /^från:\s|^from:\s/i.test(l)
     );
@@ -222,9 +228,7 @@ export function isNegativeReply(text: string): boolean {
 }
 
 /** Adressen som studsade, när servern angav den. */
-export function bouncedRecipient(
-  message: GmailApiMessage,
-): string | null {
+export function bouncedRecipient(message: GmailApiMessage): string | null {
   const explicit = headerValue(message.payload, "X-Failed-Recipients");
   if (explicit) return parseAddress(explicit.split(",")[0]);
   const text = `${decodePlainText(message.payload)}\n${message.snippet ?? ""}`;
@@ -232,6 +236,72 @@ export function bouncedRecipient(
     /(?:Final-Recipient:\s*rfc822;\s*|address not found|couldn't be delivered to\s*)([^\s<>,;]+@[^\s<>,;]+)/i,
   );
   return match ? parseAddress(match[1]) : null;
+}
+
+export interface SendAsAlias {
+  sendAsEmail: string;
+  displayName: string;
+  /** Signaturen som HTML, exakt som den ser ut i Gmails inställningar. */
+  signature: string;
+  isDefault: boolean;
+  isPrimary: boolean;
+  verificationStatus: string;
+}
+
+/**
+ * Hämtar avsändaradresserna och deras signaturer ur Gmail-inställningarna.
+ *
+ * Varför läsa i stället för att sätta: Gmails signatur läggs på av KLIENTEN
+ * när någon skriver i webbläsaren, inte av servern vid sändning. Vi skickar
+ * färdig MIME direkt till servern, så en signatur i inställningarna kommer
+ * aldrig med av sig själv. Däremot kan vi hämta den Rasmus redan designat och
+ * rendera in den själva — då slipper han underhålla den på två ställen, och
+ * ändrar han i Gmail följer det med vid nästa synk.
+ *
+ * Kräver gmail.settings.basic eller gmail.readonly beroende på konto.
+ */
+export async function fetchSendAsAliases(
+  accessToken: string,
+): Promise<SendAsAlias[]> {
+  const response = await fetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      response.status === 403
+        ? "Gmail nekar läsning av inställningarna — token saknar scopet " +
+          "gmail.settings.basic. Auktorisera om med det tillagt."
+        : `Gmail-inställningarna kunde inte läsas (${response.status}): ${body.slice(0, 200)}`,
+    );
+  }
+  const json = (await response.json()) as { sendAs?: Record<string, unknown>[] };
+  return (json.sendAs ?? []).map((a) => ({
+    sendAsEmail: String(a.sendAsEmail ?? "").toLowerCase(),
+    displayName: String(a.displayName ?? ""),
+    signature: String(a.signature ?? ""),
+    isDefault: a.isDefault === true,
+    isPrimary: a.isPrimary === true,
+    verificationStatus: String(a.verificationStatus ?? ""),
+  }));
+}
+
+/**
+ * Väljer signaturen för den adress vi faktiskt skickar från.
+ *
+ * Ett Workspace-konto har flera avsändaradresser — kontot självt plus varje
+ * alias — och de har olika signaturer. Vi vill ha aliasets, inte kontots.
+ */
+export function signatureForAddress(
+  aliases: readonly SendAsAlias[],
+  fromEmail: string,
+): string {
+  const wanted = fromEmail.trim().toLowerCase();
+  const exact = aliases.find((a) => a.sendAsEmail === wanted);
+  if (exact?.signature) return exact.signature;
+  const fallback = aliases.find((a) => a.isDefault && a.signature);
+  return fallback?.signature ?? "";
 }
 
 export interface GmailProfile {
@@ -247,9 +317,7 @@ export interface GmailProfile {
  * Därför duger den som hälsokoll: så länge den går igenom vet vi att
  * svarsläsningen kan läsa, även de dygn då ingen tråd behövde kollas.
  */
-export async function fetchProfile(
-  accessToken: string,
-): Promise<GmailProfile> {
+export async function fetchProfile(accessToken: string): Promise<GmailProfile> {
   const response = await fetch(
     "https://gmail.googleapis.com/gmail/v1/users/me/profile",
     { headers: { Authorization: `Bearer ${accessToken}` } },

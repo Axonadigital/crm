@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   escapeHtml,
   hasSignature,
+  htmlSignatureToText,
   renderHtmlEmail,
+  renderWithGmailSignature,
   renderHtmlSignature,
   renderTextEmail,
   renderTextSignature,
@@ -119,5 +121,58 @@ describe("renderTextEmail", () => {
   it("lämnar texten orörd när ingen signatur är konfigurerad", () => {
     const tom = signatureConfigFromEnv(() => undefined);
     expect(renderTextEmail("Hej!", tom)).toBe("Hej!");
+  });
+});
+
+describe("htmlSignatureToText", () => {
+  it("gör läsbara rader av Gmails signatur-HTML", () => {
+    const html =
+      '<div dir="ltr"><img src="https://x/foto.jpg"><b>Rasmus Joonsson</b><br>' +
+      "Grundare, Axona Digital<br>070 123 45 67 &middot; " +
+      '<a href="https://axonadigital.se">axonadigital.se</a></div>';
+    const text = htmlSignatureToText(html);
+    expect(text).toContain("Rasmus Joonsson");
+    expect(text).toContain("Grundare, Axona Digital");
+    expect(text).toContain("axonadigital.se");
+    expect(text).not.toContain("<");
+    expect(text).not.toContain("img");
+  });
+
+  it("släpper bilder helt i stället för att skriva [bild]", () => {
+    expect(htmlSignatureToText('<img src="x" alt="Rasmus">')).toBe("");
+  });
+
+  it("avkodar svenska entiteter", () => {
+    expect(htmlSignatureToText("<div>Fr&aring;n &Ouml;stersund</div>")).toBe(
+      "Från Östersund",
+    );
+  });
+
+  it("tom in, tom ut", () => {
+    expect(htmlSignatureToText("")).toBe("");
+    expect(htmlSignatureToText("   ")).toBe("");
+  });
+});
+
+describe("renderWithGmailSignature", () => {
+  const sig = "<div><b>Rasmus Joonsson</b><br>070 123 45 67</div>";
+
+  it("textdelen bär samma avsändarinfo som HTML-delen", () => {
+    const { text, html } = renderWithGmailSignature("Hej!\n\nMvh", sig);
+    expect(text).toContain("Rasmus Joonsson");
+    expect(text).toContain("070 123 45 67");
+    expect(html).toContain(sig);
+  });
+
+  it("utan signatur lämnas texten orörd", () => {
+    const { text, html } = renderWithGmailSignature("Hej!", "");
+    expect(text).toBe("Hej!");
+    expect(html).not.toContain("margin-top:22px");
+  });
+
+  it("escapar brödtexten men inte signaturen", () => {
+    const { html } = renderWithGmailSignature("Bygg & Co", sig);
+    expect(html).toContain("Bygg &amp; Co");
+    expect(html).toContain("<b>Rasmus Joonsson</b>");
   });
 });
