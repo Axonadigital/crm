@@ -20,6 +20,15 @@ export type SuppressionReason =
   | "unsubscribed"
   | "scb_reklamsparr"
   | "sole_trader_no_consent"
+  // Bolagsformen är inte styrkt (varken organisationsnummer eller AB/HB/KB i
+  // namnet), så vi kan inte veta om 19 § MFL kräver förhandssamtycke. Håll
+  // tillbaka tills orgnr hämtats. E-postdomänen säger INGENTING om detta —
+  // väldigt många aktiebolag använder gmail eller telia.
+  | "unverified_company_form"
+  // Adressen tillhör en katalog- eller kreditupplysningssajt, inte bolaget.
+  | "third_party_email"
+  // Adressens domän är ett annat företag än bolagets egen hemsida.
+  | "email_domain_mismatch"
   | "import_deleted"
   | "recently_contacted"
   | "legacy_mc_suppression";
@@ -27,6 +36,8 @@ export type SuppressionReason =
 export interface GateVerdict {
   suppressed: boolean;
   reasons: SuppressionReason[];
+  /** juridisk | enskild | okand — avgör om förhandssamtycke krävs. */
+  companyForm?: "juridisk" | "enskild" | "okand";
 }
 
 export interface GateSubject {
@@ -40,7 +51,9 @@ export interface GateSubject {
 }
 
 /** Bara siffror, och de sista tio (12-siffrigt person-/orgnr → 10). */
-export function normalizeOrgNumber(raw: string | null | undefined): string | null {
+export function normalizeOrgNumber(
+  raw: string | null | undefined,
+): string | null {
   if (!raw) return null;
   const digits = raw.replace(/\D/g, "");
   if (digits.length < 10) return null;
@@ -88,9 +101,14 @@ export function parseVerdict(data: unknown): GateVerdict {
   const reasons = Array.isArray(obj.reasons)
     ? (obj.reasons.filter((r) => typeof r === "string") as SuppressionReason[])
     : [];
+  const form = obj.company_form;
   return {
     suppressed: obj.suppressed === true || reasons.length > 0,
     reasons,
+    companyForm:
+      form === "juridisk" || form === "enskild" || form === "okand"
+        ? form
+        : undefined,
   };
 }
 

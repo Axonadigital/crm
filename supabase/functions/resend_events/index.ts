@@ -2,6 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import {
+  timingSafeEqual,
+  verifySvixSignature,
+} from "../_shared/webhookSignature.ts";
 
 /**
  * Resend webhook handler for email delivery events.
@@ -46,16 +50,6 @@ Deno.serve(async (req: Request) => {
     return createErrorResponse(500, "Webhook secret not configured");
   }
 
-  // Verify webhook secret via Svix headers or query param
-  const svixId = req.headers.get("svix-id");
-  const providedSecret = new URL(req.url).searchParams.get("secret");
-
-  // Simple secret-based auth (query param fallback)
-  // For production, implement full Svix signature verification
-  if (!svixId && providedSecret !== webhookSecret) {
-    return createErrorResponse(401, "Invalid webhook secret");
-  }
-
   // Validate Content-Type
   const contentType = req.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
@@ -72,6 +66,37 @@ Deno.serve(async (req: Request) => {
     const rawBody = await req.text();
     if (rawBody.length > MAX_BODY_SIZE) {
       return createErrorResponse(413, "Request body too large");
+    }
+
+    // AUTENTISERING. Villkoret här var tidigare
+    //   if (!svixId && providedSecret !== webhookSecret) return 401;
+    // vilket innebar att bara NÄRVARON av ett svix-id-huvud stängde av
+    // kontrollen helt. Verifierat i prod 2026-09-11: "svix-id: vilket-
+    // varde-som-helst" gav HTTP 200. Endpointen skriver studsar till
+    // outreach_suppressions, så en främling kunde spärra godtyckliga
+    // adresser i vår utkorg.
+    //
+    // Nu verifieras BÅDA vägarna på riktigt. Query-param-vägen behålls
+    // eftersom den används i dag, men den kringgår inte längre något.
+    const svixHeaders = {
+      id: req.headers.get("svix-id"),
+      timestamp: req.headers.get("svix-timestamp"),
+      signature: req.headers.get("svix-signature"),
+    };
+    const providedSecret = new URL(req.url).searchParams.get("secret");
+
+    const authorized = svixHeaders.id
+      ? await verifySvixSignature(webhookSecret, rawBody, svixHeaders)
+      : Boolean(providedSecret) &&
+        timingSafeEqual(providedSecret as string, webhookSecret);
+
+    if (!authorized) {
+      console.warn("resend_events: obehörigt anrop avvisat", {
+        hadSvixId: Boolean(svixHeaders.id),
+        hadSvixSignature: Boolean(svixHeaders.signature),
+        hadQuerySecret: Boolean(providedSecret),
+      });
+      return createErrorResponse(401, "Invalid webhook secret");
     }
 
     let event: unknown;

@@ -2,6 +2,11 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
+import {
+  bookingStopsOutreach,
+  getEventType,
+  mapStatus,
+} from "../_shared/calcomEvents.ts";
 
 const CALCOM_WEBHOOK_SECRET = Deno.env.get("CALCOM_WEBHOOK_SECRET");
 
@@ -36,17 +41,6 @@ async function hmacSha256Hex(secret: string, input: string) {
 function normalizeSignature(input: string | null) {
   if (!input) return "";
   return input.startsWith("sha256=") ? input.slice(7) : input;
-}
-
-function getEventType(body: any) {
-  return String(body.triggerEvent ?? body.type ?? "").toLowerCase();
-}
-
-function mapStatus(eventType: string) {
-  if (eventType.includes("cancel")) {
-    return "cancelled";
-  }
-  return "scheduled";
 }
 
 function extractAttendees(payload: any) {
@@ -90,6 +84,93 @@ async function findContactByEmail(email?: string | null) {
   }
 
   return data;
+}
+
+/**
+ * En bokning stoppar den kalla utkorgen.
+ *
+ * Utan det här fortsatte sekvensen mejla "hann du titta på det jag skickade?"
+ * till någon som redan bokat möte med oss — det värsta enskilda felet i hela
+ * kedjan, eftersom det avslöjar att avsändaren är en robot precis i det läge
+ * där förtroendet är som färskast.
+ *
+ * Tre vägar till samma enrollment, för att den som bokar sällan gör det från
+ * exakt den adress vi mejlade: kontakten, bolaget, och adressen vi faktiskt
+ * skickade till. Vilken som helst räcker.
+ */
+async function stopOutreachForBooking(
+  contactId: number | null,
+  companyId: number | null,
+  email: string | null,
+): Promise<{ stopped: number; companies: number[] }> {
+  const ids = new Set<number>();
+  const companies = new Set<number>();
+  if (companyId != null) companies.add(companyId);
+
+  const filters: string[] = [];
+  if (contactId != null) filters.push(`contact_id.eq.${contactId}`);
+  if (companyId != null) filters.push(`company_id.eq.${companyId}`);
+  if (filters.length > 0) {
+    const { data, error } = await supabaseAdmin
+      .from("sequence_enrollments")
+      .select("id, company_id")
+      .eq("status", "active")
+      .or(filters.join(","));
+    if (error)
+      console.error("booking: enrollment lookup failed:", error.message);
+    for (const row of data ?? []) {
+      ids.add(row.id as number);
+      if (row.company_id != null) companies.add(row.company_id as number);
+    }
+  }
+
+  // Adressen vi mejlade. Fångar fallet där bokaren inte finns som kontakt.
+  if (email) {
+    const { data } = await supabaseAdmin
+      .from("email_sends")
+      .select("metadata, company_id")
+      .eq("to_email", email.toLowerCase())
+      .order("id", { ascending: false })
+      .limit(10);
+    for (const row of data ?? []) {
+      const enrollmentId = (row.metadata as Record<string, unknown> | null)
+        ?.enrollment_id;
+      if (typeof enrollmentId === "number") ids.add(enrollmentId);
+      if (row.company_id != null) companies.add(row.company_id as number);
+    }
+  }
+
+  if (ids.size === 0) {
+    return { stopped: 0, companies: [...companies] };
+  }
+
+  const now = new Date().toISOString();
+  const { data: stopped, error } = await supabaseAdmin
+    .from("sequence_enrollments")
+    .update({ status: "paused", paused_at: now, next_action_at: null })
+    .in("id", [...ids])
+    .eq("status", "active")
+    .select("id, sequence_id, contact_id, company_id, current_step");
+  if (error) {
+    console.error("booking: enrollment stop failed:", error.message);
+    return { stopped: 0, companies: [...companies] };
+  }
+
+  // Spåret i loggen är hela svaret på "varför slutade den mejla?".
+  for (const row of stopped ?? []) {
+    await supabaseAdmin.from("sequence_run_log").insert({
+      enrollment_id: row.id,
+      sequence_id: row.sequence_id,
+      contact_id: row.contact_id,
+      company_id: row.company_id,
+      step: row.current_step,
+      action_type: null,
+      outcome: "stopped_meeting_booked",
+      detail: { source: "calcom", booked_by: email },
+    });
+  }
+
+  return { stopped: (stopped ?? []).length, companies: [...companies] };
 }
 
 Deno.serve(async (req: Request) =>
@@ -207,7 +288,33 @@ Deno.serve(async (req: Request) =>
         );
       }
 
-      return new Response(JSON.stringify({ ok: true, data }), {
+      // Efter upserten, så att mötet är sparat även om stoppet krånglar.
+      let outreach = { stopped: 0, companies: [] as number[] };
+      if (bookingStopsOutreach(eventType)) {
+        outreach = await stopOutreachForBooking(
+          linkedContact?.id ?? null,
+          linkedContact?.company_id ?? null,
+          primaryEmail,
+        );
+        if (outreach.companies.length > 0) {
+          // Bara framåt i tratten: ett bokat möte ska aldrig skriva över
+          // closed_won för ett bolag som redan är kund.
+          const { error: statusErr } = await supabaseAdmin
+            .from("companies")
+            .update({ lead_status: "meeting_booked" })
+            .in("id", outreach.companies)
+            // lead_status är null på nyskrapade bolag, och NOT IN på null ger
+            // null — utan or-grenen hade just de aldrig fått sin status.
+            .or(
+              "lead_status.is.null,lead_status.not.in.(closed_won,meeting_booked)",
+            );
+          if (statusErr) {
+            console.error("booking: lead_status failed:", statusErr.message);
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({ ok: true, data, outreach }), {
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     } catch (error) {

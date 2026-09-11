@@ -1,0 +1,245 @@
+/**
+ * Utgående mejl via Gmail-API:t i stället för en e-postplattform.
+ *
+ * Bakgrund (2026-09-10): Resends villkor förbjuder ordagrant "cold outreach,
+ * purchased lists, or scraped contact data" och skiljer inte på marknadsföring
+ * och transaktionsmejl. Samma konto skickar våra offerter, DocuSeal-avtal och
+ * kundrapporter, så ett stängt konto hade tagit allt det med sig. Mailchimp,
+ * Brevo och HubSpot har samma förbud. Det finns ingen plattform som välsignar
+ * kall utkorg.
+ *
+ * Lösningen är att skicka som en människa gör: från en riktig brevlåda, i en
+ * riktig tråd. Trettio relevanta mejl om dagen från ett Workspace-konto är
+ * vanlig affärskorrespondens, inte massutskick.
+ *
+ * Avsändardomänen är axonadigital.com (domänalias, gratis) med egen DKIM-nyckel,
+ * så .se-domänens anseende är skyddat. Verifierat 2026-09-10:
+ *   dkim=pass header.i=@axonadigital.com · spf=pass · dmarc=pass
+ *
+ * MEDVETET UTELÄMNAT:
+ *  - List-Unsubscribe (RFC 8058). Kravet gäller avsändare över 5 000/dag. På ett
+ *    1-till-1-mejl signalerar huvudet massutskick och gör mer skada än nytta.
+ *    Lagkravet i 20 § MFL uppfylls av en fungerande svarsadress plus en rad i
+ *    klartext, vilket mallarna har.
+ *  - Spårningspixel. Apples bildproxy förhandshämtar, så ungefär halva
+ *    öppningssiffran är påhittad, och pixeln sänker leveransbarheten. Klick på
+ *    rapportlänken mäter samma sak ärligare.
+ *  - Spårningspixel (se ovan).
+ *
+ * HTML-delen tillkom 2026-09-10 för Axonas signatur. Den skickas som
+ * multipart/alternative MED en riktig textdel — aldrig HTML ensamt. Se
+ * _shared/signature.ts för mätningarna bakom det beslutet.
+ */
+
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const SEND_URL =
+  "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+
+export interface GmailConfig {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  /** Avsändaradress. Måste vara verifierad som "Skicka e-post som". */
+  fromEmail: string;
+  fromName: string;
+}
+
+export interface GmailMessage {
+  to: string;
+  subject: string;
+  /** Ren text. Radbrytningar normaliseras till CRLF. */
+  text: string;
+  /** Valfri HTML-del. Anges den skickas meddelandet som multipart/alternative. */
+  html?: string;
+  replyTo?: string;
+  /**
+   * Gmails tråd-id. Anges det läggs meddelandet i den befintliga tråden i
+   * stället för att starta en ny.
+   *
+   * Gmail kräver TRE saker samtidigt för att acceptera det: threadId i
+   * anropet, In-Reply-To och References enligt RFC 2822, och en ämnesrad
+   * som matchar. Saknas något startas en ny tråd tyst.
+   */
+  threadId?: string;
+  /** Föregående meddelandes RFC 2822 Message-ID, inklusive vinkelparenteser. */
+  inReplyTo?: string;
+  /** Hela kedjan av Message-ID, mellanslagsseparerad. */
+  references?: string;
+}
+
+export interface GmailSendResult {
+  messageId: string;
+  /** Trådens id — nyckeln till att upptäcka svar utan spårningspixel. */
+  threadId: string;
+}
+
+/** Läser konfigurationen ur miljön. Saknas något returneras null, inte kasta. */
+export function gmailConfigFromEnv(
+  get: (k: string) => string | undefined,
+): GmailConfig | null {
+  const clientId = get("GMAIL_CLIENT_ID");
+  const clientSecret = get("GMAIL_CLIENT_SECRET");
+  const refreshToken = get("GMAIL_REFRESH_TOKEN");
+  const fromEmail = get("GMAIL_FROM_EMAIL");
+  if (!clientId || !clientSecret || !refreshToken || !fromEmail) return null;
+  return {
+    clientId,
+    clientSecret,
+    refreshToken,
+    fromEmail,
+    fromName: get("GMAIL_FROM_NAME") || "",
+  };
+}
+
+/** base64url utan utfyllnad — Gmail-API:t vill ha rå MIME i det formatet. */
+export function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/**
+ * RFC 2047 för rubriker med å, ä eller ö. Utan detta blir "Hemsidan får 42 av
+ * 100" obegripligt hos mottagaren.
+ */
+export function encodeHeader(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  if (/^[\x00-\x7F]*$/.test(value)) return value;
+  const b64 = base64UrlEncode(new TextEncoder().encode(value))
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  return `=?UTF-8?B?${padded}?=`;
+}
+
+/** Ett namn med komma eller citattecken måste citeras för att inte dela adressen. */
+function formatAddress(name: string, email: string): string {
+  if (!name) return email;
+  const encoded = encodeHeader(name);
+  const needsQuotes = /[",:;<>@\\]/.test(name) && encoded === name;
+  return needsQuotes
+    ? `"${name.replace(/(["\\])/g, "\\$1")}" <${email}>`
+    : `${encoded} <${email}>`;
+}
+
+/** Base64 i rader om 76 tecken, som standarden kräver. */
+function encodePart(text: string): string {
+  const encoded = base64UrlEncode(new TextEncoder().encode(text))
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
+  return padded.match(/.{1,76}/g)?.join("\r\n") ?? padded;
+}
+
+/**
+ * Bygger ett RFC 5322-meddelande.
+ *
+ * Utan html: ren text, som tidigare. Med html: multipart/alternative med
+ * textdelen FÖRST — ordningen är inte kosmetisk, RFC 2046 säger att den
+ * sista delen är den mest önskade, så text först och HTML sist är det som
+ * gör att klienter som kan HTML visar HTML och övriga får läsbar text.
+ */
+export function buildMimeMessage(
+  config: GmailConfig,
+  message: GmailMessage,
+): string {
+  const text = message.text.replace(/\r?\n/g, "\r\n");
+  const headers = [
+    `From: ${formatAddress(config.fromName, config.fromEmail)}`,
+    `To: ${message.to}`,
+    `Subject: ${encodeHeader(message.subject)}`,
+    "MIME-Version: 1.0",
+  ];
+  if (message.replyTo) headers.push(`Reply-To: ${message.replyTo}`);
+  // Utan de här två grupperar Gmail bara heuristiskt på ämnesraden, och
+  // uppföljningen kan hamna som en egen tråd hos mottagaren — vilket ser
+  // ut precis som ett massutskick.
+  if (message.inReplyTo) headers.push(`In-Reply-To: ${message.inReplyTo}`);
+  if (message.references) headers.push(`References: ${message.references}`);
+
+  if (!message.html) {
+    headers.push(
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+    );
+    return `${headers.join("\r\n")}\r\n\r\n${encodePart(text)}`;
+  }
+
+  const boundary = `axona_${crypto.randomUUID().replace(/-/g, "")}`;
+  headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+  const html = message.html.replace(/\r?\n/g, "\r\n");
+
+  const body = [
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    encodePart(text),
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    encodePart(html),
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  return `${headers.join("\r\n")}\r\n\r\n${body}`;
+}
+
+/**
+ * Växlar in refresh-token mot en access-token. Access-tokens lever en timme;
+ * sekvensmotorn tickar var femte minut och hämtar en ny per körning, vilket är
+ * enklare och säkrare än att cacha den i en funktion som ändå startas om.
+ */
+export async function getAccessToken(config: GmailConfig): Promise<string> {
+  const response = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      refresh_token: config.refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    // Vanligaste orsaken: scope gmail.send saknas, eller att token återkallats
+    // för att OAuth-appen ligger kvar i testläge.
+    throw new Error(`Gmail-token nekades (${response.status}): ${text.slice(0, 300)}`);
+  }
+  const json = (await response.json()) as { access_token?: string };
+  if (!json.access_token) throw new Error("Gmail-token saknade access_token");
+  return json.access_token;
+}
+
+export async function sendViaGmail(
+  config: GmailConfig,
+  message: GmailMessage,
+): Promise<GmailSendResult> {
+  const accessToken = await getAccessToken(config);
+  const raw = base64UrlEncode(
+    new TextEncoder().encode(buildMimeMessage(config, message)),
+  );
+
+  const payload: Record<string, string> = { raw };
+  if (message.threadId) payload.threadId = message.threadId;
+
+  const response = await fetch(SEND_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Gmail-sändning misslyckades (${response.status}): ${text.slice(0, 300)}`);
+  }
+  const json = (await response.json()) as { id?: string; threadId?: string };
+  if (!json.id || !json.threadId) {
+    throw new Error("Gmail svarade utan meddelande-id");
+  }
+  return { messageId: json.id, threadId: json.threadId };
+}
