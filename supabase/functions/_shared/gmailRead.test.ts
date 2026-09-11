@@ -10,6 +10,8 @@ import {
   stripQuotedReply,
   type GmailApiMessage,
   type GmailPayload,
+  bounceSeverity,
+  shouldSuppressOnBounce,
 } from "./gmailRead";
 
 const OURS = ["rasmus@axonadigital.com", "info@axonadigital.se"];
@@ -280,5 +282,185 @@ describe("signatureForAddress", () => {
 
   it("tom sträng när ingen signatur finns alls", () => {
     expect(signatureForAddress([], "rasmus@axonadigital.com")).toBe("");
+  });
+});
+
+// --- Studsens allvarlighetsgrad -------------------------------------------
+
+/** Bygger ett meddelande med en riktig message/delivery-status-del. */
+function dsnMessage(dsnBody: string, subject = "Delivery Status Notification"): GmailApiMessage {
+  return {
+    id: "m1",
+    threadId: "t1",
+    labelIds: ["INBOX"],
+    payload: {
+      mimeType: "multipart/report",
+      headers: [
+        { name: "From", value: "Mail Delivery Subsystem <mailer-daemon@googlemail.com>" },
+        { name: "Subject", value: subject },
+        { name: "Content-Type", value: 'multipart/report; report-type=delivery-status; boundary="b"' },
+      ],
+      parts: [
+        {
+          mimeType: "text/plain",
+          headers: [],
+          body: { data: b64("Ditt meddelande kunde inte levereras.") },
+        },
+        {
+          mimeType: "message/delivery-status",
+          headers: [],
+          body: { data: b64(dsnBody) },
+        },
+      ],
+    },
+  };
+}
+
+describe("bounceSeverity", () => {
+  // Gmail, adressen finns inte. Permanent — ska spärras.
+  it("5.x.x med Action: failed är hård studs", () => {
+    const msg = dsnMessage(
+      [
+        "Reporting-MTA: dns; googlemail.com",
+        "",
+        "Final-Recipient: rfc822; finnsinte@exempel.se",
+        "Action: failed",
+        "Status: 5.1.1",
+        "Diagnostic-Code: smtp; 550-5.1.1 The email account that you tried to reach does not exist.",
+      ].join("\n"),
+    );
+    expect(bounceSeverity(msg)).toBe("hard");
+  });
+
+  // Microsoft 365 avvisar. Också permanent.
+  it("5.4.1 från Microsoft är hård studs", () => {
+    const msg = dsnMessage(
+      [
+        "Final-Recipient: rfc822;user@contoso.com",
+        "Action: failed",
+        "Status: 5.4.1",
+        "Diagnostic-Code: smtp;550 5.4.1 Recipient address rejected: Access denied.",
+      ].join("\n"),
+    );
+    expect(bounceSeverity(msg)).toBe("hard");
+  });
+
+  // HELA POÄNGEN: en fördröjningsnotis får ALDRIG spärra adressen.
+  it("4.x.x med Action: delayed är mjuk studs", () => {
+    const msg = dsnMessage(
+      [
+        "Reporting-MTA: dns; googlemail.com",
+        "",
+        "Final-Recipient: rfc822; fungerar@exempel.se",
+        "Action: delayed",
+        "Status: 4.4.7",
+        "Diagnostic-Code: smtp; Server busy, will retry",
+      ].join("\n"),
+      "Delivery Status Notification (Delay)",
+    );
+    expect(bounceSeverity(msg)).toBe("soft");
+  });
+
+  it("full brevlåda (4.2.2) är mjuk — den töms i morgon", () => {
+    const msg = dsnMessage(
+      ["Final-Recipient: rfc822; full@exempel.se", "Action: delayed", "Status: 4.2.2"].join("\n"),
+    );
+    expect(bounceSeverity(msg)).toBe("soft");
+  });
+
+  it("en leveranskvittens (2.x.x) är ingen studs alls", () => {
+    const msg = dsnMessage(
+      ["Final-Recipient: rfc822; ok@exempel.se", "Action: delivered", "Status: 2.0.0"].join("\n"),
+    );
+    expect(bounceSeverity(msg)).toBe("receipt");
+  });
+
+  it("Status väger tyngre än Action när de säger emot varandra", () => {
+    const msg = dsnMessage(
+      ["Final-Recipient: rfc822; a@b.se", "Action: delayed", "Status: 5.1.1"].join("\n"),
+    );
+    expect(bounceSeverity(msg)).toBe("hard");
+  });
+
+  // Flera mottagare i samma rapport: en permanent räcker för att spärra den.
+  it("tar den allvarligaste graden när rapporten rör flera mottagare", () => {
+    const msg = dsnMessage(
+      [
+        "Final-Recipient: rfc822; ok@exempel.se",
+        "Action: delayed",
+        "Status: 4.4.7",
+        "",
+        "Final-Recipient: rfc822; dod@exempel.se",
+        "Action: failed",
+        "Status: 5.1.1",
+      ].join("\n"),
+    );
+    expect(bounceSeverity(msg)).toBe("hard");
+  });
+
+  it("faller tillbaka på ämnesraden när DSN-delen saknas", () => {
+    const fail: GmailApiMessage = {
+      id: "m2", threadId: "t2", labelIds: ["INBOX"],
+      payload: {
+        mimeType: "text/plain",
+        headers: [
+          { name: "From", value: "mailer-daemon@googlemail.com" },
+          { name: "Subject", value: "Delivery Status Notification (Failure)" },
+        ],
+        body: { data: b64("Address not found") },
+      },
+    };
+    expect(bounceSeverity(fail)).toBe("hard");
+
+    const delay: GmailApiMessage = {
+      ...fail,
+      payload: {
+        ...fail.payload!,
+        headers: [
+          { name: "From", value: "mailer-daemon@googlemail.com" },
+          { name: "Subject", value: "Delivery Status Notification (Delay)" },
+        ],
+      },
+    };
+    expect(bounceSeverity(delay)).toBe("soft");
+  });
+
+  it("hittar 550-koden i brödtexten när strukturen saknas", () => {
+    const msg: GmailApiMessage = {
+      id: "m3", threadId: "t3", labelIds: ["INBOX"],
+      payload: {
+        mimeType: "text/plain",
+        headers: [{ name: "From", value: "postmaster@exempel.se" }],
+        body: { data: b64("550 5.1.1 User unknown in virtual mailbox table") },
+      },
+    };
+    expect(bounceSeverity(msg)).toBe("hard");
+  });
+
+  // Går det inte att avgöra spärrar vi INTE. En felaktig spärr är tyst och
+  // permanent; att mejla en död adress en gång till syns och går att rätta.
+  it("okänt format ger unknown, aldrig hard", () => {
+    const msg: GmailApiMessage = {
+      id: "m4", threadId: "t4", labelIds: ["INBOX"],
+      payload: {
+        mimeType: "text/plain",
+        headers: [{ name: "From", value: "mailer-daemon@exempel.se" }],
+        body: { data: b64("Något gick fel med ditt meddelande.") },
+      },
+    };
+    expect(bounceSeverity(msg)).toBe("unknown");
+  });
+
+  it("tål meddelande helt utan innehåll", () => {
+    expect(bounceSeverity({ id: "x", threadId: "y" })).toBe("unknown");
+  });
+});
+
+describe("shouldSuppressOnBounce", () => {
+  it("spärrar BARA vid hård studs", () => {
+    expect(shouldSuppressOnBounce("hard")).toBe(true);
+    expect(shouldSuppressOnBounce("soft")).toBe(false);
+    expect(shouldSuppressOnBounce("receipt")).toBe(false);
+    expect(shouldSuppressOnBounce("unknown")).toBe(false);
   });
 });

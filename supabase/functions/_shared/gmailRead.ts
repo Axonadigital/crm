@@ -419,3 +419,118 @@ export async function fetchThread(
   }
   return (await response.json()) as GmailThread;
 }
+
+// --- Studsens allvarlighetsgrad --------------------------------------------
+
+/**
+ * Hur illa är studsen?
+ *
+ *  hard    Permanent. Adressen finns inte, eller är avvisad för gott.
+ *  soft    Tillfällig. Servern var upptagen, brevlådan full, greylisting.
+ *  receipt Ingen studs — en leveranskvittens som råkar ha samma struktur.
+ *  unknown Går inte att avgöra.
+ */
+export type BounceSeverity = "hard" | "soft" | "receipt" | "unknown";
+
+/**
+ * Plockar ut texten ur message/delivery-status-delen (RFC 3464). Det är där
+ * de maskinläsbara fälten står — Action, Status, Diagnostic-Code — och de är
+ * långt mer tillförlitliga än den mänskliga texten ovanför.
+ */
+function deliveryStatusText(payload: GmailPayload | undefined): string {
+  if (!payload) return "";
+  if (/message\/delivery-status/i.test(payload.mimeType ?? "")) {
+    return payload.body?.data ? decodeBase64Url(payload.body.data) : "";
+  }
+  for (const part of payload.parts ?? []) {
+    const found = deliveryStatusText(part);
+    if (found) return found;
+  }
+  return "";
+}
+
+const SEVERITY_RANK: Record<BounceSeverity, number> = {
+  hard: 3,
+  unknown: 2,
+  soft: 1,
+  receipt: 0,
+};
+
+/**
+ * Avgör om en studs är permanent eller tillfällig.
+ *
+ * Bakgrund (2026-09-11): classifyMessage returnerade "bounce" för VARJE
+ * delivery-status-rapport, och svarsläsaren spärrade adressen på det. En
+ * fördröjningsnotis ("Delivery Status Notification (Delay)", Status 4.4.7)
+ * hade alltså spärrat en fullt fungerande adress — permanent, enkelriktat
+ * och utan att någon fick veta det.
+ *
+ * Ordningen är medveten: Status-fältets första siffra väger tyngst (5 =
+ * permanent, 4 = tillfällig, 2 = levererat enligt RFC 3463), därefter
+ * Action-fältet, och sist ämnesrad och brödtext för avsändare som inte
+ * skickar en riktig DSN.
+ *
+ * Vid flera mottagare i samma rapport vinner den allvarligaste graden.
+ *
+ * Går det inte att avgöra blir svaret "unknown" — ALDRIG "hard". En felaktig
+ * spärr är tyst och permanent, medan ett extra mejl till en död adress syns
+ * i loggen och går att rätta.
+ */
+export function bounceSeverity(message: GmailApiMessage): BounceSeverity {
+  const dsn = deliveryStatusText(message.payload);
+
+  if (dsn) {
+    let worst: BounceSeverity | null = null;
+    const consider = (candidate: BounceSeverity) => {
+      if (!worst || SEVERITY_RANK[candidate] > SEVERITY_RANK[worst]) {
+        worst = candidate;
+      }
+    };
+
+    for (const match of dsn.matchAll(/^\s*status:\s*([245])\.\d+\.\d+/gim)) {
+      consider(
+        match[1] === "5" ? "hard" : match[1] === "4" ? "soft" : "receipt",
+      );
+    }
+
+    if (worst === null) {
+      for (const match of dsn.matchAll(/^\s*action:\s*([a-z]+)/gim)) {
+        const action = match[1].toLowerCase();
+        if (action === "failed") consider("hard");
+        else if (action === "delayed") consider("soft");
+        else if (["delivered", "relayed", "expanded"].includes(action)) {
+          consider("receipt");
+        }
+      }
+    }
+
+    if (worst !== null) return worst;
+  }
+
+  // Ingen läsbar DSN — fall tillbaka på ämnesrad och text.
+  const subject = headerValue(message.payload, "Subject").toLowerCase();
+  if (/\(delay(ed)?\)|delayed|fördröj|försenad/i.test(subject)) return "soft";
+  if (/\(failure\)|failed|undeliverable|returned to sender|kunde inte leverer/i.test(subject)) {
+    return "hard";
+  }
+
+  const text = `${decodePlainText(message.payload)}\n${message.snippet ?? ""}`;
+  if (/\b[45]\d\d[\s-][45]\.\d+\.\d+/.test(text)) {
+    return /\b5\d\d[\s-]5\.\d+\.\d+/.test(text) ? "hard" : "soft";
+  }
+  if (/\b5\.\d+\.\d+\b/.test(text)) return "hard";
+  if (/\b4\.\d+\.\d+\b/.test(text)) return "soft";
+
+  return "unknown";
+}
+
+/**
+ * Ska adressen spärras? Bara vid permanent studs.
+ *
+ * Mjuka studsar och obestämbara fall spärrar ingenting — de loggas, och
+ * svarsläsaren fortsätter bevaka tråden. Nästa försök visar om det var
+ * tillfälligt.
+ */
+export function shouldSuppressOnBounce(severity: BounceSeverity): boolean {
+  return severity === "hard";
+}

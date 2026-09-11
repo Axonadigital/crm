@@ -4,6 +4,7 @@ import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { gmailConfigFromEnv, getAccessToken } from "../_shared/gmail.ts";
 import {
+  bounceSeverity,
   bouncedRecipient,
   classifyMessage,
   decodePlainText,
@@ -12,6 +13,7 @@ import {
   headerValue,
   isNegativeReply,
   parseAddress,
+  shouldSuppressOnBounce,
   type GmailApiMessage,
 } from "../_shared/gmailRead.ts";
 
@@ -51,7 +53,12 @@ type Row = Record<string, unknown>;
 interface Counters {
   threads: number;
   replies: number;
+  /** Permanenta studsar — de enda som spärrar en adress. */
   bounces: number;
+  /** Tillfälliga studsar: full brevlåda, upptagen server, greylisting. */
+  softBounces: number;
+  /** Studsar vi inte kunde bedöma. Spärrar inget, lägger en uppgift. */
+  unknownBounces: number;
   autoReplies: number;
   saidNo: number;
   failed: number;
@@ -167,6 +174,28 @@ async function createReplyTask(
   if (error) console.error("reply task insert failed:", error.message);
 }
 
+/**
+ * Uppgift för en studs vi inte kunde bedöma. Vi spärrar INTE automatiskt —
+ * en felaktig spärr är tyst och permanent — utan låter en människa avgöra.
+ */
+async function createBounceReviewTask(
+  send: Row,
+  subject: string,
+  severity: string,
+): Promise<void> {
+  const { error } = await supabaseAdmin.from("tasks").insert({
+    contact_id: send.contact_id,
+    type: "Email",
+    text:
+      `Studs som inte gick att bedöma (${severity}) till ${send.to_email} ` +
+      `på "${send.subject}". Ämne på studsen: "${subject.slice(0, 120)}". ` +
+      `Adressen är INTE spärrad — kolla om den är död och spärra manuellt.`,
+    due_date: new Date(Date.now() + 86_400_000).toISOString(),
+    done_date: null,
+  });
+  if (error) console.error("bounce review task insert failed:", error.message);
+}
+
 /** Behandlar ett inkommande meddelande. Returnerar false om det redan var läst. */
 async function handleIncoming(
   send: Row,
@@ -182,6 +211,8 @@ async function handleIncoming(
   const subject = headerValue(message.payload, "Subject");
   const bodyText = decodePlainText(message.payload) || (message.snippet ?? "");
   const negative = kind === "reply" && isNegativeReply(bodyText);
+  // Räknas en gång och används både på inkorgsraden och i beslutet nedan.
+  const severity = kind === "bounce" ? bounceSeverity(message) : null;
   const receivedAt = message.internalDate
     ? new Date(Number(message.internalDate)).toISOString()
     : new Date().toISOString();
@@ -202,6 +233,7 @@ async function handleIncoming(
       subject: subject.slice(0, 500),
       snippet: bodyText.slice(0, 2000),
       sentiment: negative ? "negative" : "unknown",
+      bounce_severity: severity,
       received_at: receivedAt,
     });
   if (insertErr) {
@@ -220,7 +252,10 @@ async function handleIncoming(
         .update({ status: "replied", replied_at: receivedAt })
         .eq("id", send.id)
         .is("replied_at", null);
-    } else if (kind === "bounce") {
+    } else if (kind === "bounce" && shouldSuppressOnBounce(severity!)) {
+      // Bara permanenta studsar markerar utskicket som studsat. En
+      // fördröjningsnotis ska INTE plocka bort tråden ur bevakningen —
+      // mejlet kan fortfarande komma fram, och svaret med det.
       await supabaseAdmin
         .from("email_sends")
         .update({ status: "bounced", bounced_at: receivedAt })
@@ -238,6 +273,30 @@ async function handleIncoming(
   }
 
   if (kind === "bounce") {
+    // Allvarlighetsgraden avgör allt. Fram till 2026-09-11 spärrades
+    // adressen vid VARJE delivery-status-rapport, alltså även vid en ren
+    // fördröjningsnotis ("Delivery Status Notification (Delay)",
+    // Status 4.4.7). Spärren är enkelriktad och tyst, så ett fungerande
+    // företag hade försvunnit ur utkorgen utan att någon märkte det.
+    if (severity === "receipt") {
+      // Leveranskvittens med DSN-struktur. Ingen studs alls.
+      counters.autoReplies += 1;
+      return;
+    }
+
+    if (!shouldSuppressOnBounce(severity!)) {
+      if (severity === "soft") {
+        counters.softBounces += 1;
+      } else {
+        counters.unknownBounces += 1;
+        // Obestämbar studs: ingen spärr, men en människa får titta.
+        await createBounceReviewTask(send, subject, severity ?? "unknown");
+      }
+      // Varken utskicket eller sekvensen rörs — tråden bevakas vidare, och
+      // nästa försök visar om det var tillfälligt.
+      return;
+    }
+
     counters.bounces += 1;
     const dead = bouncedRecipient(message) ?? (send.to_email as string | null);
     await supabaseAdmin
@@ -248,7 +307,7 @@ async function handleIncoming(
       dead,
       companyId,
       "bounced",
-      `Studs från Gmail ${receivedAt}: ${subject}`,
+      `Permanent studs från Gmail ${receivedAt}: ${subject}`,
     );
     await stopEnrollment(enrollmentId, "bounced");
     return;
@@ -317,6 +376,8 @@ Deno.serve(async (req: Request) =>
       threads: 0,
       replies: 0,
       bounces: 0,
+      softBounces: 0,
+      unknownBounces: 0,
       autoReplies: 0,
       saidNo: 0,
       failed: 0,
@@ -411,7 +472,9 @@ Deno.serve(async (req: Request) =>
 
       const summary =
         `${counters.threads} trådar · ${counters.replies} svar ` +
-        `(${counters.saidNo} nej) · ${counters.bounces} studsar · ` +
+        `(${counters.saidNo} nej) · ${counters.bounces} permanenta studsar ` +
+        `(spärrade) · ${counters.softBounces} tillfälliga · ` +
+        `${counters.unknownBounces} obedömda · ` +
         `${counters.autoReplies} frånvaro`;
       await heartbeat("ok", startedAt, summary, { ...counters, mailbox });
       await finishRun(counters.failed > 0 ? "failed" : "succeeded", summary);
