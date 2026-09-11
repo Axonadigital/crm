@@ -134,3 +134,48 @@ describe("quickWinCount", () => {
     expect(quickWinCount(null)).toBe(0);
   });
 });
+
+describe("firstSentence — punkter som inte är meningsgränser", () => {
+  // Exakt det som gick ut i prod-testet 2026-09-11.
+  it("klipper INTE mitt i robots.txt", () => {
+    expect(
+      firstSentence(
+        "Er robots.txt säger åt Google att inte indexera sidan. Ingen som söker på era tjänster kan hitta er.",
+      ),
+    ).toBe("Er robots.txt säger åt Google att inte indexera sidan.");
+  });
+
+  it("klipper INTE i decimaltal", () => {
+    expect(
+      firstSentence("Sidan laddar på 4.2 sekunder. Det är för långsamt."),
+    ).toBe("Sidan laddar på 4.2 sekunder.");
+  });
+
+  it("klipper INTE i svenska förkortningar", () => {
+    expect(
+      firstSentence("Gäller t.ex. bilder och video. Resten är fine."),
+    ).toBe("Gäller t.ex. bilder och video.");
+  });
+
+  it("klipper INTE i domännamn", () => {
+    expect(
+      firstSentence("Länken går till hitta.se i stället för er egen sajt. Det kostar er besök."),
+    ).toBe("Länken går till hitta.se i stället för er egen sajt.");
+  });
+
+  it("tar hela texten när det bara finns en mening", () => {
+    expect(firstSentence("Sitemap saknas helt.")).toBe("Sitemap saknas helt.");
+    expect(firstSentence("Ingen punkt alls")).toBe("Ingen punkt alls");
+  });
+
+  it("klarar utropstecken och frågetecken som gräns", () => {
+    expect(firstSentence("Sajten är nere! Det måste åtgärdas nu.")).toBe(
+      "Sajten är nere!",
+    );
+  });
+
+  it("tål tomt och blanksteg", () => {
+    expect(firstSentence("")).toBe("");
+    expect(firstSentence("   ")).toBe("");
+  });
+});

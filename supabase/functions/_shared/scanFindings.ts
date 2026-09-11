@@ -100,7 +100,16 @@ export function secondFinding(raw: unknown): ScanFinding | null {
 export function firstSentence(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
-  const match = trimmed.match(/^[^.!?]*[.!?]/);
+  // En punkt är INTE alltid en meningsgräns. Första versionen klippte vid
+  // första punkten oavsett sammanhang, vilket i prod gav mejlet
+  // "... hittade en sak jag tror du vill veta om. Er robots." — meningen
+  // skulle lyda "Er robots.txt säger åt Google att inte indexera sidan."
+  //
+  // En riktig gräns kräver skiljetecken följt av blanksteg och VERSAL, eller
+  // textens slut. Det löser både filnamn (robots.txt), decimaltal (4.2
+  // sekunder) och svenska förkortningar: "t.ex." följs av gemen och räknas
+  // därför inte som slut.
+  const match = trimmed.match(/^.*?[.!?](?=\s+[A-ZÅÄÖ]|\s*$)/s);
   return (match ? match[0] : trimmed).trim();
 }
 
