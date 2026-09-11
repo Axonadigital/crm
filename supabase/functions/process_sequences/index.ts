@@ -455,10 +455,14 @@ async function threadContext(
   enrollment: Row,
   accessToken: string,
 ): Promise<{ threadId?: string; inReplyTo?: string; references?: string }> {
+  // Scopat på ENROLLMENTEN, inte kontakten. Samma kontakt kan ligga i två
+  // sekvenser (omskriven efter karensen, eller både hemside- och
+  // systemspåret). Med kontakt som nyckel hade uppföljningen om interna
+  // system dykt upp som ett svar i en månadsgammal hemsidetråd.
   const { data } = await supabaseAdmin
     .from("email_sends")
     .select("gmail_thread_id, metadata, sent_at")
-    .eq("contact_id", enrollment.contact_id)
+    .eq("metadata->>enrollment_id", String(enrollment.id))
     .not("gmail_thread_id", "is", null)
     .eq("status", "sent")
     .order("sent_at", { ascending: true })
