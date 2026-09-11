@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_SEGMENTS,
+  allabolagCategoryFromUrl,
+  segmentFromAllabolagCategory,
   classifyCompany,
   segmentFromName,
   segmentFromPlacesCategory,
@@ -198,5 +200,99 @@ describe("classifyCompany", () => {
       classifyCompany({}).segment,
     ];
     for (const s of produced) expect(ALL_SEGMENTS).toContain(s);
+  });
+});
+
+describe("allabolagCategoryFromUrl", () => {
+  it("plockar branschen ur en riktig allabolag-länk", () => {
+    expect(
+      allabolagCategoryFromUrl(
+        "https://www.allabolag.se/foretag/%C3%B6stersunds-kakelservice-ab/%C3%B6stersund/byggm%C3%A4stare/2K2T4IXI5YDDT",
+      ),
+    ).toBe("byggm%C3%A4stare");
+  });
+
+  it("klarar rapporter-varianten av länken", () => {
+    expect(
+      allabolagCategoryFromUrl(
+        "https://www.allabolag.se/rapporter/bingsta/-/s%C3%A5gverk/3N2XOTLI5YHTM",
+      ),
+    ).toBe("s%C3%A5gverk");
+  });
+
+  it("returnerar null när branschen är tom", () => {
+    expect(
+      allabolagCategoryFromUrl(
+        "https://www.allabolag.se/foretag/dahls-auto/%C3%B6stersund/-/7VJQ7FQVLI0000",
+      ),
+    ).toBeNull();
+  });
+
+  it("returnerar null på annat än allabolag", () => {
+    expect(allabolagCategoryFromUrl("https://hitta.se/x/y/z/w")).toBeNull();
+    expect(allabolagCategoryFromUrl(null)).toBeNull();
+    expect(allabolagCategoryFromUrl("inte en url")).toBeNull();
+  });
+});
+
+describe("segmentFromAllabolagCategory", () => {
+  it("klarar både procentkodning och svenska tecken", () => {
+    expect(segmentFromAllabolagCategory("byggm%C3%A4stare")).toBe("bygg");
+    expect(segmentFromAllabolagCategory("byggmästare")).toBe("bygg");
+  });
+
+  it("mappar de vanligaste posterna i CRM:et", () => {
+    expect(segmentFromAllabolagCategory("entrepren%C3%B6rer")).toBe("bygg");
+    expect(segmentFromAllabolagCategory("transportf%C3%B6rmedling")).toBe("transport");
+    expect(segmentFromAllabolagCategory("st%C3%A4dservice")).toBe("fastighet");
+    expect(segmentFromAllabolagCategory("passagerartransporter")).toBe("transport");
+    expect(segmentFromAllabolagCategory("restauranger")).toBe("restaurang");
+  });
+
+  it("returnerar null för branscher vi inte säljer mot", () => {
+    expect(segmentFromAllabolagCategory("jordbruk")).toBeNull();
+    expect(segmentFromAllabolagCategory("s%C3%A5gverk")).toBeNull();
+    expect(segmentFromAllabolagCategory("skogstj%C3%A4nster")).toBeNull();
+  });
+});
+
+describe("classifyCompany med allabolag", () => {
+  const kakel =
+    "https://www.allabolag.se/foretag/%C3%B6stersunds-kakelservice-ab/%C3%B6stersund/byggm%C3%A4stare/2K2T4IXI5YDDT";
+
+  it("allabolag slår Places-kategori och namn", () => {
+    const r = classifyCompany({
+      name: "Okänt Bolag AB",
+      industry: "establishment",
+      allabolagUrl: kakel,
+    });
+    expect(r.segment).toBe("bygg");
+    expect(r.source).toBe("allabolag");
+  });
+
+  it("SNI slår fortfarande allabolag", () => {
+    const r = classifyCompany({ sniCode: "86.23", allabolagUrl: kakel });
+    expect(r.segment).toBe("tandvard");
+    expect(r.source).toBe("sni");
+  });
+
+  // "byggmästare" är en samlingspost — namnet preciserar inom samma familj.
+  it("namnet preciserar byggmästare till kakel respektive VVS", () => {
+    expect(
+      classifyCompany({ name: "Östersunds Kakelservice AB", allabolagUrl: kakel })
+        .segment,
+    ).toBe("maleri_golv");
+    expect(
+      classifyCompany({ name: "Grännsjö VVS AB", allabolagUrl: kakel }).segment,
+    ).toBe("vvs_el");
+  });
+
+  it("men preciserar INTE bort en bransch i en annan familj", () => {
+    const r = classifyCompany({
+      name: "Walltins Åkeri AB",
+      allabolagUrl: kakel,
+    });
+    expect(r.segment).toBe("bygg");
+    expect(r.source).toBe("allabolag");
   });
 });

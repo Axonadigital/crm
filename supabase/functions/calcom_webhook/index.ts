@@ -116,7 +116,8 @@ async function stopOutreachForBooking(
       .select("id, company_id")
       .eq("status", "active")
       .or(filters.join(","));
-    if (error) console.error("booking: enrollment lookup failed:", error.message);
+    if (error)
+      console.error("booking: enrollment lookup failed:", error.message);
     for (const row of data ?? []) {
       ids.add(row.id as number);
       if (row.company_id != null) companies.add(row.company_id as number);

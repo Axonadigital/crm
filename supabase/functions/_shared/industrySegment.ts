@@ -141,12 +141,14 @@ export function segmentFromPlacesCategory(
  *
  * "el" kan aldrig matchas som delsträng — hotell, handel och modell innehåller
  * bokstäverna. Därför ordgräns eller ett efterled som gör det entydigt.
+ * Samma sak gäller efterleden: "elservice" utan ordgräns matchade inuti
+ * "kakelservice" och gjorde en kakelfirma till en elfirma.
  */
 const NAME_PATTERNS: [IndustrySegment, RegExp][] = [
   ["tandvard", /tandl[äa]k|tandv[åa]rd|tandklinik|tandhygien|dental|dentist|tandteknik|tandfen/],
   ["salong", /fris[öo]r|salong|skönhet|massage|naprapat|kiropraktor|hudv[åa]rd|barberare/],
   ["restaurang", /restaurang|pizzeri|caf[ée]\b|bageri|konditori|catering|krog|glassbar/],
-  ["vvs_el", /\bvvs\b|\br[öo]r\b|r[öo]rläggeri|ventilation|\bkyla\b|elektr|\bel\b|\bel[-\s]?(service|installation|entreprenad|firma|tekn|montage)|elservice|elinstallation|energi\b/],
+  ["vvs_el", /\bvvs\b|\br[öo]r\b|r[öo]rläggeri|ventilation|\bkyla\b|elektr|\bel\b|\bel[-\s]?(service|installation|entreprenad|firma|tekn|montage|arbete)|energi\b/],
   ["maleri_golv", /m[åa]leri|m[åa]lare|\bf[äa]rg\b|kakel|keramik|\bgolv|plattsätt|tapets/],
   ["transport", /[åa]keri|transport|taxi|\bflytt|budbil|logistik|kranbil|bussbolag|schakt/],
   ["bygg", /bygg|snickeri|snickare|snickr|entrepren|\bmark\b|markservice|markarbet|\btak\b|takteknik|takl[äa]gg|pl[åa]tslag|\bmur\b|murare|murning|fasad|betong|anl[äa]ggning|gr[äa]v|borrtj[äa]nst|borrning|skorsten|grund\b/],
@@ -164,16 +166,103 @@ export function segmentFromName(
   return null;
 }
 
+/**
+ * Allabolags egen branschindelning, utvunnen ur länken. Deras URL:er ser ut så
+ * här: /foretag/{namn}/{ort}/{bransch}/{id} — branschen står alltså gratis i
+ * adressen, utan att sidan behöver skrapas.
+ *
+ * Det här visade sig vara en bättre källa än SNI i praktiken: SNI-koden går
+ * inte att läsa ur sidans HTML längre (regexen gav "next-head=" 2026-09-11),
+ * medan 156 företag redan hade allabolag-länken sparad i enrichment_data.
+ */
+const ALLABOLAG_MAP: Record<string, IndustrySegment> = {
+  "byggmastare": "bygg",
+  "entreprenorer": "bygg",
+  "byggentreprenader-infrastruktur": "bygg",
+  "byggnadssnickerier": "bygg",
+  "markarbeten": "bygg",
+  "takarbeten": "bygg",
+  "vvs-arbeten-material-och-produkter": "vvs_el",
+  "vvs-arbeten": "vvs_el",
+  "elinstallationer": "vvs_el",
+  "elarbeten": "vvs_el",
+  "ventilation": "vvs_el",
+  "malare": "maleri_golv",
+  "maleriarbeten": "maleri_golv",
+  "golv-och-mattlaggning": "maleri_golv",
+  "transportformedling": "transport",
+  "passagerartransporter": "transport",
+  "akerier": "transport",
+  "taxi": "transport",
+  "flyttfirmor": "transport",
+  "stadservice": "fastighet",
+  "fastighetsforvaltning": "fastighet",
+  "fastighetsbolag-lokaler": "fastighet",
+  "fastighetsbolag-bostader": "fastighet",
+  "restauranger": "restaurang",
+  "kafeer": "restaurang",
+  "bagerier": "restaurang",
+  "catering": "restaurang",
+  "tandlakare": "tandvard",
+  "tandvard": "tandvard",
+  "frisorer": "salong",
+  "skonhetsvard": "salong",
+  "massage": "salong",
+};
+
+/** å/ä/ö → a/a/o, så procentkodning och svenska tecken ger samma nyckel. */
+function slugKey(raw: string): string {
+  let value = raw.trim().toLowerCase();
+  try {
+    value = decodeURIComponent(value);
+  } catch {
+    // Trasig procentkodning — fortsätt med råvärdet.
+  }
+  return value
+    .replace(/[åä]/g, "a")
+    .replace(/ö/g, "o")
+    .replace(/é/g, "e")
+    .replace(/[^a-z0-9-]/g, "");
+}
+
+/** Plockar branschdelen ur en allabolag-länk. */
+export function allabolagCategoryFromUrl(
+  url: string | null | undefined,
+): string | null {
+  if (!url || !url.includes("allabolag.se")) return null;
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+  const parts = path.split("/").filter((p) => p !== "");
+  // ["foretag", namn, ort, bransch, id] — branschen är fjärde delen.
+  if (parts.length < 4) return null;
+  const category = parts[3];
+  if (!category || category === "-") return null;
+  return category;
+}
+
+export function segmentFromAllabolagCategory(
+  raw: string | null | undefined,
+): IndustrySegment | null {
+  if (!raw) return null;
+  return ALLABOLAG_MAP[slugKey(raw)] ?? null;
+}
+
 export interface ClassifyInput {
   name?: string | null;
   /** companies.industry — oftast Googles Places-kategori. */
   industry?: string | null;
   sniCode?: string | null;
+  /** companies.allabolag_url eller länken ur enrichment_data. */
+  allabolagUrl?: string | null;
 }
 
 export interface Classification {
   segment: IndustrySegment;
-  source: "sni" | "places" | "name" | "none";
+  source: "sni" | "allabolag" | "places" | "name" | "none";
   confidence: "high" | "medium" | "low" | "none";
 }
 
@@ -184,6 +273,24 @@ export interface Classification {
 export function classifyCompany(input: ClassifyInput): Classification {
   const fromSni = segmentFromSni(input.sniCode);
   if (fromSni) return { segment: fromSni, source: "sni", confidence: "high" };
+
+  const fromAllabolag = segmentFromAllabolagCategory(
+    allabolagCategoryFromUrl(input.allabolagUrl),
+  );
+  if (fromAllabolag) {
+    // "byggmästare" är Allabolags breda samlingspost. Säger namnet däremot
+    // entydigt VVS eller kakel är det en precisering inom samma familj, och
+    // då är namnet det bättre svaret — Östersunds Kakelservice AB ligger
+    // under byggmästare men ska ha kakelerbjudandet.
+    const refined = segmentFromName(input.name);
+    if (
+      fromAllabolag === "bygg" &&
+      (refined === "vvs_el" || refined === "maleri_golv")
+    ) {
+      return { segment: refined, source: "name", confidence: "medium" };
+    }
+    return { segment: fromAllabolag, source: "allabolag", confidence: "high" };
+  }
 
   const fromPlaces = segmentFromPlacesCategory(input.industry);
   if (fromPlaces) {
