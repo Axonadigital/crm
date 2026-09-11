@@ -46,6 +46,8 @@ interface Counters {
   notFound: number;
   thirdParty: number;
   fetchFailed: number;
+  /** Loggrader som inte gick in — spärren mot återförsök är trasig om > 0. */
+  logFailed: number;
 }
 
 async function heartbeat(
@@ -65,12 +67,21 @@ async function heartbeat(
   if (error) console.error("heartbeat insert failed:", error.message);
 }
 
+/**
+ * Loggar ett försök. Returnerar false om raden INTE gick in.
+ *
+ * Det spelar roll: återförsöksspärren bygger på de här raderna. Första
+ * versionen console.error:ade bara, och när chk_enrichment_log_source
+ * avvisade "email_discovery" föll allt tyst — jobbet såg ut att fungera
+ * medan spärren var tom och samma sajter hämtades om och om igen. Nu
+ * räknas misslyckandena och syns i körningens sammanfattning.
+ */
 async function logAttempt(
   companyId: number,
   status: "success" | "failed",
   data: Row,
   errorMessage?: string,
-): Promise<void> {
+): Promise<boolean> {
   const { error } = await supabaseAdmin.from("enrichment_log").insert({
     company_id: companyId,
     source: "email_discovery",
@@ -78,7 +89,11 @@ async function logAttempt(
     enrichment_data: data,
     error_message: errorMessage ?? null,
   });
-  if (error) console.error("enrichment_log insert failed:", error.message);
+  if (error) {
+    console.error("enrichment_log insert failed:", error.message);
+    return false;
+  }
+  return true;
 }
 
 /** Hämtar en sida. Returnerar null i stället för att kasta. */
@@ -180,6 +195,7 @@ Deno.serve(async (req: Request) =>
       notFound: 0,
       thirdParty: 0,
       fetchFailed: 0,
+      logFailed: 0,
     };
     const examples: Row[] = [];
 
@@ -229,10 +245,11 @@ Deno.serve(async (req: Request) =>
             if (updateError) {
               console.error(`update ${companyId}:`, updateError.message);
             }
-            await logAttempt(companyId, "success", {
+            const logged = await logAttempt(companyId, "success", {
               email: result.email,
               found_on: result.source,
             });
+            if (!logged) counters.logFailed += 1;
           }
           if (examples.length < 15) {
             examples.push({
@@ -249,20 +266,29 @@ Deno.serve(async (req: Request) =>
         else counters.notFound += 1;
 
         if (!dryRun) {
-          await logAttempt(
+          const logged = await logAttempt(
             companyId,
             "failed",
             { website: company.website },
             result.reason,
           );
+          if (!logged) counters.logFailed += 1;
         }
       }
 
       const summary =
         `${counters.found} adresser hittade av ${counters.considered} granskade ` +
         `(${counters.notFound} utan adress, ${counters.thirdParty} tredjepartssajt, ` +
-        `${counters.fetchFailed} gick inte att hämta)`;
-      await heartbeat("ok", startedAt, summary, { ...counters, dry_run: dryRun });
+        `${counters.fetchFailed} gick inte att hämta)` +
+        (counters.logFailed > 0
+          ? ` — VARNING: ${counters.logFailed} loggrader gick inte in, återförsöksspärren fungerar inte`
+          : "");
+      await heartbeat(
+        counters.logFailed > 0 ? "failed" : "ok",
+        startedAt,
+        summary,
+        { ...counters, dry_run: dryRun },
+      );
       return createJsonResponse({
         success: true,
         dry_run: dryRun,

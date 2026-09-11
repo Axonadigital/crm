@@ -353,3 +353,18 @@ SELECT cron.schedule('enrich-allabolag', '37 * * * *',
 -- Klassificeringen är gratis (ingen extern tjänst) och kan gå ofta.
 SELECT cron.schedule('classify-companies', '7 * * * *',
   $cron$SELECT public.run_lead_data_job('classify_companies', '{"limit":200}'::jsonb)$cron$);
+
+-- 6. enrichment_log måste tillåta den nya källan -----------------------------
+-- chk_enrichment_log_source listade bara google_search, pagespeed, manual,
+-- allabolag, website och auto_scrape. discover_emails loggade 'email_discovery',
+-- vilket avvisades — och eftersom insert-felet bara console.error:as föll det
+-- tyst. Följden: återförsöksspärren såg tom ut och jobbet hade malt samma
+-- hopplösa sajter varje körning i all evighet.
+--
+-- Rent utökande: ett tillåtet värde till. Inga rader ändras.
+ALTER TABLE public.enrichment_log DROP CONSTRAINT IF EXISTS chk_enrichment_log_source;
+ALTER TABLE public.enrichment_log ADD CONSTRAINT chk_enrichment_log_source
+  CHECK (source = ANY (ARRAY[
+    'google_search', 'pagespeed', 'manual', 'allabolag', 'website',
+    'auto_scrape', 'email_discovery'
+  ]));
