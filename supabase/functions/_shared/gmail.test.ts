@@ -183,3 +183,42 @@ describe("gmailConfigFromEnv", () => {
     expect(gmailConfigFromEnv((k) => utan[k])?.fromName).toBe("");
   });
 });
+
+describe("trådning av uppföljningar", () => {
+  // Gmail kräver In-Reply-To OCH References OCH threadId. Utan dem blir
+  // uppföljningen en egen tråd hos mottagaren.
+  it("sätter In-Reply-To och References när de anges", () => {
+    const mime = buildMimeMessage(config, {
+      to: "info@exempel.se",
+      subject: "Re: Tidrapporterna hos Storsjö Tak AB",
+      text: "Hej",
+      inReplyTo: "<abc123@mail.gmail.com>",
+      references: "<abc123@mail.gmail.com>",
+    });
+    expect(header(mime, "In-Reply-To")).toBe("<abc123@mail.gmail.com>");
+    expect(header(mime, "References")).toBe("<abc123@mail.gmail.com>");
+  });
+
+  it("lämnar bort dem helt på ett första mejl", () => {
+    const mime = buildMimeMessage(config, {
+      to: "info@exempel.se",
+      subject: "Tidrapporterna hos Storsjö Tak AB",
+      text: "Hej",
+    });
+    expect(header(mime, "In-Reply-To")).toBe("");
+    expect(header(mime, "References")).toBe("");
+  });
+
+  it("behåller hela kedjan i References vid tredje mejlet", () => {
+    const mime = buildMimeMessage(config, {
+      to: "a@b.se",
+      subject: "Re: x",
+      text: "y",
+      inReplyTo: "<två@mail.gmail.com>",
+      references: "<ett@mail.gmail.com> <två@mail.gmail.com>",
+    });
+    expect(header(mime, "References")).toBe(
+      "<ett@mail.gmail.com> <två@mail.gmail.com>",
+    );
+  });
+});

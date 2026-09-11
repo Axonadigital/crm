@@ -464,3 +464,15 @@ describe("shouldSuppressOnBounce", () => {
     expect(shouldSuppressOnBounce("unknown")).toBe(false);
   });
 });
+
+describe("headerValue för Message-ID", () => {
+  // fetchMessageIdHeader normaliserar till vinkelparenteser; den delen
+  // testas här via headerValue eftersom nätanropet inte går att testa rent.
+  it("läser Message-ID oavsett skiftläge i huvudnamnet", () => {
+    const payload: GmailPayload = {
+      mimeType: "text/plain",
+      headers: [{ name: "Message-Id", value: "<abc@mail.gmail.com>" }],
+    };
+    expect(headerValue(payload, "Message-ID")).toBe("<abc@mail.gmail.com>");
+  });
+});

@@ -3,6 +3,14 @@ import { OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { segmentCopy } from "../_shared/segmentCopy.ts";
+import {
+  outsideWindowReason,
+  parseSendWindow,
+  startOfLocalDay,
+  withinSendWindow,
+  type SendWindow,
+} from "../_shared/sendWindow.ts";
+import { fetchMessageIdHeader } from "../_shared/gmailRead.ts";
 import { checkGate, type GateVerdict } from "../_shared/outreachGate.ts";
 import {
   lowerFirst,
@@ -22,7 +30,11 @@ import {
   secondFinding,
   topFinding,
 } from "../_shared/scanFindings.ts";
-import { gmailConfigFromEnv, sendViaGmail } from "../_shared/gmail.ts";
+import {
+  gmailConfigFromEnv,
+  getAccessToken,
+  sendViaGmail,
+} from "../_shared/gmail.ts";
 
 /**
  * Process Sequences Edge Function
@@ -66,17 +78,23 @@ type Outcome =
   | "dry_run"
   | "skipped_suppressed"
   | "skipped_cap"
+  // Utanför sändningsfönstret. Utskicket skjuts UPP, aldrig bort.
+  | "skipped_window"
   | "completed"
   | "failed";
 
 interface Settings {
   dryRun: boolean;
   dailyCap: number;
+  /** Tillåtna sändningstider. Utanför dem skjuts utskicket upp, inte bort. */
+  sendWindow: SendWindow;
 }
 
 interface StepResult {
   success: boolean;
   error?: string;
+  /** Mejlet gick ut men tråd-id kunde inte sparas — svar hittas inte. */
+  trackingLost?: boolean;
 }
 
 interface PreparedEmail {
@@ -101,6 +119,7 @@ async function loadSettings(): Promise<Settings> {
   return {
     dryRun: value.dry_run !== false,
     dailyCap: Number.isFinite(cap) && cap > 0 ? cap : DEFAULT_DAILY_CAP,
+    sendWindow: parseSendWindow(value.send_window),
   };
 }
 
@@ -150,9 +169,15 @@ async function recentlyLogged(
   return (data?.length ?? 0) > 0;
 }
 
-async function sentToday(): Promise<number> {
-  const start = new Date();
-  start.setUTCHours(0, 0, 0, 0);
+/**
+ * Skickade i dag, räknat från SVENSK midnatt.
+ *
+ * Tidigare setUTCHours(0,0,0,0), alltså 02:00 svensk sommartid. Ett utskick
+ * 01:30 hamnade då på gårdagens kvot och taket kunde spräckas två gånger
+ * samma natt.
+ */
+async function sentToday(window: SendWindow): Promise<number> {
+  const start = new Date(startOfLocalDay(new Date(), window.timeZone));
   const { count } = await supabaseAdmin
     .from("sequence_run_log")
     .select("id", { count: "exact", head: true })
@@ -415,6 +440,53 @@ async function loadGmailSignature(): Promise<string | null> {
   return html.trim() ? html : null;
 }
 
+/**
+ * Tråden att svara i, om det här inte är första mejlet.
+ *
+ * Gmail kräver TRE saker samtidigt: threadId, In-Reply-To/References enligt
+ * RFC 2822, och matchande ämnesrad. Saknas något startar Gmail en ny tråd
+ * tyst — och en uppföljning i egen tråd med "Re:" i ämnet ser ut precis som
+ * ett massutskick.
+ *
+ * Misslyckas något här skickas mejlet ändå, bara utan trådning. Ett
+ * levererat mejl i fel tråd är bättre än inget mejl.
+ */
+async function threadContext(
+  enrollment: Row,
+  accessToken: string,
+): Promise<{ threadId?: string; inReplyTo?: string; references?: string }> {
+  const { data } = await supabaseAdmin
+    .from("email_sends")
+    .select("gmail_thread_id, metadata, sent_at")
+    .eq("contact_id", enrollment.contact_id)
+    .not("gmail_thread_id", "is", null)
+    .eq("status", "sent")
+    .order("sent_at", { ascending: true })
+    .limit(10);
+
+  const sends = (data ?? []) as Row[];
+  if (sends.length === 0) return {};
+
+  // Första utskicket äger tråden; det senaste är det vi svarar på.
+  const threadId = sends[0].gmail_thread_id as string;
+  const inSameThread = sends.filter((r) => r.gmail_thread_id === threadId);
+  const chain: string[] = [];
+  for (const row of inSameThread) {
+    const meta = (row.metadata || {}) as Row;
+    const gmailId = meta.gmail_message_id;
+    if (typeof gmailId !== "string") continue;
+    const header = await fetchMessageIdHeader(accessToken, gmailId);
+    if (header) chain.push(header);
+  }
+  if (chain.length === 0) return { threadId };
+
+  return {
+    threadId,
+    inReplyTo: chain[chain.length - 1],
+    references: chain.join(" "),
+  };
+}
+
 async function sendPrepared(
   email: PreparedEmail,
   enrollment: Row,
@@ -483,6 +555,21 @@ async function sendPrepared(
     return { success: false, error: "Failed to create email_sends record" };
   }
 
+  // Trådning: bara från steg 2 och framåt. Misslyckas slagningen skickas
+  // mejlet ändå, bara som en ny tråd.
+  let thread: { threadId?: string; inReplyTo?: string; references?: string } = {};
+  if (stepNumber > 1) {
+    try {
+      const accessToken = await getAccessToken(gmail);
+      thread = await threadContext(enrollment, accessToken);
+    } catch (err) {
+      console.warn(
+        "trådkontext kunde inte hämtas, skickar som ny tråd:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
   let sent: { messageId: string; threadId: string };
   try {
     sent = await sendViaGmail(gmail, {
@@ -490,6 +577,7 @@ async function sendPrepared(
       subject: email.subject,
       text: body,
       html: htmlBody,
+      ...thread,
     });
   } catch (err) {
     const errText = err instanceof Error ? err.message : String(err);
@@ -503,26 +591,58 @@ async function sendPrepared(
     return { success: false, error: errText };
   }
 
-  await supabaseAdmin
-    .from("email_sends")
-    .update({
-      status: "sent",
-      sent_at: new Date().toISOString(),
-      postmark_message_id: sent.messageId,
-      // Egen kolumn, inte bara metadata: svarsläsaren pollar på den och ett
-      // jsonb-fält går inte att indexera vettigt för det urvalet.
+  // MEJLET ÄR SKICKAT. Allt nedan är bokföring, och om bokföringen fallerar
+  // får vi ALDRIG returnera fel — då släpper sändningslåset och samma mejl
+  // går ut igen till en riktig mottagare.
+  const trackingUpdate = {
+    status: "sent",
+    sent_at: new Date().toISOString(),
+    postmark_message_id: sent.messageId,
+    // Egen kolumn, inte bara metadata: svarsläsaren pollar på den och ett
+    // jsonb-fält går inte att indexera vettigt för det urvalet.
+    gmail_thread_id: sent.threadId,
+    // Trådens id är nyckeln till svarsdetektering: kommer det ett nytt
+    // meddelande i tråden som inte är vårt, har mottagaren svarat. Ingen
+    // spårningspixel behövs för det, och det går inte att förfalska.
+    metadata: {
+      ...emailSend.metadata,
+      gmail_message_id: sent.messageId,
       gmail_thread_id: sent.threadId,
-      // Trådens id är nyckeln till svarsdetektering: kommer det ett nytt
-      // meddelande i tråden som inte är vårt, har mottagaren svarat. Ingen
-      // spårningspixel behövs för det, och det går inte att förfalska.
-      metadata: {
-        ...emailSend.metadata,
-        gmail_message_id: sent.messageId,
-        gmail_thread_id: sent.threadId,
-      },
-    })
+    },
+  };
+
+  let { error: trackErr } = await supabaseAdmin
+    .from("email_sends")
+    .update(trackingUpdate)
     .eq("id", emailSend.id);
-  return { success: true };
+
+  // Ett försök till. Utan tråd-id är mejlet osynligt för svarsläsaren —
+  // vi får aldrig veta om mottagaren svarade, sa nej eller studsade.
+  if (trackErr) {
+    console.error("tråd-id kunde inte sparas, försöker igen:", trackErr.message);
+    ({ error: trackErr } = await supabaseAdmin
+      .from("email_sends")
+      .update(trackingUpdate)
+      .eq("id", emailSend.id));
+  }
+
+  if (trackErr) {
+    // Sista utvägen: en människa får koppla ihop det manuellt. Bättre än att
+    // låtsas att allt gick bra.
+    console.error("tråd-id gick INTE att spara:", trackErr.message);
+    await supabaseAdmin.from("tasks").insert({
+      contact_id: enrollment.contact_id,
+      type: "Email",
+      text:
+        `Mejlet till ${email.to} gick ut (Gmail-id ${sent.messageId}) men ` +
+        `tråd-id kunde inte sparas: ${trackErr.message}. Svar och studsar på ` +
+        `det här mejlet upptäcks INTE automatiskt — bevaka brevlådan manuellt.`,
+      due_date: new Date().toISOString(),
+      done_date: null,
+    });
+  }
+
+  return { success: true, trackingLost: Boolean(trackErr) };
 }
 
 // --- Steg: interna åtgärder ---
@@ -631,6 +751,7 @@ interface TickCounters {
   dryRun: number;
   suppressed: number;
   capped: number;
+  outsideWindow: number;
   duplicates: number;
   completed: number;
   failed: number;
@@ -792,10 +913,38 @@ async function processEnrollment(
     return;
   }
 
-  // 2. Dygnstak — bara för utgående mejl. Enrollment lämnas förfallen och
-  //    plockas upp nästa dygn.
+  // 2a. Sändningsfönster — bara för utgående mejl. Ett mejl som blev
+  //     förfallet 03:14 en söndag gick tidigare 03:14 en söndag. Tidpunkten
+  //     är en av de tydligaste signalerna på att avsändaren är en maskin.
+  //     Enrollmenten lämnas förfallen och plockas upp när fönstret öppnar.
   if (actionType === "send_email" && !settings.dryRun) {
-    const sent = await sentToday();
+    const now = new Date();
+    if (!withinSendWindow(now, settings.sendWindow)) {
+      counters.outsideWindow += 1;
+      if (
+        !(await recentlyLogged(
+          enrollment.id,
+          stepNumber,
+          "skipped_window",
+          CAP_LOG_DEDUPE_MINUTES,
+        ))
+      ) {
+        await logRun({
+          enrollment,
+          step: stepNumber,
+          actionType,
+          outcome: "skipped_window",
+          detail: { reason: outsideWindowReason(now, settings.sendWindow) },
+        });
+      }
+      return;
+    }
+  }
+
+  // 2b. Dygnstak — bara för utgående mejl. Enrollment lämnas förfallen och
+  //     plockas upp nästa dygn.
+  if (actionType === "send_email" && !settings.dryRun) {
+    const sent = await sentToday(settings.sendWindow);
     if (sent >= settings.dailyCap) {
       counters.capped += 1;
       if (
@@ -1004,6 +1153,7 @@ Deno.serve(async (req: Request) =>
       dryRun: 0,
       suppressed: 0,
       capped: 0,
+      outsideWindow: 0,
       duplicates: 0,
       completed: 0,
       failed: 0,
@@ -1045,7 +1195,11 @@ Deno.serve(async (req: Request) =>
       }
 
       const mode = settings.dryRun ? "TORRLÄGE" : "skarpt";
-      const summary = `${mode}: ${counters.processed} förfallna, ${counters.sent} skickade, ${counters.suppressed} spärrade, ${counters.dryRun} torrkörda, ${counters.duplicates} dubbletter stoppade`;
+      const summary =
+        `${mode}: ${counters.processed} förfallna, ${counters.sent} skickade, ` +
+        `${counters.suppressed} spärrade, ${counters.outsideWindow} utanför ` +
+        `sändningsfönstret, ${counters.capped} över dygnstaket, ` +
+        `${counters.dryRun} torrkörda, ${counters.duplicates} dubbletter stoppade`;
       await heartbeat("ok", startedAt, summary, { ...counters, settings });
       await finishRun(counters.failed > 0 ? "failed" : "succeeded", summary);
       return createJsonResponse({ mode, ...counters });

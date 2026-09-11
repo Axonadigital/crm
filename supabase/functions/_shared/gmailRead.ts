@@ -534,3 +534,35 @@ export function bounceSeverity(message: GmailApiMessage): BounceSeverity {
 export function shouldSuppressOnBounce(severity: BounceSeverity): boolean {
   return severity === "hard";
 }
+
+/**
+ * Hämtar ett skickat meddelandes RFC 2822 Message-ID.
+ *
+ * Behövs för att trådra uppföljningen. Gmail-API:t returnerar sitt EGET id
+ * vid sändning, inte Message-ID-huvudet, och det är huvudet som måste stå i
+ * In-Reply-To och References för att Gmail ska acceptera trådningen.
+ *
+ * format=metadata med bara det ena huvudet — vi behöver inte kroppen.
+ * Returnerar null i stället för att kasta: en misslyckad slagning ska inte
+ * stoppa utskicket, den ska bara göra att mejlet startar en ny tråd.
+ */
+export async function fetchMessageIdHeader(
+  accessToken: string,
+  messageId: string,
+): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}` +
+        `?format=metadata&metadataHeaders=Message-ID`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!response.ok) return null;
+    const message = (await response.json()) as GmailApiMessage;
+    const value = headerValue(message.payload, "Message-ID");
+    if (!value) return null;
+    // Vissa servrar utelämnar vinkelparenteserna; RFC 2822 kräver dem.
+    return value.startsWith("<") ? value : `<${value}>`;
+  } catch {
+    return null;
+  }
+}

@@ -52,6 +52,19 @@ export interface GmailMessage {
   /** Valfri HTML-del. Anges den skickas meddelandet som multipart/alternative. */
   html?: string;
   replyTo?: string;
+  /**
+   * Gmails tråd-id. Anges det läggs meddelandet i den befintliga tråden i
+   * stället för att starta en ny.
+   *
+   * Gmail kräver TRE saker samtidigt för att acceptera det: threadId i
+   * anropet, In-Reply-To och References enligt RFC 2822, och en ämnesrad
+   * som matchar. Saknas något startas en ny tråd tyst.
+   */
+  threadId?: string;
+  /** Föregående meddelandes RFC 2822 Message-ID, inklusive vinkelparenteser. */
+  inReplyTo?: string;
+  /** Hela kedjan av Message-ID, mellanslagsseparerad. */
+  references?: string;
 }
 
 export interface GmailSendResult {
@@ -138,6 +151,11 @@ export function buildMimeMessage(
     "MIME-Version: 1.0",
   ];
   if (message.replyTo) headers.push(`Reply-To: ${message.replyTo}`);
+  // Utan de här två grupperar Gmail bara heuristiskt på ämnesraden, och
+  // uppföljningen kan hamna som en egen tråd hos mottagaren — vilket ser
+  // ut precis som ett massutskick.
+  if (message.inReplyTo) headers.push(`In-Reply-To: ${message.inReplyTo}`);
+  if (message.references) headers.push(`References: ${message.references}`);
 
   if (!message.html) {
     headers.push(
@@ -204,13 +222,16 @@ export async function sendViaGmail(
     new TextEncoder().encode(buildMimeMessage(config, message)),
   );
 
+  const payload: Record<string, string> = { raw };
+  if (message.threadId) payload.threadId = message.threadId;
+
   const response = await fetch(SEND_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ raw }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const text = await response.text();
