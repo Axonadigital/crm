@@ -3,6 +3,7 @@ import { OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { segmentCopy } from "../_shared/segmentCopy.ts";
+import { outreachPersonalization } from "../_shared/outreachPersonalization.ts";
 import {
   outsideWindowReason,
   parseSendWindow,
@@ -387,6 +388,12 @@ async function prepareEmail(
     ...findingVars(scan?.findings),
     report_url: scan?.report_slug ? `${scannerBase}/r/${scan.report_slug}` : "",
     ...segmentVars(company?.industry_segment as string | null),
+    ...outreachPersonalization({
+      companyName: company?.name,
+      websiteHost: websiteHost((company?.website as string) || ""),
+      segment: company?.industry_segment,
+      findings: scan?.findings,
+    }),
   };
   const missing: string[] = [];
   const render = (tmpl: string) =>

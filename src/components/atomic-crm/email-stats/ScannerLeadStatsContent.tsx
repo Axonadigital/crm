@@ -91,6 +91,13 @@ export function ScannerLeadStatsContent({
         Besökare som scannar sin egen hemsida via lead magneten på
         axonadigital.se — hur många försök som blir leads, och vilka de är.
       </p>
+      <p className="max-w-2xl text-xs text-muted-foreground">
+        Obs: raden "Scanner-rapport" under E-post → Per kanal visar bara
+        rapportmejl skickade sedan 14 aug 2026, då den spårningen infördes.
+        Leads härifrån som är äldre än så saknar en matchande rad där — antalet
+        leads ovan och antalet skickade mejl där behöver alltså inte stämma
+        överens förrän äldre leads åldras ut ur vald period.
+      </p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <SummaryCard
