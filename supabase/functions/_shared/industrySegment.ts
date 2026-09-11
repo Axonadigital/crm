@@ -136,6 +136,11 @@ export function segmentFromPlacesCategory(
  * "Vvs Entreprenad" ska bli vvs_el och inte bygg, och "ByggKeramik" sätter
  * kakel trots att namnet börjar på Bygg.
  *
+ * Två fällor som kostade riktiga felklassningar: \b fungerar inte före å
+ * (å är inget \w-tecken), så "åkeri" behöver en egen avgränsarklass — utan
+ * den blev "Östersunds skomakeri" ett åkeri. Och "gräv" som lös delsträng
+ * träffar "gravyr".
+ *
  * Bygg prövas före fastighet: "Backmans Bygg & Fastighetsservice AB" är en
  * byggfirma som också sköter fastigheter, inte tvärtom. Ledordet vinner.
  *
@@ -150,8 +155,8 @@ const NAME_PATTERNS: [IndustrySegment, RegExp][] = [
   ["restaurang", /restaurang|pizzeri|caf[ée]\b|bageri|konditori|catering|krog|glassbar/],
   ["vvs_el", /\bvvs\b|\br[öo]r\b|r[öo]rläggeri|ventilation|\bkyla\b|elektr|\bel\b|\bel[-\s]?(service|installation|entreprenad|firma|tekn|montage|arbete)|energi\b/],
   ["maleri_golv", /m[åa]leri|m[åa]lare|\bf[äa]rg\b|kakel|keramik|\bgolv|plattsätt|tapets/],
-  ["transport", /[åa]keri|transport|taxi|\bflytt|budbil|logistik|kranbil|bussbolag|schakt/],
-  ["bygg", /bygg|snickeri|snickare|snickr|entrepren|\bmark\b|markservice|markarbet|\btak\b|takteknik|takl[äa]gg|pl[åa]tslag|\bmur\b|murare|murning|fasad|betong|anl[äa]ggning|gr[äa]v|borrtj[äa]nst|borrning|skorsten|grund\b/],
+  ["transport", /(^|[\s&.,/()-])[åa]keri|transport|taxi|\bflytt|budbil|logistik|kranbil|bussbolag/],
+  ["bygg", /bygg|snickeri|snickare|snickr|entrepren|\bmark\b|markservice|markarbet|\btak\b|takteknik|takl[äa]gg|pl[åa]tslag|\bmur\b|murare|murning|fasad|betong|anl[äa]ggning|gr[äa]v(ning|are|arbete|maskin|entrepren)|schakt|borrtj[äa]nst|borrning|skorsten|grund\b/],
   ["fastighet", /st[äa]dservice|st[äa]dfirma|\bst[äa]d\b|lokalv[åa]rd|fastighetsservice|fastighetssk[öo]t|f[öo]rvaltning/],
 ];
 

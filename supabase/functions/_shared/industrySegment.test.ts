@@ -142,6 +142,25 @@ describe("segmentFromName", () => {
     expect(segmentFromName("National Dental Campus")).toBe("tandvard");
   });
 
+  // Riktiga felklassningar från prod 2026-09-11.
+  it("tar INTE åkeri ur ord som slutar på -makeri", () => {
+    expect(segmentFromName("Östersunds skomakeri")).not.toBe("transport");
+    expect(segmentFromName("Bagarns Bakmakeri")).not.toBe("transport");
+  });
+
+  it("hittar fortfarande riktiga åkerier", () => {
+    expect(segmentFromName("Walltins Åkeri AB")).toBe("transport");
+    expect(segmentFromName("norrmans åkeri & bygg")).toBe("transport");
+    expect(segmentFromName("Hällberg & Son Åkeri Handelsbolag")).toBe("transport");
+    expect(segmentFromName("Åkeri Norr AB")).toBe("transport");
+  });
+
+  it("tar INTE gräv ur gravyr", () => {
+    expect(segmentFromName("Storsjö Gravyr AB")).not.toBe("bygg");
+    expect(segmentFromName("Leif Grävare AB")).toBe("bygg");
+    expect(segmentFromName("Jämtlands Schaktning AB")).toBe("bygg");
+  });
+
   it("returnerar null när namnet inte säger något", () => {
     expect(segmentFromName("Heimjord AB")).toBeNull();
     expect(segmentFromName("D ANDERSSON AB")).toBeNull();

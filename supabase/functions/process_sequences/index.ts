@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import { segmentCopy } from "../_shared/segmentCopy.ts";
 import { checkGate, type GateVerdict } from "../_shared/outreachGate.ts";
 import {
   lowerFirst,
@@ -270,6 +271,22 @@ function findingVars(raw: unknown): Record<string, string> {
   };
 }
 
+/**
+ * Branschvariabler till "bra hemsida"-mallarna. Saknas segmentet returneras
+ * ett TOMT objekt, inte tomma strängar — då blir {{segment_pain}} en saknad
+ * nyckel och spärren i render() stoppar utskicket, i stället för att skicka
+ * ett mejl med ett hål mitt i.
+ */
+function segmentVars(segment: string | null): Record<string, string> {
+  const copy = segmentCopy(segment);
+  if (!copy) return {};
+  return {
+    segment_subject: copy.subject,
+    segment_pain: copy.pain,
+    segment_pain_2: copy.painFollowup,
+  };
+}
+
 async function prepareEmail(
   step: Row,
   enrollment: Row,
@@ -300,7 +317,7 @@ async function prepareEmail(
   if (contact.company_id) {
     const { data } = await supabaseAdmin
       .from("companies")
-      .select("name, website, industry, city")
+      .select("name, website, industry, city, industry_segment")
       .eq("id", contact.company_id)
       .maybeSingle();
     company = data;
@@ -344,19 +361,42 @@ async function prepareEmail(
     ),
     ...findingVars(scan?.findings),
     report_url: scan?.report_slug ? `${scannerBase}/r/${scan.report_slug}` : "",
+    ...segmentVars(company?.industry_segment as string | null),
   };
+  const missing: string[] = [];
   const render = (tmpl: string) =>
-    tmpl.replace(
-      /\{\{(\w+)\}\}/g,
-      (_m: string, key: string) => variables[key] ?? `{{${key}}}`,
-    );
+    tmpl.replace(/\{\{(\w+)\}\}/g, (_m: string, key: string) => {
+      const value = variables[key];
+      // Tom sträng är tillåten — befintliga mallar har variabler som
+      // legitimt kan vara tomma (report_url utan scan). Saknas nyckeln
+      // HELT är det däremot ett stavfel eller en mall som kräver ett
+      // segment företaget inte har.
+      if (value === undefined) {
+        missing.push(key);
+        return `{{${key}}}`;
+      }
+      return value;
+    });
+
+  const subject = render(template.subject);
+  const body = render(template.body);
+
+  // Ett mejl med "{{segment_pain}}" i texten är värre än inget mejl alls.
+  // Saknas en variabel mallen faktiskt använder stoppas utskicket här och
+  // loggas som fel, i stället för att gå ut trasigt till en riktig mottagare.
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error: `Mallen saknar värde för: ${[...new Set(missing)].join(", ")}`,
+    };
+  }
 
   return {
     ok: true,
     email: {
       to,
-      subject: render(template.subject),
-      body: render(template.body),
+      subject,
+      body,
       templateId,
       companyId: (contact.company_id as number | null) ?? null,
     },
