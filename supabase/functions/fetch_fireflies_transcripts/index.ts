@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
+import { AuthMiddleware } from "../_shared/authentication.ts";
 
 /**
  * Fetch Fireflies Transcripts for a Contact
@@ -451,159 +452,169 @@ Regler:
 
 // --- Main handler ---
 
+// Kräver inloggad användare. Funktionen var HELT öppen fram till 2026-09-11:
+// en POST från öppet internet slog upp kontakten i databasen och hade anropat
+// Fireflies med vår API-nyckel plus Claude (betalt) vid ett giltigt
+// contact_id — och kontakt-id:n är löpnummer, alltså triviala att gissa.
+// Anropas bara från CRM-gränssnittet (dataProvider), som redan skickar
+// användarens JWT, så låset bryter inget befintligt flöde.
 Deno.serve(async (req: Request) =>
-  OptionsMiddleware(req, async (req) => {
-    if (req.method !== "POST") {
-      return createErrorResponse(405, "Method Not Allowed");
-    }
-
-    let contact_id: string | undefined;
-    try {
-      if (!FIREFLIES_API_KEY) {
-        return createErrorResponse(500, "FIREFLIES_API_KEY not configured");
+  OptionsMiddleware(req, async (req) =>
+    AuthMiddleware(req, async (req) => {
+      if (req.method !== "POST") {
+        return createErrorResponse(405, "Method Not Allowed");
       }
 
-      const body = await req.json();
-      const { contact_id: cid, import_meeting_id } = body;
-      contact_id = cid;
+      let contact_id: string | undefined;
+      try {
+        if (!FIREFLIES_API_KEY) {
+          return createErrorResponse(500, "FIREFLIES_API_KEY not configured");
+        }
 
-      if (!contact_id) {
-        return createErrorResponse(400, "contact_id is required");
-      }
+        const body = await req.json();
+        const { contact_id: cid, import_meeting_id } = body;
+        contact_id = cid;
 
-      // Get contact data for matching
-      const contact = await getContactData(contact_id);
-      if (!contact) {
-        return createErrorResponse(404, "Contact not found");
-      }
+        if (!contact_id) {
+          return createErrorResponse(400, "contact_id is required");
+        }
 
-      // --- Import mode ---
-      if (import_meeting_id) {
-        const { data: contactFull } = await supabaseAdmin
-          .from("contacts")
-          .select("company_id")
-          .eq("id", contact_id)
-          .single();
+        // Get contact data for matching
+        const contact = await getContactData(contact_id);
+        if (!contact) {
+          return createErrorResponse(404, "Contact not found");
+        }
 
-        let result;
-        try {
-          result = await importTranscript(
-            import_meeting_id,
-            contact_id,
-            contactFull?.company_id ?? null,
-          );
-        } catch (importError) {
-          const msg =
-            importError instanceof Error
-              ? importError.message
-              : String(importError);
-          if (msg.includes("paid plan")) {
-            return createErrorResponse(
-              402,
-              "Fireflies kräver en betald plan för att importera transkript. Uppgradera på fireflies.ai.",
+        // --- Import mode ---
+        if (import_meeting_id) {
+          const { data: contactFull } = await supabaseAdmin
+            .from("contacts")
+            .select("company_id")
+            .eq("id", contact_id)
+            .single();
+
+          let result;
+          try {
+            result = await importTranscript(
+              import_meeting_id,
+              contact_id,
+              contactFull?.company_id ?? null,
             );
+          } catch (importError) {
+            const msg =
+              importError instanceof Error
+                ? importError.message
+                : String(importError);
+            if (msg.includes("paid plan")) {
+              return createErrorResponse(
+                402,
+                "Fireflies kräver en betald plan för att importera transkript. Uppgradera på fireflies.ai.",
+              );
+            }
+            throw importError;
           }
-          throw importError;
+
+          return new Response(JSON.stringify(result), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
         }
 
-        return new Response(JSON.stringify(result), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
+        // --- Search mode ---
+        // Fetch recent transcripts from Fireflies (last 50)
+        const data = await firefliesQuery(SEARCH_TRANSCRIPTS_QUERY, {
+          limit: 50,
+          skip: 0,
         });
-      }
 
-      // --- Search mode ---
-      // Fetch recent transcripts from Fireflies (last 50)
-      const data = await firefliesQuery(SEARCH_TRANSCRIPTS_QUERY, {
-        limit: 50,
-        skip: 0,
-      });
+        const transcripts: FirefliesTranscript[] = data?.transcripts ?? [];
 
-      const transcripts: FirefliesTranscript[] = data?.transcripts ?? [];
+        // Get already imported Fireflies meeting IDs
+        const { data: existingTranscriptions } = await supabaseAdmin
+          .from("meeting_transcriptions")
+          .select("fireflies_meeting_id, contact_id")
+          .not("fireflies_meeting_id", "is", null);
 
-      // Get already imported Fireflies meeting IDs
-      const { data: existingTranscriptions } = await supabaseAdmin
-        .from("meeting_transcriptions")
-        .select("fireflies_meeting_id, contact_id")
-        .not("fireflies_meeting_id", "is", null);
-
-      const importedMap = new Map<string, number | null>();
-      for (const et of existingTranscriptions ?? []) {
-        if (et.fireflies_meeting_id) {
-          importedMap.set(et.fireflies_meeting_id, et.contact_id);
+        const importedMap = new Map<string, number | null>();
+        for (const et of existingTranscriptions ?? []) {
+          if (et.fireflies_meeting_id) {
+            importedMap.set(et.fireflies_meeting_id, et.contact_id);
+          }
         }
-      }
 
-      // Match and score transcripts
-      const matches = transcripts
-        .map((t) => {
-          const { matched, match_type } = matchesContact(t, contact);
-          const alreadyImported = importedMap.has(t.id);
-          const linkedToThisContact = importedMap.get(t.id) === contact_id;
+        // Match and score transcripts
+        const matches = transcripts
+          .map((t) => {
+            const { matched, match_type } = matchesContact(t, contact);
+            const alreadyImported = importedMap.has(t.id);
+            const linkedToThisContact = importedMap.get(t.id) === contact_id;
 
-          return {
-            fireflies_id: t.id,
-            title: t.title,
-            date: t.date,
-            duration: t.duration,
-            transcript_url: t.transcript_url,
-            short_summary:
-              t.summary?.short_summary ?? t.summary?.overview ?? null,
-            attendees: (t.meeting_attendees ?? []).map((a) => ({
-              name: a.displayName,
-              email: a.email,
-            })),
-            match_type,
-            matched,
-            already_imported: alreadyImported,
-            linked_to_contact: linkedToThisContact,
-          };
-        })
-        .filter((t) => t.matched)
-        .sort((a, b) => {
-          // Sort: email > name > company, then by date desc
-          const typeOrder: Record<string, number> = {
-            email: 0,
-            name: 1,
-            name_in_title: 2,
-            company: 3,
-          };
-          const orderDiff =
-            (typeOrder[a.match_type] ?? 9) - (typeOrder[b.match_type] ?? 9);
-          if (orderDiff !== 0) return orderDiff;
-          return (
-            new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()
-          );
-        });
+            return {
+              fireflies_id: t.id,
+              title: t.title,
+              date: t.date,
+              duration: t.duration,
+              transcript_url: t.transcript_url,
+              short_summary:
+                t.summary?.short_summary ?? t.summary?.overview ?? null,
+              attendees: (t.meeting_attendees ?? []).map((a) => ({
+                name: a.displayName,
+                email: a.email,
+              })),
+              match_type,
+              matched,
+              already_imported: alreadyImported,
+              linked_to_contact: linkedToThisContact,
+            };
+          })
+          .filter((t) => t.matched)
+          .sort((a, b) => {
+            // Sort: email > name > company, then by date desc
+            const typeOrder: Record<string, number> = {
+              email: 0,
+              name: 1,
+              name_in_title: 2,
+              company: 3,
+            };
+            const orderDiff =
+              (typeOrder[a.match_type] ?? 9) - (typeOrder[b.match_type] ?? 9);
+            if (orderDiff !== 0) return orderDiff;
+            return (
+              new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()
+            );
+          });
 
-      return new Response(
-        JSON.stringify({
-          contact: {
-            id: contact.id,
-            name: [contact.first_name, contact.last_name]
-              .filter(Boolean)
-              .join(" "),
-            emails: contact.emails,
-            company_name: contact.company_name,
+        return new Response(
+          JSON.stringify({
+            contact: {
+              id: contact.id,
+              name: [contact.first_name, contact.last_name]
+                .filter(Boolean)
+                .join(" "),
+              emails: contact.emails,
+              company_name: contact.company_name,
+            },
+            matches,
+            total_searched: transcripts.length,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
           },
-          matches,
-          total_searched: transcripts.length,
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        },
-      );
-    } catch (error) {
-      console.error(
-        "fetch_fireflies_transcripts error (contact_id=%s):",
-        contact_id ?? "unknown",
-        error instanceof Error ? (error.stack ?? error.message) : String(error),
-      );
-      return createErrorResponse(
-        500,
-        error instanceof Error ? error.message : "Internal error",
-      );
-    }
-  }),
+        );
+      } catch (error) {
+        console.error(
+          "fetch_fireflies_transcripts error (contact_id=%s):",
+          contact_id ?? "unknown",
+          error instanceof Error
+            ? (error.stack ?? error.message)
+            : String(error),
+        );
+        return createErrorResponse(
+          500,
+          error instanceof Error ? error.message : "Internal error",
+        );
+      }
+    }),
+  ),
 );

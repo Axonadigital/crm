@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
+import { verifyWebhookSignature } from "../_shared/webhookSignature.ts";
 
 /**
  * Fireflies.ai Webhook Handler
@@ -18,35 +19,6 @@ import { createErrorResponse } from "../_shared/utils.ts";
 const FIREFLIES_WEBHOOK_SECRET = Deno.env.get("FIREFLIES_WEBHOOK_SECRET");
 const FIREFLIES_API_KEY = Deno.env.get("FIREFLIES_API_KEY");
 const FIREFLIES_GRAPHQL_URL = "https://api.fireflies.ai/graphql";
-
-// --- Crypto helpers (same pattern as calcom_webhook) ---
-
-function toHex(buffer: ArrayBuffer) {
-  return Array.from(new Uint8Array(buffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function hmacSha256Hex(secret: string, input: string) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(input),
-  );
-  return toHex(signature);
-}
-
-function normalizeSignature(input: string | null) {
-  if (!input) return "";
-  return input.startsWith("sha256=") ? input.slice(7) : input;
-}
 
 // --- Contact matching (same pattern as calcom_webhook) ---
 
@@ -413,22 +385,30 @@ Deno.serve(async (req: Request) =>
         return createErrorResponse(500, "Webhook secret not configured");
       }
 
-      const signatureHeader = req.headers.get("x-hub-signature") ?? "";
-      const expectedSignature = await hmacSha256Hex(
+      const signatureHeader =
+        req.headers.get("x-hub-signature") ??
+        req.headers.get("x-fireflies-signature") ??
+        "";
+
+      // BLOCKERAR. Tidigare loggades bara "proceeding anyway", vilket gjorde
+      // endpointen öppen: en POST utan signatur från öppet internet gav
+      // HTTP 200 OCH ett anrop mot Fireflies GraphQL med vår API-nyckel.
+      // _shared/webhookSignature.ts accepterar hex, sha256=hex och base64,
+      // så "formatet kan variera" är löst utan att släppa igenom allt.
+      const signatureOk = await verifyWebhookSignature(
         FIREFLIES_WEBHOOK_SECRET,
         rawBody,
+        signatureHeader,
       );
-      const incomingSignature = normalizeSignature(signatureHeader);
-
-      if (!incomingSignature || incomingSignature !== expectedSignature) {
-        // Log mismatch but don't block — Fireflies signature format may vary
-        console.warn("Webhook signature mismatch (proceeding anyway)", {
-          hasIncoming: !!incomingSignature,
-          hasSecret: !!FIREFLIES_WEBHOOK_SECRET,
-          headerValue: signatureHeader
-            ? signatureHeader.slice(0, 20) + "..."
-            : "(empty)",
+      if (!signatureOk) {
+        console.warn("Fireflies webhook: ogiltig signatur — avvisad", {
+          hasHeader: signatureHeader !== "",
+          headerPrefix: signatureHeader
+            ? signatureHeader.slice(0, 12) + "..."
+            : "(tomt)",
+          bodyBytes: rawBody.length,
         });
+        return createErrorResponse(401, "Invalid signature");
       }
 
       // 2. Parse payload

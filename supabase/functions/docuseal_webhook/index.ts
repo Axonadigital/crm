@@ -316,10 +316,21 @@ Deno.serve(async (req: Request) =>
               }),
             });
 
+            // Statusen MÅSTE spegla utfallet. Tidigare skrevs "sent" oavsett,
+            // så ett 4xx/5xx från Resend gav en falsk leveranshistorik efter
+            // den viktigaste affärshändelsen vi har — en signerad affär där
+            // kunden tror sig ha fått en bekräftelse som aldrig kom fram.
+            let resendId: string | null = null;
+            let resendError: string | null = null;
+
             if (!emailRes.ok) {
-              const errBody = await emailRes.text();
-              console.error("Resend API error:", emailRes.status, errBody);
+              resendError = `${emailRes.status}: ${(await emailRes.text()).slice(0, 300)}`;
+              console.error("Resend API error:", resendError);
             } else {
+              const resendJson = await emailRes
+                .json()
+                .catch(() => null as { id?: string } | null);
+              resendId = resendJson?.id ?? null;
               console.log("Confirmation email sent to:", contactEmail);
             }
 
@@ -329,13 +340,29 @@ Deno.serve(async (req: Request) =>
               company_id: quote.company_id,
               subject: `Avtalsbekräftelse — ${quoteNumber}`,
               to_email: contactEmail,
-              status: "sent",
-              sent_at: new Date().toISOString(),
+              status: emailRes.ok ? "sent" : "failed",
+              sent_at: emailRes.ok ? new Date().toISOString() : null,
               metadata: {
                 source: "docuseal_completion",
                 quote_id: quote.id,
+                resend_id: resendId,
+                resend_error: resendError,
               },
             });
+
+            // En utebliven bekräftelse efter signering får inte bara ligga i
+            // en logg ingen läser — lägg en uppgift på en människa samma dag.
+            if (!emailRes.ok && quote.contact_id) {
+              await supabase.from("tasks").insert({
+                contact_id: quote.contact_id,
+                type: "Email",
+                text:
+                  `Avtalsbekräftelsen för ${quoteNumber} gick INTE fram ` +
+                  `(${resendError}). Skicka den manuellt till ${contactEmail}.`,
+                due_date: new Date().toISOString(),
+                done_date: null,
+              });
+            }
           }
         } catch (emailErr) {
           console.error("Confirmation email failed:", emailErr);
