@@ -206,6 +206,15 @@ const THIRD_PARTY_HOSTS = [
   // Nyhets- och utbildningsportaler som legat registrerade som "hemsida".
   "ltz.se", "op.se", "svt.se", "utbildning.se", "yrkeshogskolan.se",
   "blocket.se", "indeed.com", "arbetsformedlingen.se",
+  // Hämtade ur companies.website 2026-09-11. Alla sex fanns som "hemsida"
+  // på företag med e-postadress som passerade grinden, och adressen var
+  // katalogens egen — info@northdata.com, prenumeration@jamtlandstidning.se.
+  // Utan dem här skriver utkorgen ut katalogens domän som kundens hemsida.
+  "northdata.com", "budguiden.se", "industritorget.se", "krafman.se",
+  "jamtlandstidning.se", "alltombolag.se", "reglei.se", "slussen.biz",
+  // Grinden hade vainu.io; datan har haku.vainu.com.
+  "vainu.com", "vainu.io", "boolag.se", "upplysning.se", "birthday.se",
+  "kreditrapporten.se", "bolagsverket.se", "nordicnet.se", "företagsfakta.se",
 ];
 
 /** Är adressen en portal snarare än företagets egen hemsida? */

@@ -1,4 +1,5 @@
 import { rankFindings } from "./scanFindings.ts";
+import { isThirdPartySite } from "./emailDiscovery.ts";
 
 interface BusinessCopy {
   goal: string;
@@ -63,6 +64,9 @@ const BUSINESS: Record<string, BusinessCopy> = {
   },
 };
 
+/** Fynd som säger att sidan saknas — de kan inte vara en observation OM sidan. */
+const NOT_A_WEBSITE_FINDINGS = new Set(["no-site", "no-real-website"]);
+
 const GENERIC = {
   goal: "göra det enkelt att förstå ert erbjudande och kontakta er",
   outline: "ert erbjudande, ett konkret exempel och en tydlig kontaktväg",
@@ -99,11 +103,21 @@ export function outreachPersonalization(input: {
     const title = singleLine(finding.title);
     const key = title.toLocaleLowerCase("sv-SE");
     if (title.length > 180 || seen.has(key)) return false;
+    // "Ingen Google Business-profil hittades" är ett riktigt fynd, men det
+    // handlar inte om hemsidan. Mejlet säger "i vårt test av dindoman.se"
+    // och erbjuder ett ändringsförslag för sidan — då måste observationen
+    // komma från sidan, annars hänger meningarna inte ihop.
+    if (finding.axis === "local") return false;
+    // Motsäger premissen: går inte att observera på en sida som inte finns.
+    if (NOT_A_WEBSITE_FINDINGS.has(finding.id)) return false;
     seen.add(key);
     return true;
   });
   const top = findings[0];
-  if (top && host) {
+  // En katalogsajt är inte kundens hemsida. Står merinfo.se i website-fältet
+  // har vi inte testat NÅGOT som tillhör dem, och att skriva ut domänen i
+  // brödtexten avslöjar mejlet som automatiskt. Hellre inget mejl.
+  if (top && host && !isThirdPartySite(host)) {
     vars.website_observation = `I vårt automatiska test av ${host} flaggades: "${singleLine(top.title)}".`;
     const second = findings[1];
     vars.website_followup = second
