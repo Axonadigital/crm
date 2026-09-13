@@ -105,8 +105,18 @@ export function outreachPersonalization(input: {
   }
   if (business) vars.systems_example = business.example;
 
+  // Google Business-banan. Fyndet ligger på axis "local" och filtreras därför
+  // bort ur hemsideobservationen nedan — här läses det ur den ORANKADE listan.
+  // Sätts bara när skanningen faktiskt letade och inte hittade någon profil,
+  // så renderingskontrollen stoppar mallen för företag som redan har en.
+  const allFindings = rankFindings(input.findings);
+  if (name && allFindings.some((f) => f.id === "no-gbp")) {
+    vars.gbp_observation =
+      `Jag hittade ingen Google Business-profil för ${name} när jag sökte.`;
+  }
+
   const seen = new Set<string>();
-  const findings = rankFindings(input.findings).filter((finding) => {
+  const findings = allFindings.filter((finding) => {
     const title = singleLine(finding.title);
     const key = title.toLocaleLowerCase("sv-SE");
     if (title.length > 180 || seen.has(key)) return false;

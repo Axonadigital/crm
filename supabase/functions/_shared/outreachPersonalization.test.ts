@@ -129,17 +129,33 @@ describe("actual candidate templates", () => {
  * här mot riktiga variabler.
  */
 describe("v4-mallarna mot renderaren", () => {
-  const names = [...migration.matchAll(/\(\s*'(Personlig v4:[^']+)'/g)].map(
+  // Google Business-banan ligger i en egen migration. Båda läses här så att
+  // ett stavfel i endera filen fångas av samma kontroll.
+  const allMigrations =
+    migration +
+    "\n" +
+    readFileSync(
+      new URL(
+        "../../migrations/20260913110000_google_business_templates.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+  const names = [...allMigrations.matchAll(/\(\s*'(Personlig v4:[^']+)'/g)].map(
     (m) => m[1],
   );
   const subjects = [
-    ...migration.matchAll(/\(\s*'Personlig v4:[^']+',\s*\n\s*'([^']*)'/g),
+    ...allMigrations.matchAll(/\(\s*'Personlig v4:[^']+',\s*\n\s*'([^']*)'/g),
+  ].map((m) => m[1]);
+  const templates = [
+    ...allMigrations.matchAll(/\$copy\$([\s\S]*?)\$copy\$/g),
   ].map((m) => m[1]);
 
   const varsFor = (segment: string) => {
     const copy = segmentCopy(segment);
     return {
       greeting: "Hej Anna!",
+      company_city: "Östersund",
       ...(copy
         ? {
             segment_subject: copy.subject,
@@ -151,7 +167,7 @@ describe("v4-mallarna mot renderaren", () => {
         companyName: "Storsjö Tak AB",
         websiteHost: "storsjotak.se",
         segment,
-        findings,
+        findings: [...findings, { id: "no-gbp", axis: "local", title: "Ingen Google Business-profil hittades", severity: "high", impact: 90 }],
       }),
     } as Record<string, string>;
   };
@@ -165,10 +181,10 @@ describe("v4-mallarna mot renderaren", () => {
     return missing;
   };
 
-  it("migrationen innehåller de sex mallarna med ämne och kropp", () => {
-    expect(names).toHaveLength(6);
-    expect(subjects).toHaveLength(6);
-    expect(templates).toHaveLength(6);
+  it("migrationerna innehåller alla åtta mallar med ämne och kropp", () => {
+    expect(names).toHaveLength(8);
+    expect(subjects).toHaveLength(8);
+    expect(templates).toHaveLength(8);
   });
 
   it("varje variabel i mallarna finns i ett känt segment", () => {

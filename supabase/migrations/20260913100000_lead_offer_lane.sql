@@ -48,7 +48,13 @@ WITH f AS (
 ),
 lane AS (
   SELECT CASE
-    -- 1. Sajten saknas eller är trasig. Inget annat är meningsfullt att sälja.
+    -- 1a. Ingen sajt alls. Då finns inget att observera — mejlet måste FRÅGA
+    --     om de vill ha en, inte citera ett testresultat. Egen bana eftersom
+    --     copyn är en annan än för en trasig sajt.
+    WHEN EXISTS (SELECT 1 FROM f WHERE fid IN ('no-site', 'no-real-website'))
+      THEN 'ingen_hemsida'
+    -- 1b. Sajten finns men svarar inte, är parkerad, oanpassad för mobil eller
+    --     byggd på föråldrad teknik. Här FINNS ett fynd att peka på.
     WHEN EXISTS (SELECT 1 FROM f WHERE service IN ('Ny hemsida', 'Hemsida'))
       THEN 'ny_hemsida'
     -- 2. Ingen Google Business-profil alls. Billig, konkret, lätt att verifiera
@@ -79,6 +85,7 @@ evidence AS (
   SELECT f.fid, f.title
   FROM f, lane
   WHERE CASE lane.lane
+    WHEN 'ingen_hemsida' THEN false
     WHEN 'ny_hemsida' THEN f.service IN ('Ny hemsida', 'Hemsida')
     WHEN 'google_business' THEN f.fid = 'no-gbp'
     WHEN 'hemsideforbattring' THEN
