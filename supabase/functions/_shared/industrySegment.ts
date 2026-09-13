@@ -27,11 +27,12 @@ export type IndustrySegment =
   | "fastighet"
   | "salong"
   | "restaurang"
+  | "redovisning"
   | "ovrigt";
 
 export const ALL_SEGMENTS: IndustrySegment[] = [
   "tandvard", "bygg", "vvs_el", "maleri_golv", "transport",
-  "fastighet", "salong", "restaurang", "ovrigt",
+  "fastighet", "salong", "restaurang", "redovisning", "ovrigt",
 ];
 
 /** Läsbara etiketter för CRM:et och Mission Control. */
@@ -44,6 +45,7 @@ export const SEGMENT_LABELS: Record<IndustrySegment, string> = {
   fastighet: "Fastighet & städ",
   salong: "Salong & friskvård",
   restaurang: "Restaurang & café",
+  redovisning: "Redovisning & ekonomi",
   ovrigt: "Övrigt",
 };
 
@@ -61,6 +63,7 @@ function sniToSegment(code: number): IndustrySegment | null {
     4333: "maleri_golv", // golv- och väggbeläggningsarbeten
     4334: "maleri_golv", // måleri- och glasmästeriarbeten
     9602: "salong",     // hår- och skönhetsvård
+    6920: "redovisning", // redovisning, bokföring och revision
   };
   if (exact[code]) return exact[code];
 
@@ -93,6 +96,10 @@ const EMPTY_PLACES_CATEGORIES = new Set([
 ]);
 
 const PLACES_MAP: Record<string, IndustrySegment> = {
+  // Tio av sexton oklassade leads i interna system-banan var redovisnings-
+  // byråer som Google redan hade taggat "accounting". Signalen fanns, kartan
+  // saknade bara raden.
+  accounting: "redovisning",
   dentist: "tandvard",
   dental_clinic: "tandvard",
   doctor: "tandvard",
@@ -153,7 +160,10 @@ const NAME_PATTERNS: [IndustrySegment, RegExp][] = [
   ["tandvard", /tandl[äa]k|tandv[åa]rd|tandklinik|tandhygien|dental|dentist|tandteknik|tandfen/],
   ["salong", /fris[öo]r|salong|skönhet|massage|naprapat|kiropraktor|hudv[åa]rd|barberare/],
   ["restaurang", /restaurang|pizzeri|caf[ée]\b|bageri|konditori|catering|krog|glassbar/],
-  ["vvs_el", /\bvvs\b|\br[öo]r\b|r[öo]rläggeri|ventilation|\bkyla\b|elektr|\bel\b|\bel[-\s]?(service|installation|entreprenad|firma|tekn|montage|arbete)|energi\b/],
+  // Byrånamn är ofta intetsägande ("Aveni", "Contrado", "P46") — då får
+  // Places-kategorin avgöra. De här orden fångar resten.
+  ["redovisning", /redovisning|revisionsbyr|revisor|\brevision\b|bokf[öo]ring|ekonomibyr|ekonomikonsult|ekonomiservice|l[öo]neservice|bokslut/],
+  ["vvs_el", /\bvvs\b|\br[öo]r\b|r[öo]rläggeri|ventilation|\bkyla\b|kylteknik|kylservice|kylanl[äa]gg|v[äa]rmepump|\bv[äa]rme\b|elektr|\bel\b|\bel[-\s]?(service|installation|entreprenad|firma|tekn|montage|arbete)|energi\b/],
   ["maleri_golv", /m[åa]leri|m[åa]lare|\bf[äa]rg\b|kakel|keramik|\bgolv|plattsätt|tapets/],
   ["transport", /(^|[\s&.,/()-])[åa]keri|transport|taxi|\bflytt|budbil|logistik|kranbil|bussbolag/],
   ["bygg", /bygg|snickeri|snickare|snickr|entrepren|\bmark\b|markservice|markarbet|\btak\b|takteknik|takl[äa]gg|pl[åa]tslag|\bmur\b|murare|murning|fasad|betong|anl[äa]ggning|gr[äa]v(ning|are|arbete|maskin|entrepren)|schakt|borrtj[äa]nst|borrning|skorsten|grund\b/],
@@ -198,6 +208,9 @@ const ALLABOLAG_MAP: Record<string, IndustrySegment> = {
   "transportformedling": "transport",
   "passagerartransporter": "transport",
   "akerier": "transport",
+  "redovisning-och-bokforing": "redovisning",
+  "revisionsbyraer": "redovisning",
+  "ekonomisk-radgivning": "redovisning",
   "taxi": "transport",
   "flyttfirmor": "transport",
   "stadservice": "fastighet",
@@ -291,6 +304,21 @@ export function classifyCompany(input: ClassifyInput): Classification {
     if (
       fromAllabolag === "bygg" &&
       (refined === "vvs_el" || refined === "maleri_golv")
+    ) {
+      return { segment: refined, source: "name", confidence: "medium" };
+    }
+    // "fastighetsbolag-lokaler" är oftast en TILLGÅNGSREGISTRERING, inte en
+    // beskrivning av verksamheten — små bolag står som fastighetsbolag för
+    // att de äger sin lokal. Säger namnet att de kör, bygger eller målar är
+    // det den verkliga verksamheten.
+    //
+    // Utan den här regeln blev "Hällberg & Son Åkeri Handelsbolag" ett
+    // fastighetsbolag och hade fått frågan om hur de fördelar scheman mellan
+    // objekten — till ett åkeri.
+    if (
+      fromAllabolag === "fastighet" &&
+      refined !== null &&
+      refined !== "fastighet"
     ) {
       return { segment: refined, source: "name", confidence: "medium" };
     }

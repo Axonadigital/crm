@@ -70,9 +70,22 @@ Deno.serve(async (req: Request) =>
       let query = supabaseAdmin
         .from("companies")
         .select("id, name, industry, sni_code, allabolag_url, enrichment_data")
-        .order("id", { ascending: true })
         .limit(limit);
-      if (!force) query = query.is("industry_segment", null);
+      if (force) {
+        // Taket är 500 per körning medan bolagsregistret är större. Med
+        // sortering på id tog varje force-körning SAMMA första 500, så allt
+        // bortom dem klassades aldrig om — tio redovisningsbyråer på id 730+
+        // låg kvar som "ovrigt" efter att mönstren uppdaterats 2026-09-13.
+        // Äldst klassning först gör körningarna roterande i stället.
+        query = query.order("industry_segment_at", {
+          ascending: true,
+          nullsFirst: true,
+        }).order("id", { ascending: true });
+      } else {
+        query = query.is("industry_segment", null).order("id", {
+          ascending: true,
+        });
+      }
 
       const { data: companies, error } = await query;
       if (error) throw new Error(error.message);

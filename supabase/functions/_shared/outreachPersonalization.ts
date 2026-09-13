@@ -15,6 +15,13 @@ const BUSINESS: Record<string, BusinessCopy> = {
     example:
       "en enkel vy där tid, material och godkända ändringar samlas per jobb inför faktureringen",
   },
+  redovisning: {
+    goal: "göra det tydligt vilka tjänster ni erbjuder och hur en ny kund kommer igång",
+    outline:
+      "vilka tjänster ni erbjuder, vem ni passar för och hur en ny kund kommer igång",
+    example:
+      "en översikt över vilka kunder som lämnat in sitt underlag och vilka som behöver påminnas inför deadline",
+  },
   vvs_el: {
     goal: "göra det enkelt att hitta rätt tjänst och skicka en serviceförfrågan",
     outline:

@@ -315,3 +315,98 @@ describe("classifyCompany med allabolag", () => {
     expect(r.source).toBe("allabolag");
   });
 });
+
+/**
+ * Fallen nedan kommer alla från skarp data 2026-09-13. De satt tysta som
+ * "ovrigt" eller fel segment tills behovsroutaren tvingade fram en granskning
+ * av vilka företag som faktiskt inte fick något mejl.
+ */
+describe("redovisning — segmentet som saknades", () => {
+  it("Googles accounting-kategori räcker när namnet är intetsägande", () => {
+    // Tio av sexton oklassade leads i interna system-banan var byråer.
+    // Google hade redan taggat dem; kartan saknade raden.
+    for (const name of ["Aveni AB", "Contrado Östersund AB", "P46 Östersund AB"]) {
+      expect(
+        classifyCompany({ name, industry: "accounting" }),
+      ).toMatchObject({ segment: "redovisning", source: "places" });
+    }
+  });
+
+  it("namnet räcker utan Places-kategori", () => {
+    for (const name of [
+      "AA Revision & Redovisning AB",
+      "Östersunds Redovisningsbyrå AB",
+      "Ekonomikonsult Hammarström Administration Ab",
+      "Lindsten & Rundqvist Redovisning",
+    ]) {
+      expect(segmentFromName(name), name).toBe("redovisning");
+    }
+  });
+
+  it("SNI 69.20 är redovisning och revision", () => {
+    expect(segmentFromSni("69.20")).toBe("redovisning");
+    expect(segmentFromSni("69201")).toBe("redovisning");
+  });
+
+  it("drar inte till sig ord som bara liknar", () => {
+    // Mönstret prövas FÖRE vvs_el och bygg, så det får inte vara girigt.
+    // "ekonomi" i ett annat sammanhang är inte en redovisningsbyrå.
+    for (const name of [
+      "Jämtlands Energiservice AB",
+      "Storsjö Bygg AB",
+      "Ekonomibyggnader i Berg AB",
+    ]) {
+      expect(segmentFromName(name), name).not.toBe("redovisning");
+    }
+    expect(segmentFromName("Storsjö Bygg AB")).toBe("bygg");
+  });
+});
+
+describe("värme och kyla är VVS, inte övrigt", () => {
+  it("kylteknik och värmepumpar", () => {
+    expect(segmentFromName("Östersunds Värme & Kylteknik AB")).toBe("vvs_el");
+    expect(segmentFromName("Frys & Kylservice AB")).toBe("vvs_el");
+    expect(segmentFromName("Magnussons Vatten Och Värme AB")).toBe("vvs_el");
+  });
+});
+
+describe("allabolags fastighetskategori är ofta en tillgångsregistrering", () => {
+  const allabolag = (kategori: string) =>
+    `https://www.allabolag.se/foretag/x/ort/${kategori}/ABC123`;
+
+  it("ett åkeri som äger sin lokal är fortfarande ett åkeri", () => {
+    expect(
+      classifyCompany({
+        name: "Hällberg & Son Åkeri Handelsbolag",
+        allabolagUrl: allabolag("fastighetsbolag-lokaler"),
+      }),
+    ).toMatchObject({ segment: "transport" });
+  });
+
+  it("markservice under fastighetsförvaltning är bygg", () => {
+    expect(
+      classifyCompany({
+        name: "Jämtlands Markservice AB",
+        allabolagUrl: allabolag("fastighetsforvaltning"),
+      }),
+    ).toMatchObject({ segment: "bygg" });
+  });
+
+  it("men en riktig städfirma får behålla fastighet", () => {
+    expect(
+      classifyCompany({
+        name: "Viktoria Städservice HB",
+        allabolagUrl: allabolag("stadservice"),
+      }),
+    ).toMatchObject({ segment: "fastighet" });
+  });
+
+  it("utan namnsignal står allabolag kvar", () => {
+    expect(
+      classifyCompany({
+        name: "Pär Ivarsson AB",
+        allabolagUrl: allabolag("fastighetsbolag-lokaler"),
+      }),
+    ).toMatchObject({ segment: "fastighet", source: "allabolag" });
+  });
+});

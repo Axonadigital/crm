@@ -33,6 +33,13 @@ const COPY: Partial<Record<IndustrySegment, SegmentCopy>> = {
     painFollowup:
       "hur håller ni ordning på ÄTA och ändringar som dyker upp mitt i ett projekt?",
   },
+  redovisning: {
+    subject: "Månadsunderlagen",
+    pain:
+      "hur får ni in underlagen från kunderna varje månad — jagar någon hos er kvitton och fakturor manuellt?",
+    painFollowup:
+      "hur håller ni koll på vilka kunder som är klara och vilka som ligger kvar när deadline närmar sig?",
+  },
   vvs_el: {
     subject: "Arbetsordrarna",
     pain:
