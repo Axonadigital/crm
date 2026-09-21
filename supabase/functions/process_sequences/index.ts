@@ -3,6 +3,7 @@ import { OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { segmentCopy } from "../_shared/segmentCopy.ts";
+import { outreachPersonalization } from "../_shared/outreachPersonalization.ts";
 import {
   outsideWindowReason,
   parseSendWindow,
@@ -25,7 +26,7 @@ import {
   signatureConfigFromEnv,
 } from "../_shared/signature.ts";
 import {
-  firstSentence,
+  whyForEmail,
   quickWinCount,
   secondFinding,
   topFinding,
@@ -283,7 +284,7 @@ function findingVars(raw: unknown): Record<string, string> {
     scan_finding_lower: lowerFirst(
       top?.title || "det som står överst i rapporten",
     ),
-    scan_finding_why: firstSentence(top?.why || ""),
+    scan_finding_why: whyForEmail(top?.why || ""),
     scan_finding_fix: top?.fix || "",
     // Formuleras så den funkar i meningen "det här är ...". En ärlig
     // storleksangivelse gör erbjudandet trovärdigt utan att lova bort arbetet.
@@ -291,7 +292,7 @@ function findingVars(raw: unknown): Record<string, string> {
       top?.effort === "quick" ? "snabbt fixat" : "ett större jobb",
     scan_finding_2: second?.title || "",
     scan_finding_2_lower: lowerFirst(second?.title || ""),
-    scan_finding_2_why: firstSentence(second?.why || ""),
+    scan_finding_2_why: whyForEmail(second?.why || ""),
     scan_quick_wins: String(quick),
   };
 }
@@ -387,6 +388,12 @@ async function prepareEmail(
     ...findingVars(scan?.findings),
     report_url: scan?.report_slug ? `${scannerBase}/r/${scan.report_slug}` : "",
     ...segmentVars(company?.industry_segment as string | null),
+    ...outreachPersonalization({
+      companyName: company?.name,
+      websiteHost: websiteHost((company?.website as string) || ""),
+      segment: company?.industry_segment,
+      findings: scan?.findings,
+    }),
   };
   const missing: string[] = [];
   const render = (tmpl: string) =>
