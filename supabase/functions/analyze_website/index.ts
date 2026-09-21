@@ -49,6 +49,13 @@ import { findLocalPosition, type LocalRankResult } from "./localRank.ts";
  *                     dem. Anropas var 5:e minut av pg_cron
  *                     (run_pipeline_tick('snapshot')) tills kön är tom —
  *                     skalar till valfritt antal kunder utan kodändring.
+ *   { tick: true, mode: 'weekly' }
+ *                   — veckopulsen: samma kö, men steget 'snapshot_weekly' och
+ *                     rullande 28-dagarsfönster. Seedas måndag 03:00
+ *                     (seed_weekly_pipeline_queue) och köar ALDRIG en
+ *                     kundrapport — det är underlag till seo-detector i
+ *                     Mission Control, så regressioner syns inom en vecka i
+ *                     stället för inom en månad.
  *
  * Källor (varje källa är oberoende — ett källfel fäller aldrig analysen):
  *   a) PageSpeed Insights  (GOOGLE_PAGESPEED_API_KEY)
@@ -1628,10 +1635,25 @@ type PipelineQueueRow = {
   claimed_at: string;
 };
 
-async function runQueueTick(batchSize: number): Promise<void> {
+/**
+ * Plockar en batch ur report_pipeline_queue och analyserar den.
+ *
+ * Två spår delar samma kod:
+ *   stage "snapshot"        — månadsspåret. Kalendermånad, och varje lyckad
+ *                             rad köar automatiskt en kundrapport.
+ *   stage "snapshot_weekly" — veckopulsen (seed_weekly_pipeline_queue).
+ *                             Rullande 28 dagar, köar ALDRIG rapport —
+ *                             complete_pipeline_queue_item gör det bara för
+ *                             stage = 'snapshot'. Underlag till seo-detector.
+ */
+async function runQueueTick(
+  batchSize: number,
+  stage: "snapshot" | "snapshot_weekly" = "snapshot",
+  windowKind: VisibilityWindowKind = "calendar_month",
+): Promise<void> {
   const { data: claimed, error } = await supabaseAdmin.rpc(
     "claim_pipeline_queue_batch",
-    { p_stage: "snapshot", p_batch_size: batchSize },
+    { p_stage: stage, p_batch_size: batchSize },
   );
   if (error) {
     console.error("analyze_website tick: could not claim queue batch", error);
@@ -1645,7 +1667,7 @@ async function runQueueTick(batchSize: number): Promise<void> {
     rows.map(async (row) => {
       try {
         await analyzeCompany(row.company_id, "cron", {
-          kind: "calendar_month",
+          kind: windowKind,
           startDate: row.period_start,
           endDate: row.period_end,
         });
@@ -1759,16 +1781,25 @@ Deno.serve(async (req: Request) =>
         const body = await parseRequiredJsonBody(req);
         const tick = getOptionalBooleanField(body, "tick");
         if (tick) {
-          const mode = getEnumField(body, "mode", ["backfill"] as const, {
-            required: false,
-          });
+          const mode = getEnumField(
+            body,
+            "mode",
+            ["backfill", "weekly"] as const,
+            { required: false },
+          );
           const batchSize =
             getPositiveIntegerField(body, "batch_size", { required: false }) ??
             CRON_BATCH_SIZE;
           const job =
             mode === "backfill"
               ? runBackfillTick(batchSize as number)
-              : runQueueTick(batchSize as number);
+              : mode === "weekly"
+                ? runQueueTick(
+                    batchSize as number,
+                    "snapshot_weekly",
+                    "rolling_28d",
+                  )
+                : runQueueTick(batchSize as number);
           if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
             EdgeRuntime.waitUntil(
               job.catch((err) =>
