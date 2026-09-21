@@ -114,6 +114,32 @@ export function firstSentence(text: string): string {
 }
 
 /**
+ * why-texten som den ska stå i ett kallt mejl.
+ *
+ * Tidigare kördes why genom firstSentence(), vilket i praktiken kapade bort
+ * poängen: fynden som öppnar med en teknisk orsak har konsekvensen i mening
+ * två. Mottagaren fick "Er robots.txt säger åt Google att inte indexera
+ * sidan." och aldrig "Ingen som söker på era tjänster kan hitta er." En
+ * elektriker vet inte vad robots.txt är, och ska inte behöva veta det.
+ *
+ * Därför: behåll hela texten, men högst två meningar så mejlet inte sväller
+ * av de fynd som har ett stycke juridik i slutet.
+ */
+export function whyForEmail(text: string, maxSentences = 2): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const sentences: string[] = [];
+  let rest = trimmed;
+  while (rest && sentences.length < maxSentences) {
+    const next = firstSentence(rest);
+    if (!next) break;
+    sentences.push(next);
+    rest = rest.slice(next.length).trim();
+  }
+  return sentences.join(" ");
+}
+
+/**
  * Hur många av fynden som går att fixa snabbt. Ger mejlet en ärlig
  * storleksangivelse i stället för "det mesta behöver ni inte oss för",
  * som tog bort hela skälet att svara.

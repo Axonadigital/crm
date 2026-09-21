@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   firstSentence,
+  whyForEmail,
   parseFindings,
   quickWinCount,
   rankFindings,
@@ -177,5 +178,42 @@ describe("firstSentence — punkter som inte är meningsgränser", () => {
   it("tål tomt och blanksteg", () => {
     expect(firstSentence("")).toBe("");
     expect(firstSentence("   ")).toBe("");
+  });
+});
+
+describe("whyForEmail", () => {
+  it("behåller konsekvensen som firstSentence kapade bort", () => {
+    // Det verkliga fallet: mottagaren fick tekniken och missade poängen.
+    const why =
+      "Er robots.txt säger åt Google att inte indexera sidan. Ingen som söker på era tjänster kan hitta er.";
+    expect(firstSentence(why)).toBe(
+      "Er robots.txt säger åt Google att inte indexera sidan.",
+    );
+    expect(whyForEmail(why)).toBe(why);
+  });
+
+  it("tar högst två meningar så mejlet inte sväller", () => {
+    const why =
+      "Första meningen. Andra meningen. Tredje meningen som inte ska med.";
+    expect(whyForEmail(why)).toBe("Första meningen. Andra meningen.");
+  });
+
+  it("lämnar enmeningstexter orörda", () => {
+    const why = "Socialt bevis är ofta det som avgör valet mellan två leverantörer.";
+    expect(whyForEmail(why)).toBe(why);
+  });
+
+  it("klarar text utan avslutande skiljetecken", () => {
+    expect(whyForEmail("Ingen punkt här")).toBe("Ingen punkt här");
+  });
+
+  it("ger tom sträng för tomt underlag", () => {
+    expect(whyForEmail("   ")).toBe("");
+  });
+
+  it("klipper inte vid filnamn eller decimaltal", () => {
+    expect(whyForEmail("Sidan laddar på 4.2 sekunder.")).toBe(
+      "Sidan laddar på 4.2 sekunder.",
+    );
   });
 });

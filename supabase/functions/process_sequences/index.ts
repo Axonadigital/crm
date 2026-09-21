@@ -26,7 +26,7 @@ import {
   signatureConfigFromEnv,
 } from "../_shared/signature.ts";
 import {
-  firstSentence,
+  whyForEmail,
   quickWinCount,
   secondFinding,
   topFinding,
@@ -284,7 +284,7 @@ function findingVars(raw: unknown): Record<string, string> {
     scan_finding_lower: lowerFirst(
       top?.title || "det som står överst i rapporten",
     ),
-    scan_finding_why: firstSentence(top?.why || ""),
+    scan_finding_why: whyForEmail(top?.why || ""),
     scan_finding_fix: top?.fix || "",
     // Formuleras så den funkar i meningen "det här är ...". En ärlig
     // storleksangivelse gör erbjudandet trovärdigt utan att lova bort arbetet.
@@ -292,7 +292,7 @@ function findingVars(raw: unknown): Record<string, string> {
       top?.effort === "quick" ? "snabbt fixat" : "ett större jobb",
     scan_finding_2: second?.title || "",
     scan_finding_2_lower: lowerFirst(second?.title || ""),
-    scan_finding_2_why: firstSentence(second?.why || ""),
+    scan_finding_2_why: whyForEmail(second?.why || ""),
     scan_quick_wins: String(quick),
   };
 }
