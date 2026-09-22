@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 
 import type { CrmDataProvider } from "../providers/types";
+import { TourHelpButton } from "../tour";
 import type { CustomerCoverage } from "../types";
 import {
   BILLING_CADENCE_LABELS,
@@ -32,13 +33,15 @@ const StatCard = ({
   value,
   sub,
   tone,
+  dataTour,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "danger";
+  dataTour?: string;
 }) => (
-  <Card>
+  <Card data-tour={dataTour}>
     <CardContent className="pt-6">
       <div className="text-sm text-muted-foreground">{label}</div>
       <div
@@ -165,14 +168,23 @@ export const CustomerCoveragePage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Kundtäckning</h1>
+        <div className="flex items-center gap-1">
+          <h1 className="text-2xl font-semibold">Kundtäckning</h1>
+          <TourHelpButton
+            tourId="customer-coverage"
+            label="Så läser du Kundtäckning"
+          />
+        </div>
         <p className="text-sm text-muted-foreground">
           Alla kunder med en vunnen deal, vad som är uppsatt i Fortnox och vad
           som återstår att fakturera.
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+        data-tour="coverage-kpi"
+      >
         <StatCard label="Vunna kunder" value={String(summary.customers)} />
         <StatCard
           label="Återkommande intäkter"
@@ -185,6 +197,7 @@ export const CustomerCoveragePage = () => {
           sub="betalda Fortnox-fakturor ex moms"
         />
         <StatCard
+          dataTour="coverage-unpaid-kpi"
           label="Obetalt"
           value={formatCurrency(summary.outstanding)}
           sub={
@@ -195,6 +208,7 @@ export const CustomerCoveragePage = () => {
           tone={summary.overdueCustomers > 0 ? "danger" : undefined}
         />
         <StatCard
+          dataTour="coverage-remaining-kpi"
           label={`Kvar att fakturera ${year}`}
           value={formatCurrency(summary.remainingThisYear)}
           sub={`${summary.needsAction} kunder behöver kollas`}
@@ -229,19 +243,32 @@ export const CustomerCoveragePage = () => {
                   <TableHead>Typ</TableHead>
                   <TableHead className="text-right">Återk./mån</TableHead>
                   <TableHead className="text-right">Betalt {year}</TableHead>
-                  <TableHead className="text-right">Obetalt</TableHead>
-                  <TableHead className="text-right">
+                  <TableHead
+                    className="text-right"
+                    data-tour="coverage-col-unpaid"
+                  >
+                    Obetalt
+                  </TableHead>
+                  <TableHead
+                    className="text-right"
+                    data-tour="coverage-col-remaining"
+                  >
                     Kvar att fakturera
                   </TableHead>
                   <TableHead>Nästa faktura</TableHead>
                   <TableHead>Rekommendation</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead data-tour="coverage-col-status">Status</TableHead>
                   <TableHead className="text-center">Fortnox-kund</TableHead>
-                  <TableHead className="text-center">Avtal</TableHead>
+                  <TableHead
+                    className="text-center"
+                    data-tour="coverage-col-contract"
+                  >
+                    Avtal
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((c) => {
+                {rows.map((c, rowIndex) => {
                   const invoice = billingByCompany.get(String(c.company_id));
                   const expanded = expandedCompanies.has(String(c.company_id));
                   const missingInvoiceWarning =
@@ -258,6 +285,9 @@ export const CustomerCoveragePage = () => {
                               variant="ghost"
                               size="icon"
                               className="mt-0.5 h-6 w-6"
+                              data-tour={
+                                rowIndex === 0 ? "coverage-expand" : undefined
+                              }
                               onClick={() =>
                                 toggleExpanded(String(c.company_id))
                               }
@@ -489,7 +519,12 @@ export const CustomerCoveragePage = () => {
                                 ))}
                               </div>
                             ) : null}
-                            <div className="px-4 pb-4 md:px-12">
+                            <div
+                              className="px-4 pb-4 md:px-12"
+                              data-tour={
+                                rowIndex === 0 ? "coverage-invoices" : undefined
+                              }
+                            >
                               <div className="mb-1 text-xs font-medium text-muted-foreground">
                                 Fakturor i Fortnox
                               </div>

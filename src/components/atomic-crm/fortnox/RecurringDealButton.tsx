@@ -104,6 +104,7 @@ export const RecurringDealButton = () => {
       <Button
         size="sm"
         variant="outline"
+        data-tour="deal-recurring"
         onClick={() => create()}
         disabled={isCreating}
         title="Lägger upp återkommande fakturering i Fortnox, pausad — inga fakturor skickas"
@@ -118,7 +119,7 @@ export const RecurringDealButton = () => {
 
   if (status === "ACTIVE") {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" data-tour="deal-recurring">
         <Badge variant="secondary">
           Återkommande aktiv · {formatCurrency(amount)} {cadence}
         </Badge>
@@ -133,13 +134,17 @@ export const RecurringDealButton = () => {
   }
 
   if (status === "FINISHED") {
-    return <Badge variant="outline">Återkommande avslutad i Fortnox</Badge>;
+    return (
+      <Badge variant="outline" data-tour="deal-recurring">
+        Återkommande avslutad i Fortnox
+      </Badge>
+    );
   }
 
   // Paused (our review state), or a status we haven't refreshed: offer to start.
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" data-tour="deal-recurring">
         <Badge variant="outline">Återkommande: ej aktiverad</Badge>
         <Button
           size="sm"

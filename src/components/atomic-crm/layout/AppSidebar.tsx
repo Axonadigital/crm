@@ -1,20 +1,3 @@
-import {
-  Building2,
-  CalendarDays,
-  ClipboardCheck,
-  Database,
-  FileText,
-  Handshake,
-  LayoutDashboard,
-  LineChart,
-  Mail,
-  Phone,
-  Radar,
-  Receipt,
-  Repeat,
-  Users,
-  Wallet,
-} from "lucide-react";
 import { Link, useMatch } from "react-router";
 
 import {
@@ -33,64 +16,7 @@ import {
 
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import { TourLauncher } from "../tour";
-
-type NavItem = {
-  label: string;
-  to: string;
-  /** When true, only matches the exact path (used for the dashboard root). */
-  end?: boolean;
-  icon: typeof LayoutDashboard;
-  /** Extra paths that should also mark this item active. */
-  alsoMatch?: string[];
-};
-
-type NavSection = {
-  label: string;
-  items: NavItem[];
-};
-
-/**
- * Curated navigation for the CRM, grouped by purpose. Replaces the previous
- * horizontal top-tab navigation with a left sidebar. The route list mirrors the
- * original Header tabs so no destination is lost.
- */
-const NAV_SECTIONS: NavSection[] = [
-  {
-    label: "Översikt",
-    items: [
-      { label: "Dashboard", to: "/", end: true, icon: LayoutDashboard },
-      { label: "Kundradar", to: "/customer-radar", icon: Radar },
-      { label: "Ringlista", to: "/call-queue", icon: Phone },
-      { label: "Kalender", to: "/calendar", icon: CalendarDays },
-      { label: "Email-statistik", to: "/email-stats", icon: Mail },
-    ],
-  },
-  {
-    label: "Sälj",
-    items: [
-      { label: "Kontakter", to: "/contacts", icon: Users },
-      { label: "Företag", to: "/companies", icon: Building2 },
-      { label: "Deals", to: "/deals", icon: Handshake },
-      { label: "Offerter", to: "/quotes", icon: FileText },
-      { label: "Fakturor", to: "/invoices", icon: Receipt },
-      { label: "Ekonomi", to: "/economy", icon: Wallet },
-      { label: "Likviditet", to: "/liquidity", icon: LineChart },
-      { label: "Abonnemang", to: "/subscriptions", icon: Repeat },
-      { label: "Kundtäckning", to: "/customer-coverage", icon: ClipboardCheck },
-    ],
-  },
-  {
-    label: "Inflöde",
-    items: [
-      {
-        label: "Leadimport",
-        to: "/lead_import_sources",
-        icon: Database,
-        alsoMatch: ["/lead_import_runs"],
-      },
-    ],
-  },
-];
+import { NAV_SECTIONS, navTourAnchor, type NavItem } from "./navSections";
 
 export function AppSidebar() {
   const { darkModeLogo, lightModeLogo, title } = useConfigurationContext();
@@ -174,13 +100,7 @@ const NavMenuItem = ({
   });
   const isActive = !!primaryMatch || !!extraMatch;
   const Icon = item.icon;
-  // Stable anchor for the guided tour. We can't rely on `a[href="…"]` because
-  // react-admin mounts the router with a basename, so the rendered href is not
-  // the literal `to` path. See tours.desktop.ts.
-  const tourAnchor =
-    item.to === "/"
-      ? "nav-dashboard"
-      : `nav-${item.to.replace(/^\//, "").replace(/_/g, "-")}`;
+  const tourAnchor = navTourAnchor(item.to);
 
   return (
     <SidebarMenuItem>

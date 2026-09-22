@@ -121,7 +121,10 @@ export const FortnoxRecurringSandboxTest = () => {
   if (isPending) return <Skeleton className="h-24 w-full" />;
 
   return (
-    <div className="space-y-3 rounded-md border p-4">
+    <div
+      className="space-y-3 rounded-md border p-4"
+      data-tour="settings-fortnox-test"
+    >
       <div>
         <h4 className="text-sm font-medium">Testkör avtalsflödet</h4>
         <p className="text-xs text-muted-foreground">
@@ -156,7 +159,10 @@ export const FortnoxRecurringSandboxTest = () => {
         </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="flex flex-wrap gap-2"
+        data-tour="settings-fortnox-test-steps"
+      >
         <Button
           size="sm"
           variant="outline"

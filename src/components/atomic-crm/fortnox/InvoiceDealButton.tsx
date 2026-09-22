@@ -91,7 +91,7 @@ export const InvoiceDealButton = () => {
 
   if (allPartsInvoiced) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" data-tour="deal-invoice">
         <Badge variant="outline">
           {partCount} av {partCount} delfakturor skapade
         </Badge>
@@ -107,7 +107,7 @@ export const InvoiceDealButton = () => {
 
   if (!isInstallment && deal.fortnox_invoice_number) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" data-tour="deal-invoice">
         <Badge variant="outline">Faktura · {deal.fortnox_invoice_number}</Badge>
         <Button size="sm" variant="ghost" asChild>
           <a href="/#/invoices">
@@ -124,6 +124,7 @@ export const InvoiceDealButton = () => {
       <Button
         size="sm"
         variant="outline"
+        data-tour="deal-invoice"
         onClick={() => setConfirming(true)}
         disabled={isPending}
         title={

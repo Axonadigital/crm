@@ -149,7 +149,10 @@ export const LiquidityPage = () => {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        data-tour="liquidity-kpi"
+      >
         <StatCard
           label="Återkommande intäkter"
           value={`${formatCurrency(revenue.monthly)}/mån`}
@@ -208,7 +211,7 @@ export const LiquidityPage = () => {
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card data-tour="liquidity-income">
           <CardContent className="p-0">
             <div className="p-4 pb-0">
               <h2 className="font-semibold">Återkommande intäkter</h2>
@@ -250,7 +253,7 @@ export const LiquidityPage = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-tour="liquidity-costs">
           <CardContent className="p-0">
             <div className="flex items-start justify-between p-4 pb-0">
               <div>
