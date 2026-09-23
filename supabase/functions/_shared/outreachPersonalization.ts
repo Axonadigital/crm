@@ -1,4 +1,5 @@
 import { rankFindings } from "./scanFindings.ts";
+import { shortCompanyName } from "./companyName.ts";
 import { isThirdPartySite } from "./emailDiscovery.ts";
 
 interface BusinessCopy {
@@ -90,7 +91,8 @@ export function outreachPersonalization(input: {
   segment?: unknown;
   findings?: unknown;
 }): Record<string, string> {
-  const name = singleLine(input.companyName);
+  // Registrerade firmanamn läser illa i en mening — se companyName.ts.
+  const name = shortCompanyName(singleLine(input.companyName));
   const host = singleLine(input.websiteHost);
   const business = BUSINESS[singleLine(input.segment)];
   const relevant = business ?? GENERIC;
@@ -98,10 +100,21 @@ export function outreachPersonalization(input: {
     website_goal: relevant.goal,
     website_outline: relevant.outline,
   };
+  const parked = rankFindings(input.findings).some(
+    (finding) => finding.id === "parked",
+  );
+
   if (name) {
     vars.prospect_name = name;
     // A missing URL or a directory listing does not prove the company has no website.
-    vars.website_question = `Har ${name} en egen hemsida som ni vill hänvisa nya kunder till?`;
+    //
+    // En parkerad domän är däremot ett observerat faktum, och då är den vaga
+    // frågan sämre än den precisa: företaget VET att de har en domän, så
+    // "har ni en hemsida?" får oss att framstå som att vi inte tittat.
+    vars.website_question =
+      parked && host
+        ? `Just nu visar ${host} webbhotellets platshållarsida i stället för en hemsida — är en egen sida för ${name} något ni planerar?`
+        : `Har ${name} en egen hemsida som ni vill hänvisa nya kunder till?`;
   }
   if (business) vars.systems_example = business.example;
 

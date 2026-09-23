@@ -65,7 +65,8 @@ describe("evidence-based personalization", () => {
   it("does not infer that the company lacks a website from missing data", () => {
     const result = outreachPersonalization({ companyName: "Testbolaget AB" });
     expect(result.website_question).toBe(
-      "Har Testbolaget AB en egen hemsida som ni vill hänvisa nya kunder till?",
+      // Bolagsformen skalas bort — se companyName.ts.
+      "Har Testbolaget en egen hemsida som ni vill hänvisa nya kunder till?",
     );
     expect(result.website_outline).not.toContain("prislista");
   });
@@ -76,7 +77,7 @@ describe("evidence-based personalization", () => {
       websiteHost: "bygg.se",
       findings: [{ title: "x".repeat(181), severity: "high", mailable: true }, findings[1]],
     });
-    expect(result.prospect_name).toBe("Bygg AB");
+    expect(result.prospect_name).toBe("Bygg");
     expect(result.website_observation).toContain("Stora bilder");
   });
 });
@@ -240,7 +241,7 @@ describe("v4-mallarna mot renderaren", () => {
       expect(result.website_observation).toBeUndefined();
       expect(result.website_followup).toBeUndefined();
       // Men vi får fortfarande fråga om de vill ha en egen hemsida.
-      expect(result.website_question).toContain("Walltin i Hackås AB");
+      expect(result.website_question).toContain("Walltin");
     }
   });
 

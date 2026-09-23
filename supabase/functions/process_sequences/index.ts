@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { greetingFor } from "../_shared/greeting.ts";
 import { OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
@@ -245,29 +246,6 @@ async function gateFor(enrollment: Row): Promise<{
 
 // --- Steg: förbereda och skicka mejl ---
 
-const GENERIC_MAILBOXES = new Set([
-  "info",
-  "kontakt",
-  "kontakta",
-  "hej",
-  "post",
-  "office",
-  "mail",
-  "hello",
-  "admin",
-  "kundtjanst",
-  "kundservice",
-  "support",
-  "bokning",
-  "order",
-  "sales",
-]);
-
-function isGenericMailbox(firstName: string): boolean {
-  const key = firstName.trim().toLowerCase();
-  return key.length === 0 || GENERIC_MAILBOXES.has(key);
-}
-
 /**
  * Mallvariabler ur skanningens fynd.
  *
@@ -382,9 +360,9 @@ async function prepareEmail(
     first_name: firstName,
     last_name: contact.last_name || "",
     full_name: `${firstName} ${contact.last_name || ""}`.trim(),
-    // Auto-skapade kontakter från companies.email heter "info"/"kontakt" —
-    // då hälsar vi utan namn i stället för "Hej info".
-    greeting: isGenericMailbox(firstName) ? "Hej!" : `Hej ${firstName}!`,
+    // Namn används bara när lokaldelen rimligen ÄR ett förnamn — annars
+    // "Hej!". Se greeting.ts för fallen som motiverar reglerna.
+    greeting: greetingFor(to, (company?.name as string) || null),
     email: to,
     title: contact.title || "",
     company_name: (company?.name as string) || "",
