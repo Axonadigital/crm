@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { referenceCaseFor } from "../_shared/referenceCases.ts";
 import { greetingFor } from "../_shared/greeting.ts";
 import { OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
@@ -295,6 +296,31 @@ function findingVars(raw: unknown): Record<string, string> {
  * nyckel och spärren i render() stoppar utskicket, i stället för att skicka
  * ett mejl med ett hål mitt i.
  */
+/**
+ * Variabler ur referensbiblioteket: ett tidigare projekt som bevis.
+ *
+ * Banan läses ur sekvensens egen trigger_config — samma källa som styrde
+ * inskrivningen — så beviset alltid hör ihop med varför företaget valdes.
+ */
+function referenceVars(
+  triggerConfig: Record<string, unknown> | null,
+): Record<string, string> {
+  const lanes = Array.isArray(triggerConfig?.offer_lanes)
+    ? (triggerConfig?.offer_lanes as unknown[]).map((lane) => String(lane))
+    : [];
+  for (const lane of lanes) {
+    const found = referenceCaseFor(lane);
+    if (found) {
+      return {
+        reference_customer: found.customer,
+        reference_line: found.line,
+        reference_question: found.question,
+      };
+    }
+  }
+  return {};
+}
+
 function segmentVars(segment: string | null): Record<string, string> {
   const copy = segmentCopy(segment);
   if (!copy) return {};
@@ -318,6 +344,14 @@ async function prepareEmail(
     .eq("id", templateId)
     .maybeSingle();
   if (!template) return { ok: false, error: "Template not found" };
+
+  // Sekvensens bana styr vilket referenscase som är relevant — samma källa
+  // som avgjorde att företaget skrevs in.
+  const { data: sequence } = await supabaseAdmin
+    .from("sequences")
+    .select("trigger_config")
+    .eq("id", enrollment.sequence_id as number)
+    .maybeSingle();
 
   const { data: contact } = await supabaseAdmin
     .from("contacts")
@@ -380,6 +414,10 @@ async function prepareEmail(
     ...findingVars(scan?.findings),
     report_url: scan?.report_slug ? `${scannerBase}/r/${scan.report_slug}` : "",
     ...segmentVars(company?.industry_segment as string | null),
+    // Referenscase för företag utan känd bransch. Saknas ett relevant case
+    // utelämnas nycklarna och renderingskontrollen stoppar mejlet — hellre
+    // inget mejl än ett bevis som inte hör dit.
+    ...referenceVars(sequence?.trigger_config as Record<string, unknown> | null),
     ...outreachPersonalization({
       companyName: company?.name,
       websiteHost: websiteHost((company?.website as string) || ""),
