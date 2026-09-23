@@ -4,8 +4,8 @@ import { outreachPersonalization } from "./outreachPersonalization.ts";
 import { segmentCopy, segmentsWithCopy } from "./segmentCopy.ts";
 
 const findings = [
-  { title: "En kontaktlänk fungerar inte", severity: "high", impact: 80 },
-  { title: "Stora bilder på startsidan", severity: "medium", impact: 50 },
+  { title: "En kontaktlänk fungerar inte", severity: "high", impact: 80, mailable: true },
+  { title: "Stora bilder på startsidan", severity: "medium", impact: 50, mailable: true },
 ];
 
 const migration = readFileSync(
@@ -74,7 +74,7 @@ describe("evidence-based personalization", () => {
     const result = outreachPersonalization({
       companyName: "Bygg\r\nAB",
       websiteHost: "bygg.se",
-      findings: [{ title: "x".repeat(181), severity: "high" }, findings[1]],
+      findings: [{ title: "x".repeat(181), severity: "high", mailable: true }, findings[1]],
     });
     expect(result.prospect_name).toBe("Bygg AB");
     expect(result.website_observation).toContain("Stora bilder");
@@ -167,7 +167,7 @@ describe("v4-mallarna mot renderaren", () => {
         companyName: "Storsjö Tak AB",
         websiteHost: "storsjotak.se",
         segment,
-        findings: [...findings, { id: "no-gbp", axis: "local", title: "Ingen Google Business-profil hittades", severity: "high", impact: 90 }],
+        findings: [...findings, { id: "no-gbp", axis: "local", title: "Ingen Google Business-profil hittades", severity: "high", impact: 90, mailable: true }],
       }),
     } as Record<string, string>;
   };
@@ -249,8 +249,8 @@ describe("v4-mallarna mot renderaren", () => {
       websiteHost: "storsjotak.se",
       segment: "bygg",
       findings: [
-        { id: "no-gbp", axis: "local", title: "Ingen Google Business-profil hittades", severity: "high", impact: 90 },
-        { id: "parked", axis: "technical", title: "Sidan ser ut som en platshållare", severity: "medium", impact: 40 },
+        { id: "no-gbp", axis: "local", title: "Ingen Google Business-profil hittades", severity: "high", impact: 90, mailable: true },
+        { id: "parked", axis: "technical", title: "Sidan ser ut som en platshållare", severity: "medium", impact: 40, mailable: true },
       ],
     });
     expect(result.website_observation).toContain("platshållare");
@@ -261,7 +261,7 @@ describe("v4-mallarna mot renderaren", () => {
     const result = outreachPersonalization({
       websiteHost: "storsjotak.se",
       findings: [
-        { id: "no-site", axis: "technical", title: "Ingen egen hemsida", severity: "high", impact: 95 },
+        { id: "no-site", axis: "technical", title: "Ingen egen hemsida", severity: "high", impact: 95, mailable: true },
       ],
     });
     expect(result.website_observation).toBeUndefined();

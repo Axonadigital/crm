@@ -21,6 +21,7 @@ const REAL = [
     impact: 100,
     service: "SEO-paket",
     severity: "high",
+    mailable: true,
   },
   {
     id: "no-gbp",
@@ -32,6 +33,7 @@ const REAL = [
     impact: 70,
     service: "Google Business-paket",
     severity: "high",
+    mailable: true,
   },
   {
     id: "slow",
@@ -43,6 +45,7 @@ const REAL = [
     impact: 95,
     service: "Prestandapaket",
     severity: "medium",
+    mailable: true,
   },
 ];
 
@@ -82,8 +85,8 @@ describe("rankFindings", () => {
 
   it("är stabil så samma skanning alltid ger samma öppningsrad", () => {
     const tie = [
-      { id: "a", title: "A", severity: "high", impact: 50 },
-      { id: "b", title: "B", severity: "high", impact: 50 },
+      { id: "a", title: "A", severity: "high", impact: 50, mailable: true },
+      { id: "b", title: "B", severity: "high", impact: 50, mailable: true },
     ];
     expect(rankFindings(tie).map((f) => f.id)).toEqual(["a", "b"]);
     expect(rankFindings([...tie]).map((f) => f.id)).toEqual(["a", "b"]);
@@ -91,10 +94,38 @@ describe("rankFindings", () => {
 
   it("okänd allvarsgrad hamnar sist, inte först", () => {
     const mixed = [
-      { id: "okand", title: "X", severity: "", impact: 99 },
-      { id: "hog", title: "Y", severity: "high", impact: 10 },
+      { id: "okand", title: "X", severity: "", impact: 99, mailable: true },
+      { id: "hog", title: "Y", severity: "high", impact: 10, mailable: true },
     ];
     expect(rankFindings(mixed)[0].id).toBe("hog");
+  });
+});
+
+describe("bara mejlbara fynd får citeras", () => {
+  // Fyra kalla mejl 2026-09-23 citerade fynd mottagaren kunde motbevisa.
+  // Skannern stämplar numera varje fynd; rankningen släpper bara igenom de
+  // bevisbara.
+  it("utelämnar fynd som inte är mejlbara", () => {
+    const blandat = [
+      { id: "no-contact-path", title: "Ingen kontaktväg", severity: "high", impact: 99, mailable: false },
+      { id: "noindex", title: "Blockerad från Google", severity: "high", impact: 10, mailable: true },
+    ];
+    expect(rankFindings(blandat).map((f) => f.id)).toEqual(["noindex"]);
+  });
+
+  it("gamla skanningar utan fältet ger inget att citera", () => {
+    const gammalt = [
+      { id: "noindex", title: "Blockerad från Google", severity: "high", impact: 100 },
+    ];
+    expect(rankFindings(gammalt)).toEqual([]);
+    expect(topFinding(gammalt)).toBeNull();
+  });
+
+  it("parseFindings bär fältet vidare — annars tystnar allt", () => {
+    expect(parseFindings(REAL)[0].mailable).toBe(true);
+    expect(
+      parseFindings([{ id: "x", title: "X" }])[0].mailable,
+    ).toBe(false);
   });
 });
 

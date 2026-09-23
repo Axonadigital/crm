@@ -279,22 +279,36 @@ function findingVars(raw: unknown): Record<string, string> {
   const top = topFinding(raw);
   const second = secondFinding(raw);
   const quick = quickWinCount(raw);
-  return {
-    scan_finding: top?.title || "Det som står överst i rapporten",
-    scan_finding_lower: lowerFirst(
-      top?.title || "det som står överst i rapporten",
-    ),
-    scan_finding_why: whyForEmail(top?.why || ""),
-    scan_finding_fix: top?.fix || "",
+
+  // Nycklarna UTELÄMNAS när det inte finns ett mejlbart fynd — de får inte
+  // falla tillbaka på en generisk formulering.
+  //
+  // Tidigare gav ett tomt fyndresultat texten "I vårt automatiska test
+  // flaggades: Det som står överst i rapporten", vilket renderas utan fel och
+  // går ut till en riktig mottagare utan att säga någonting. Saknas nyckeln
+  // helt stoppar renderingskontrollen längre ned utskicket i stället. Mallar
+  // som inte citerar något fynd — t.ex. banan "ingen hemsida", som frågar i
+  // stället för att påstå — berörs inte.
+  const vars: Record<string, string> = { scan_quick_wins: String(quick) };
+
+  if (top) {
+    vars.scan_finding = top.title;
+    vars.scan_finding_lower = lowerFirst(top.title);
+    vars.scan_finding_why = whyForEmail(top.why || "");
+    vars.scan_finding_fix = top.fix || "";
     // Formuleras så den funkar i meningen "det här är ...". En ärlig
     // storleksangivelse gör erbjudandet trovärdigt utan att lova bort arbetet.
-    scan_finding_effort:
-      top?.effort === "quick" ? "snabbt fixat" : "ett större jobb",
-    scan_finding_2: second?.title || "",
-    scan_finding_2_lower: lowerFirst(second?.title || ""),
-    scan_finding_2_why: whyForEmail(second?.why || ""),
-    scan_quick_wins: String(quick),
-  };
+    vars.scan_finding_effort =
+      top.effort === "quick" ? "snabbt fixat" : "ett större jobb";
+  }
+
+  if (second) {
+    vars.scan_finding_2 = second.title;
+    vars.scan_finding_2_lower = lowerFirst(second.title);
+    vars.scan_finding_2_why = whyForEmail(second.why || "");
+  }
+
+  return vars;
 }
 
 /**

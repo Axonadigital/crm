@@ -26,6 +26,12 @@ export interface ScanFinding {
   impact: number;
   service: string;
   severity: string;
+  /**
+   * Får fyndet citeras i ett kallt mejl? Sätts av skannern och måste bäras
+   * hela vägen hit — rankFindings filtrerar på den, och ett fält som tappas i
+   * mappningen skulle tysta alla utskick.
+   */
+  mailable: boolean;
 }
 
 const SEVERITY_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
@@ -58,6 +64,7 @@ export function parseFindings(raw: unknown): ScanFinding[] {
       impact: typeof f.impact === "number" ? f.impact : 0,
       service: str(f, "service"),
       severity: str(f, "severity").toLowerCase(),
+      mailable: f.mailable === true,
     }))
     .filter((f) => f.title !== "");
 }
@@ -70,8 +77,23 @@ export function parseFindings(raw: unknown): ScanFinding[] {
  * spelar roll. Sorteringen är stabil, så samma skanning ger alltid samma
  * mejl — annars kan en omkörning byta öppningsrad mellan steg 1 och steg 2.
  */
+/**
+ * Rankar fynden för UTSKICK — inte för rapporten.
+ *
+ * Bara fynd som skannern stämplat mailable = true kommer med. Skälet är att
+ * fyra kalla mejl 2026-09-23 citerade fynd som mottagaren kunde motbevisa
+ * genom att titta på sin egen sajt ("ingen kontaktväg utöver telefon" till ett
+ * företag vars mejladress står på startsidan). Ett fynd får bara citeras om
+ * det är maskinellt bevisbart — se MAILABLE_FINDING_IDS i axona-scanner.
+ *
+ * Skanningar gjorda före den ändringen saknar fältet och faller bort här. Det
+ * är avsiktligt: hellre inget mejl än ett med ett påstående vi inte kan stå
+ * för. Samtliga anropare av den här funktionen är utskicksvägar; rapporten
+ * visar fortfarande alla fynd.
+ */
 export function rankFindings(raw: unknown): ScanFinding[] {
   return parseFindings(raw)
+    .filter((f) => f.mailable)
     .map((f, i) => ({ f, i }))
     .sort((a, b) => {
       const sev =
