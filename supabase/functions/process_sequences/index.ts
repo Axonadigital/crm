@@ -7,6 +7,24 @@ import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { segmentCopy } from "../_shared/segmentCopy.ts";
 import { outreachPersonalization } from "../_shared/outreachPersonalization.ts";
 import {
+  FAMILIES,
+  familyFor,
+  krokVars,
+  measuredValue,
+  observationDay,
+  referenceFor,
+  type KrokFamily,
+} from "../_shared/krokCopy.ts";
+import {
+  FAMILY_LABEL,
+  MAX_RESCANS_PER_RUN,
+  abVariant,
+  callNote,
+  scanIsFresh,
+  shouldSkipBreakup,
+} from "../_shared/outreachFlow.ts";
+import { shortCompanyName } from "../_shared/companyName.ts";
+import {
   outsideWindowReason,
   parseSendWindow,
   startOfLocalDay,
@@ -73,6 +91,12 @@ const CAP_LOG_DEDUPE_MINUTES = 60;
 type Row = Record<string, unknown>;
 type Outcome =
   | "sent"
+  // v5-flödet: steg 1 kräver färsk skanning, steg 2 en leverans, steg 4
+  // går inte till någon vi redan nått.
+  | "skipped_stale_scan"
+  | "rescan_requested"
+  | "skipped_asset_missing"
+  | "skipped_reached"
   // Anspråket på steget, skrivet före Gmail-anropet. Se claimSend().
   | "sending"
   // Steget var redan skickat — vi flyttar fram i stället för att skicka igen.
@@ -89,6 +113,8 @@ type Outcome =
 interface Settings {
   dryRun: boolean;
   dailyCap: number;
+  /** Den vars uppgifter (ringa, producera bild) motorn skapar. Utan den syns de inte på dashboarden. */
+  callOwnerEmail: string | null;
   /** Tillåtna sändningstider. Utanför dem skjuts utskicket upp, inte bort. */
   sendWindow: SendWindow;
 }
@@ -106,6 +132,9 @@ interface PreparedEmail {
   body: string;
   templateId: number;
   companyId: number | null;
+  /** Steg 2: bilden vars URL står på egen rad i brödtexten. */
+  imageUrl?: string | null;
+  imageAlt?: string;
 }
 
 // --- Inställningar, logg, heartbeat ---
@@ -123,6 +152,10 @@ async function loadSettings(): Promise<Settings> {
     dryRun: value.dry_run !== false,
     dailyCap: Number.isFinite(cap) && cap > 0 ? cap : DEFAULT_DAILY_CAP,
     sendWindow: parseSendWindow(value.send_window),
+    callOwnerEmail:
+      typeof value.call_owner_email === "string" && value.call_owner_email.includes("@")
+        ? (value.call_owner_email as string)
+        : null,
   };
 }
 
@@ -380,7 +413,7 @@ async function prepareEmail(
       // findings är det mejlet öppnar med — strukturerade fynd med rubrik,
       // konsekvens i klartext och insats. Totalpoängen säger inget till en
       // målare i Hackås; "Sajten är blockerad från Google" gör det.
-      .select("total_score, report_slug, verdict, findings")
+      .select("total_score, report_slug, verdict, findings, scanned_at")
       .eq("company_id", contact.company_id)
       .maybeSingle();
     scan = latest;
@@ -424,6 +457,10 @@ async function prepareEmail(
       segment: company?.industry_segment,
       findings: scan?.findings,
     }),
+    // v5-flödet: copy per krokfamilj. Saknas mailable-fynd finns nycklarna
+    // inte, och renderingskontrollen stoppar mejlet.
+    ...(await krokVarsFor(enrollment, company, scan)),
+    asset_url: ((enrollment.asset_url as string | null) ?? "").trim(),
   };
   const missing: string[] = [];
   const render = (tmpl: string) =>
@@ -461,8 +498,45 @@ async function prepareEmail(
       body,
       templateId,
       companyId: (contact.company_id as number | null) ?? null,
+      imageUrl: ((enrollment.asset_url as string | null) ?? "").trim() || null,
+      imageAlt: `${shortCompanyName(company?.name)}: före och efter`,
     },
   };
+}
+
+/**
+ * Variablerna {{krok_*}} för v5-mallarna, ur skanningens första
+ * mailable-fynd. Familjen sparas på enrollmenten så att steg 2 vet om en
+ * bild krävs och tratten kan gruppera per krok.
+ */
+async function krokVarsFor(
+  enrollment: Row,
+  company: Row | null,
+  scan: Row | null,
+): Promise<Record<string, string>> {
+  const krok = familyFor(scan?.findings);
+  if (!krok || !scan) return {};
+  const namn = shortCompanyName(company?.name);
+  const host = websiteHost((company?.website as string) || "");
+  const vars = krokVars(krok.family, {
+    namn,
+    sajt: host || namn,
+    ort: ((company?.city as string) || "").trim() || "närheten",
+    dag: observationDay((scan.scanned_at as string) ?? new Date().toISOString()),
+    varde: measuredValue(krok.finding.title),
+    referens: referenceFor(
+      company?.industry_segment as string | null,
+      company?.name as string | null,
+    ),
+  });
+  if (enrollment.krok_familj !== krok.family) {
+    await supabaseAdmin
+      .from("sequence_enrollments")
+      .update({ krok_familj: krok.family })
+      .eq("id", enrollment.id);
+    enrollment.krok_familj = krok.family;
+  }
+  return { ...vars };
 }
 
 /** Rasmus Gmail-signatur, synkad till mc_settings av sync_gmail_signature. */
@@ -560,7 +634,10 @@ async function sendPrepared(
   let body: string;
   let htmlBody: string | undefined;
   if (gmailSignature) {
-    const rendered = renderWithGmailSignature(email.body, gmailSignature);
+    const rendered = renderWithGmailSignature(email.body, gmailSignature, {
+      imageUrl: email.imageUrl ?? null,
+      imageAlt: email.imageAlt ?? "",
+    });
     body = rendered.text;
     htmlBody = rendered.html;
   } else {
@@ -694,14 +771,17 @@ async function executeCreateTask(
   stepNumber: number,
 ): Promise<StepResult> {
   const config = (step.action_config || {}) as Row;
+  // Uppgiftstyperna i CRM:et är gemener ("call", "email"); dashboarden
+  // visar bara uppgifter med sales_id, så ägaren sätts uttryckligen.
   const { error } = await supabaseAdmin.from("tasks").insert({
     contact_id: enrollment.contact_id,
-    type: config.task_type || "Email",
+    type: String(config.task_type || "email").toLowerCase(),
     text: config.task_text || `Sekvens uppföljning (steg ${stepNumber})`,
     due_date: new Date(
       Date.now() + ((config.due_days as number) || 1) * 86400000,
     ).toISOString(),
     done_date: null,
+    sales_id: await ownerSalesId(),
   });
   if (error) {
     return { success: false, error: `Failed to create task: ${error.message}` };
@@ -728,6 +808,296 @@ async function executeUpdateLeadStatus(
       error: `Failed to update lead status: ${error.message}`,
     };
   }
+  return { success: true };
+}
+
+// --- v5-flödet: färsk skanning, leverans, samtal/mejl, breakup ---
+
+let ownerCache: { email: string | null; id: number | null } | null = null;
+let ownerEmailForRun: string | null = null;
+
+/** sales.id för call_owner_email i mc_settings.sequences. Cachas per körning. */
+async function ownerSalesId(): Promise<number | null> {
+  if (ownerCache && ownerCache.email === ownerEmailForRun) return ownerCache.id;
+  let id: number | null = null;
+  if (ownerEmailForRun) {
+    const { data } = await supabaseAdmin
+      .from("sales")
+      .select("id")
+      .eq("email", ownerEmailForRun)
+      .maybeSingle();
+    id = (data?.id as number | undefined) ?? null;
+  }
+  ownerCache = { email: ownerEmailForRun, id };
+  return id;
+}
+
+async function latestScanFor(companyId: unknown): Promise<Row | null> {
+  if (companyId == null) return null;
+  const { data } = await supabaseAdmin
+    .from("company_latest_scan")
+    .select("scanned_at, findings")
+    .eq("company_id", companyId)
+    .maybeSingle();
+  return data;
+}
+
+/**
+ * Steg 1 säger "jag kikade i dag". Är skanningen äldre än 24 h begärs en
+ * omskanning hos scannern (högst två per körning — varje tar 30–60 s) och
+ * enrollmenten lämnas förfallen till nästa tick. Saknas SCANNER_SECRET kan
+ * inget begäras; då loggas det och steget väntar.
+ */
+async function ensureFreshScan(
+  enrollment: Row,
+  settings: Settings,
+  counters: TickCounters,
+  stepNumber: number,
+  actionType: string,
+): Promise<boolean> {
+  const scan = await latestScanFor(enrollment.company_id);
+  if (scanIsFresh(scan?.scanned_at as string | null)) return true;
+
+  const secret = Deno.env.get("SCANNER_SECRET");
+  const base = (
+    Deno.env.get("SCANNER_INTERNAL_URL") ||
+    Deno.env.get("SCANNER_PUBLIC_URL") ||
+    "https://axona-scanner.vercel.app"
+  ).replace(/\/$/, "");
+  const canRescan = Boolean(secret) && counters.rescans < MAX_RESCANS_PER_RUN &&
+    enrollment.company_id != null;
+
+  if (!canRescan) {
+    if (!(await recentlyLogged(enrollment.id, stepNumber, "skipped_stale_scan", 60))) {
+      await logRun({
+        enrollment,
+        step: stepNumber,
+        actionType,
+        outcome: "skipped_stale_scan",
+        detail: {
+          scanned_at: scan?.scanned_at ?? null,
+          reason: secret ? "omskanningskvoten för körningen är slut" : "SCANNER_SECRET saknas",
+        },
+      });
+    }
+    return false;
+  }
+
+  counters.rescans += 1;
+  if (settings.dryRun) {
+    await logRun({
+      enrollment,
+      step: stepNumber,
+      actionType,
+      outcome: "rescan_requested",
+      detail: { would: "begära omskanning", scanned_at: scan?.scanned_at ?? null, dry_run: true },
+    });
+    return false;
+  }
+  let status = 0;
+  let error: string | null = null;
+  try {
+    const res = await fetch(`${base}/api/scan`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-scanner-secret": secret! },
+      body: JSON.stringify({ company_id: enrollment.company_id }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    status = res.status;
+    if (!res.ok) error = (await res.text()).slice(0, 300);
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+  await logRun({
+    enrollment,
+    step: stepNumber,
+    actionType,
+    outcome: "rescan_requested",
+    detail: { scanned_at: scan?.scanned_at ?? null, http_status: status, error },
+  });
+  // Även när skanningen lyckades väntar vi till nästa tick: då läses den
+  // färska skanningen in på vanligt sätt och "i dag" blir sant.
+  return false;
+}
+
+/** Behöver steg 2 en bild för den här familjen? Okänd familj ⇒ ja, hellre vänta. */
+function familyNeedsAsset(enrollment: Row): boolean {
+  const family = enrollment.krok_familj as KrokFamily | null;
+  if (!family || !FAMILIES[family]) return true;
+  return FAMILIES[family].bild;
+}
+
+/**
+ * Leveransen i steg 2. Saknas bilden skapas EN produktionsuppgift (id sparas
+ * på enrollmenten) och steget väntar. Textfamiljerna behöver ingen bild.
+ */
+async function ensureAsset(
+  enrollment: Row,
+  step: Row,
+  settings: Settings,
+  counters: TickCounters,
+  stepNumber: number,
+  actionType: string,
+): Promise<boolean> {
+  if (!familyNeedsAsset(enrollment)) return true;
+  if (((enrollment.asset_url as string | null) ?? "").trim()) return true;
+  counters.assetWaiting += 1;
+  if (!settings.dryRun) await ensureAssetTask(enrollment, step);
+  if (!(await recentlyLogged(enrollment.id, stepNumber, "skipped_asset_missing", 720))) {
+    await logRun({
+      enrollment,
+      step: stepNumber,
+      actionType,
+      outcome: "skipped_asset_missing",
+      detail: { krok_familj: enrollment.krok_familj ?? null, asset_task_id: enrollment.asset_task_id ?? null },
+    });
+  }
+  return false;
+}
+
+/** Skapa produktionsuppgiften en gång och spara id:t på enrollmenten. */
+async function ensureAssetTask(enrollment: Row, assetStep: Row): Promise<void> {
+  if (enrollment.asset_task_id) return;
+  if (!familyNeedsAsset(enrollment)) return;
+  const config = (assetStep.action_config || {}) as Row;
+  const { data: company } = enrollment.company_id
+    ? await supabaseAdmin.from("companies").select("name, website").eq("id", enrollment.company_id).maybeSingle()
+    : { data: null };
+  const label = FAMILY_LABEL[(enrollment.krok_familj as string) ?? ""] ?? "leveransen";
+  const text = `${shortCompanyName(company?.name)}: ${
+    (config.asset_task_text as string) || "producera leveransen till steg 2 och klistra in URL:en på enrollmenten"
+  } (${label}${company?.website ? `, ${websiteHost(company.website as string)}` : ""})`;
+  const { data, error } = await supabaseAdmin
+    .from("tasks")
+    .insert({
+      contact_id: enrollment.contact_id,
+      type: "follow-up",
+      text,
+      due_date: new Date(Date.now() + 2 * 86400000).toISOString(),
+      done_date: null,
+      sales_id: await ownerSalesId(),
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    console.error("asset task insert failed:", error?.message);
+    return;
+  }
+  await supabaseAdmin
+    .from("sequence_enrollments")
+    .update({ asset_task_id: data.id })
+    .eq("id", enrollment.id);
+  enrollment.asset_task_id = data.id;
+}
+
+/** Steg 4: hoppa över breakup om någon nåtts sedan steg 3. */
+async function skipIfReached(
+  enrollment: Row,
+  settings: Settings,
+  counters: TickCounters,
+  stepNumber: number,
+  actionType: string,
+  now: string,
+): Promise<boolean> {
+  const { data: step3 } = await supabaseAdmin
+    .from("sequence_run_log")
+    .select("created_at")
+    .eq("enrollment_id", enrollment.id)
+    .eq("step", stepNumber - 1)
+    .in("outcome", ["sent", "executed"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const since = (step3?.created_at as string | undefined) ?? new Date(Date.now() - 30 * 86400000).toISOString();
+  const [{ data: company }, { data: calls }] = await Promise.all([
+    enrollment.company_id
+      ? supabaseAdmin.from("companies").select("lead_status").eq("id", enrollment.company_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    enrollment.company_id
+      ? supabaseAdmin.from("call_logs").select("call_outcome, created_at").eq("company_id", enrollment.company_id).gte("created_at", since)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const verdict = shouldSkipBreakup({
+    leadStatus: (company?.lead_status as string | null) ?? null,
+    callLogsSinceStep3: (calls ?? []) as Array<{ call_outcome: string; created_at: string }>,
+  });
+  if (!verdict.skip) return false;
+  if (settings.dryRun) {
+    if (!(await recentlyLogged(enrollment.id, stepNumber, "skipped_reached", null))) {
+      await logRun({ enrollment, step: stepNumber, actionType, outcome: "skipped_reached", detail: { would: "complete", reason: verdict.reason } });
+    }
+    return true;
+  }
+  const transition = await advanceOrComplete(enrollment, stepNumber, now);
+  await logRun({ enrollment, step: stepNumber, actionType, outcome: "skipped_reached", detail: { transition, reason: verdict.reason } });
+  counters.executed += 1;
+  if (transition === "completed") counters.completed += 1;
+  return true;
+}
+
+/**
+ * Steg 3: samtal eller referensmejl. Gruppen avgörs en gång per enrollment
+ * och sparas. Utan telefonnummer blir det alltid mejl.
+ */
+async function resolveCallOrEmail(
+  enrollment: Row,
+  config: Row,
+  settings: Settings,
+): Promise<"create_call" | "send_email"> {
+  let variant = enrollment.ab_variant as "call" | "email" | null;
+  if (variant !== "call" && variant !== "email") {
+    const share = typeof config.share_call === "number" ? (config.share_call as number) : 0.5;
+    variant = abVariant(Number(enrollment.id), share);
+    if (!settings.dryRun) {
+      await supabaseAdmin.from("sequence_enrollments").update({ ab_variant: variant }).eq("id", enrollment.id);
+      enrollment.ab_variant = variant;
+    }
+  }
+  if (variant !== "call") return "send_email";
+  const { data: company } = enrollment.company_id
+    ? await supabaseAdmin.from("companies").select("phone_number").eq("id", enrollment.company_id).maybeSingle()
+    : { data: null };
+  return ((company?.phone_number as string | null) ?? "").trim() ? "create_call" : "send_email";
+}
+
+/**
+ * Ringuppgiften: en task åt ägaren plus bolaget i ringlistan (/call-queue)
+ * med en notering om vad som skickats och vad samtalet ska handla om.
+ */
+async function executeCallTask(
+  step: Row,
+  enrollment: Row,
+  stepNumber: number,
+): Promise<StepResult> {
+  const config = (step.action_config || {}) as Row;
+  const [{ data: company }, scan, { data: step1 }] = await Promise.all([
+    supabaseAdmin.from("companies").select("name, phone_number").eq("id", enrollment.company_id).maybeSingle(),
+    latestScanFor(enrollment.company_id),
+    supabaseAdmin.from("sequence_run_log").select("created_at").eq("enrollment_id", enrollment.id).eq("step", 1).eq("outcome", "sent").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const krok = familyFor(scan?.findings);
+  const family = (enrollment.krok_familj as string) || krok?.family || "";
+  const note = callNote({
+    familyLabel: FAMILY_LABEL[family] ?? "fyndet på sajten",
+    observation: krok?.finding.title ?? "se skanningen",
+    sentStep1At: (step1?.created_at as string | null) ?? null,
+    assetSent: Boolean(((enrollment.asset_url as string | null) ?? "").trim()),
+  });
+  const { error: taskErr } = await supabaseAdmin.from("tasks").insert({
+    contact_id: enrollment.contact_id,
+    type: String(config.task_type || "call").toLowerCase(),
+    text: `Ring ${shortCompanyName(company?.name)}${company?.phone_number ? ` (${company.phone_number})` : ""}. ${note}`,
+    due_date: new Date(Date.now() + ((config.due_days as number) || 1) * 86400000).toISOString(),
+    done_date: null,
+    sales_id: await ownerSalesId(),
+  });
+  if (taskErr) return { success: false, error: `Failed to create call task: ${taskErr.message}` };
+  const { error: compErr } = await supabaseAdmin
+    .from("companies")
+    .update({ prospecting_status: "call_ready", next_action_type: "call", next_action_note: note })
+    .eq("id", enrollment.company_id);
+  if (compErr) return { success: false, error: `Failed to queue call: ${compErr.message}` };
+  void stepNumber;
   return { success: true };
 }
 
@@ -796,6 +1166,8 @@ interface TickCounters {
   duplicates: number;
   completed: number;
   failed: number;
+  rescans: number;
+  assetWaiting: number;
 }
 
 /** Hur länge en påbörjad sändning får hänga innan den räknas som strandad. */
@@ -954,11 +1326,28 @@ async function processEnrollment(
     return;
   }
 
+  // 1b–1e. v5-flödets egna villkor. Alla lämnar enrollmenten förfallen
+  //        (eller flyttar fram den) i stället för att pausa: väntan är normal.
+  const stepConfig = (step.action_config || {}) as Row;
+  ownerEmailForRun = settings.callOwnerEmail;
+  if (stepConfig.requires_fresh_scan === true) {
+    if (!(await ensureFreshScan(enrollment, settings, counters, stepNumber, actionType))) return;
+  }
+  if (stepConfig.requires_asset === true) {
+    if (!(await ensureAsset(enrollment, step, settings, counters, stepNumber, actionType))) return;
+  }
+  if (stepConfig.skip_if_reached === true) {
+    if (await skipIfReached(enrollment, settings, counters, stepNumber, actionType, now)) return;
+  }
+  const effectiveAction: string = actionType === "call_or_email"
+    ? await resolveCallOrEmail(enrollment, stepConfig, settings)
+    : actionType;
+
   // 2a. Sändningsfönster — bara för utgående mejl. Ett mejl som blev
   //     förfallet 03:14 en söndag gick tidigare 03:14 en söndag. Tidpunkten
   //     är en av de tydligaste signalerna på att avsändaren är en maskin.
   //     Enrollmenten lämnas förfallen och plockas upp när fönstret öppnar.
-  if (actionType === "send_email" && !settings.dryRun) {
+  if (effectiveAction === "send_email" && !settings.dryRun) {
     const now = new Date();
     if (!withinSendWindow(now, settings.sendWindow)) {
       counters.outsideWindow += 1;
@@ -984,7 +1373,7 @@ async function processEnrollment(
 
   // 2b. Dygnstak — bara för utgående mejl. Enrollment lämnas förfallen och
   //     plockas upp nästa dygn.
-  if (actionType === "send_email" && !settings.dryRun) {
+  if (effectiveAction === "send_email" && !settings.dryRun) {
     const sent = await sentToday(settings.sendWindow);
     if (sent >= settings.dailyCap) {
       counters.capped += 1;
@@ -1014,7 +1403,7 @@ async function processEnrollment(
       return;
     let detail: Row;
     let outcome: Outcome = "dry_run";
-    if (actionType === "send_email") {
+    if (effectiveAction === "send_email") {
       const prepared = await prepareEmail(step, enrollment);
       if (prepared.ok) {
         detail = {
@@ -1028,7 +1417,11 @@ async function processEnrollment(
         detail = { would: "send email", error: prepared.error };
       }
     } else {
-      detail = { would: actionType, action_config: step.action_config ?? null };
+      detail = {
+        would: effectiveAction,
+        action_config: step.action_config ?? null,
+        ab_variant: enrollment.ab_variant ?? null,
+      };
     }
     await logRun({ enrollment, step: stepNumber, actionType, outcome, detail });
     if (outcome === "failed") counters.failed += 1;
@@ -1041,7 +1434,7 @@ async function processEnrollment(
   // Sätts bara för mejlsteg: anspråksraden som redan ligger i loggen och som
   // ska stängas med utfallet i stället för att en ny rad skrivs.
   let sendLogId: number | null = null;
-  switch (actionType) {
+  switch (effectiveAction) {
     case "send_email": {
       const prepared = await prepareEmail(step, enrollment);
       if (!prepared.ok) {
@@ -1104,6 +1497,9 @@ async function processEnrollment(
     case "create_task":
       result = await executeCreateTask(step, enrollment, stepNumber);
       break;
+    case "create_call":
+      result = await executeCallTask(step, enrollment, stepNumber);
+      break;
     case "update_lead_status":
       result = await executeUpdateLeadStatus(step, enrollment);
       break;
@@ -1141,9 +1537,23 @@ async function processEnrollment(
       detail: { transition },
     });
   }
-  if (actionType === "send_email") counters.sent += 1;
+  if (effectiveAction === "send_email") counters.sent += 1;
   else counters.executed += 1;
   if (transition === "completed") counters.completed += 1;
+
+  // Steg 1 gick ut: skapa produktionsuppgiften för steg 2 direkt, så att
+  // bilden hinner bli klar innan steg 2 förfaller.
+  if (effectiveAction === "send_email" && transition === "advanced") {
+    const { data: next } = await supabaseAdmin
+      .from("sequence_steps")
+      .select("action_config")
+      .eq("sequence_id", enrollment.sequence_id)
+      .eq("step_number", stepNumber + 1)
+      .maybeSingle();
+    if ((next?.action_config as Row | null)?.requires_asset === true) {
+      await ensureAssetTask(enrollment, next as Row);
+    }
+  }
 }
 
 // --- Main ---
@@ -1198,6 +1608,8 @@ Deno.serve(async (req: Request) =>
       duplicates: 0,
       completed: 0,
       failed: 0,
+      rescans: 0,
+      assetWaiting: 0,
     };
 
     try {

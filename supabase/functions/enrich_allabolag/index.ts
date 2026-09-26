@@ -352,7 +352,7 @@ async function enrichOne(
     }
   }
 
-  if (!allabolagData) {
+  if (!allabolagData && googleApiKey && googleCx) {
     source = "google_cse";
     allabolagData = await searchAllabolag(
       company.name,
@@ -420,14 +420,20 @@ async function enrichOne(
  * en liten batch och ett dygnsvis schema, inte en timvis genomkörning.
  */
 async function handleBatch(body: Record<string, unknown> | null) {
-  const googleApiKey = Deno.env.get("GOOGLE_CUSTOM_SEARCH_API_KEY");
-  const googleCx = Deno.env.get("GOOGLE_CUSTOM_SEARCH_CX");
-  if (!googleApiKey || !googleCx) {
+  const googleApiKey = Deno.env.get("GOOGLE_CUSTOM_SEARCH_API_KEY") ?? "";
+  const googleCx = Deno.env.get("GOOGLE_CUSTOM_SEARCH_CX") ?? "";
+  const serperKey = Deno.env.get("SERPER_API_KEY");
+  // Serper räcker; Google CSE är bara tredje källan i enrichOne.
+  if (!serperKey && !(googleApiKey && googleCx)) {
     return createErrorResponse(
       500,
-      "GOOGLE_CUSTOM_SEARCH_API_KEY eller GOOGLE_CUSTOM_SEARCH_CX saknas",
+      "SERPER_API_KEY eller GOOGLE_CUSTOM_SEARCH_API_KEY+CX krävs",
     );
   }
+  // Läge "orgnr": företag UTAN organisationsnummer. 19 § MFL kräver att vi
+  // vet bolagsformen innan ett kallt mejl går — utan orgnr spärrar grinden
+  // som "unverified_company_form". 77 leads saknade orgnr 2026-09-26.
+  const mode = body?.mode === "orgnr" ? "orgnr" : "sni";
 
   const limit =
     typeof body?.limit === "number" && body.limit > 0
@@ -446,13 +452,16 @@ async function handleBatch(body: Record<string, unknown> | null) {
     .gte("created_at", since);
   const skip = new Set((tried ?? []).map((r) => Number(r.company_id)));
 
-  const { data: companies, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("companies")
     .select("id, name")
-    .is("sni_code", null)
     .not("name", "is", null)
     .order("id", { ascending: true })
     .limit(limit + skip.size);
+  query = mode === "orgnr"
+    ? query.or("org_number.is.null,org_number.eq.").eq("lead_status", "new")
+    : query.is("sni_code", null);
+  const { data: companies, error } = await query;
   if (error) return createErrorResponse(500, error.message);
 
   let considered = 0;
@@ -518,7 +527,8 @@ async function handleEnrichAllabolag(req: Request) {
       required: true,
     });
 
-    const result = await enrichOne(company_id, googleApiKey, googleCx);
+    if (company_id == null) return createErrorResponse(400, "company_id krävs");
+    const result = await enrichOne(company_id, googleApiKey ?? "", googleCx ?? "");
     if (!result.found) {
       return createJsonResponse({
         success: false,
