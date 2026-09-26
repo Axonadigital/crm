@@ -990,6 +990,56 @@ async function ensureAssetTask(enrollment: Row, assetStep: Row): Promise<void> {
   enrollment.asset_task_id = data.id;
 }
 
+const CONSENT_REASONS = new Set(["sole_trader_no_consent", "unverified_company_form"]);
+
+/**
+ * Grinden stoppade mejlet för att mottagaren är (eller kan vara) en fysisk
+ * person. Finns telefonnummer läggs bolaget i ringlistan med en notering om
+ * att be om samtycke. Redan i ringlistan eller redan uppringd ⇒ inget nytt.
+ */
+async function queueConsentCall(enrollment: Row, reasons: string[]): Promise<boolean> {
+  if (!reasons.some((r) => CONSENT_REASONS.has(r))) return false;
+  if (enrollment.company_id == null) return false;
+  const { data: company } = await supabaseAdmin
+    .from("companies")
+    .select("id, name, org_number, phone_number, prospecting_status, email_outreach_consent_at")
+    .eq("id", enrollment.company_id)
+    .maybeSingle();
+  if (!company || !((company.phone_number as string | null) ?? "").trim()) return false;
+  if (company.prospecting_status === "call_ready" || company.email_outreach_consent_at) return false;
+  const { count } = await supabaseAdmin
+    .from("call_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", company.id)
+    .gte("created_at", new Date(Date.now() - 90 * 86400000).toISOString());
+  if ((count ?? 0) > 0) return false;
+  const scan = await latestScanFor(company.id);
+  const krok = familyFor(scan?.findings);
+  const form = reasons.includes("sole_trader_no_consent") ? "enskild" : "okand";
+  const { data: noteRow } = await supabaseAdmin.rpc("outreach_consent_call_note", {
+    p_fynd: krok?.finding.title ?? null,
+    p_form: form,
+  });
+  const note = typeof noteRow === "string" ? noteRow : `Ring: samtycke krävs för mejl (${form}).`;
+  const { error } = await supabaseAdmin
+    .from("companies")
+    .update({ prospecting_status: "call_ready", next_action_type: "call", next_action_note: note })
+    .eq("id", company.id);
+  if (error) {
+    console.error("consent call queue failed:", error.message);
+    return false;
+  }
+  await supabaseAdmin.from("tasks").insert({
+    contact_id: enrollment.contact_id,
+    type: "call",
+    text: `Ring ${shortCompanyName(company.name)} (${company.phone_number}). ${note}`,
+    due_date: new Date(Date.now() + 86400000).toISOString(),
+    done_date: null,
+    sales_id: await ownerSalesId(),
+  });
+  return true;
+}
+
 /** Steg 4: hoppa över breakup om någon nåtts sedan steg 3. */
 async function skipIfReached(
   enrollment: Row,
@@ -1316,12 +1366,17 @@ async function processEnrollment(
       now,
       verdict.reasons.includes("unsubscribed") ? "unsubscribed" : "paused",
     );
+    // Fysisk person eller okänd bolagsform: mejl kräver samtycke (19 § MFL),
+    // men ett samtal är tillåtet. Leadet går till ringlistan i stället för
+    // att tappas, med uppmaning att be om samtycke.
+    const consentQueued = await queueConsentCall(enrollment, verdict.reasons);
     await logRun({
       enrollment,
       step: stepNumber,
       actionType,
       outcome: "skipped_suppressed",
       reasons: verdict.reasons,
+      detail: consentQueued ? { call_queue: "samtycke krävs — lagd i ringlistan" } : undefined,
     });
     return;
   }
