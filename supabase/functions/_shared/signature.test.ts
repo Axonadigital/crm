@@ -307,3 +307,31 @@ describe("rewriteSenderAddress — Gmails <wbr>-fälla", () => {
     ).toBe("rasmus@axonadigital.com");
   });
 });
+
+describe("renderWithGmailSignature med bild", () => {
+  const sig = "<div><b>Rasmus Joonsson</b></div>";
+  const url = "https://assets.axonadigital.se/outreach/nimoz-fore-efter.png";
+  const body = `Hej!\n\nHär är bilden jag skrev om.\n\n${url}\n\nÄr det något ni vill gå vidare med?`;
+
+  it("raden med bildens URL blir en bild i HTML och står kvar som URL i texten", () => {
+    const { text, html } = renderWithGmailSignature(body, sig, { imageUrl: url, imageAlt: "nimoz.se före och efter" });
+    expect(text).toContain(url);
+    expect(html).toContain(`<img src="${url}"`);
+    expect(html).toContain('alt="nimoz.se före och efter"');
+    expect(html).toContain(`<a href="${url}">`);
+    // URL:en ska inte dessutom ligga kvar som text i HTML-delen.
+    expect(html.split(url).length - 1).toBe(2);
+  });
+
+  it("utan imageUrl renderas exakt som förut", () => {
+    const utan = renderWithGmailSignature(body, sig);
+    const tom = renderWithGmailSignature(body, sig, {});
+    expect(tom).toEqual(utan);
+    expect(utan.html).not.toContain("<img");
+  });
+
+  it("en URL som inte matchar raden exakt blir ingen bild", () => {
+    const { html } = renderWithGmailSignature(body, sig, { imageUrl: "https://annan.se/bild.png" });
+    expect(html).not.toContain("<img");
+  });
+});

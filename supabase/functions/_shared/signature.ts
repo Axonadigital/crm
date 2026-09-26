@@ -89,6 +89,24 @@ function paragraphs(text: string): string {
     .join("\n");
 }
 
+/** Som paragraphs(), men raden som ÄR bildens URL renderas som bild. */
+function paragraphsWithImage(text: string, options: RenderImageOptions): string {
+  const url = options.imageUrl?.trim();
+  if (!url) return paragraphs(text);
+  return text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) =>
+      block === url
+        ? `<p style="margin:0 0 14px 0;"><a href="${escapeHtml(url)}">` +
+          `<img src="${escapeHtml(url)}" alt="${escapeHtml(options.imageAlt ?? "")}" ` +
+          `style="display:block;max-width:100%;height:auto;border:0;"></a></p>`
+        : `<p style="margin:0 0 14px 0;">${escapeHtml(block).replace(/\n/g, "<br>")}</p>`,
+    )
+    .join("\n");
+}
+
 /**
  * Signaturblocket.
  *
@@ -327,9 +345,21 @@ const TEXT_ENTITIES: Record<string, string> = {
  * Det här är den väg vi vill gå: Rasmus designar signaturen i Gmail som
  * vanligt, och den följer med hit. Ett ställe att underhålla, inte två.
  */
+export interface RenderImageOptions {
+  /**
+   * Steg 2 i outreach-flödet skickar före/efter-bilden. Bildens URL står på
+   * en egen rad i brödtexten; i HTML-delen blir just den raden en bild (med
+   * länk), i textdelen står URL:en kvar. Bilden är en vanlig fjärrbild, inte
+   * en bilaga: bilagor höjer studs och blockeras oftare (research 2026-09-25).
+   */
+  imageUrl?: string | null;
+  imageAlt?: string;
+}
+
 export function renderWithGmailSignature(
   bodyText: string,
   signatureHtml: string,
+  options: RenderImageOptions = {},
 ): { text: string; html: string } {
   const font =
     "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;" +
@@ -339,7 +369,7 @@ export function renderWithGmailSignature(
     text: sigText ? `${bodyText.trimEnd()}\n\n${sigText}` : bodyText,
     html:
       `<div style="${font}max-width:560px;">` +
-      paragraphs(bodyText) +
+      paragraphsWithImage(bodyText, options) +
       (signatureHtml ? `<div style="margin-top:22px;">${signatureHtml}</div>` : "") +
       `</div>`,
   };
