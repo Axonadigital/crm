@@ -12,6 +12,7 @@
 import type { MetricTrend, ReportMetrics, ReportSnapshot } from "./types.ts";
 import { computeKeywordMovers } from "./keywordMovement.ts";
 import { computeKeywordOpportunities } from "./keywordOpportunities.ts";
+import { totalCalls } from "../engagement.ts";
 
 function trend(
   current: number | null | undefined,
@@ -102,6 +103,14 @@ export function computeReportMetrics(
     reviews_count: trend(
       latest?.business_profile?.reviews_count,
       previous?.business_profile?.reviews_count,
+    ),
+    inquiries: trend(
+      latest?.engagement?.inquiries,
+      previous?.engagement?.inquiries,
+    ),
+    calls: trend(
+      totalCalls(latest?.engagement, latest?.gbp_actions),
+      totalCalls(previous?.engagement, previous?.gbp_actions),
     ),
     topQueries,
     topPages,

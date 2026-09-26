@@ -20,9 +20,17 @@ describe("resultCardText", () => {
     expect(resultCardText({ ...base, metrics: { impressions: { current: 60 }, clicks: { current: 3 } } })).toBeNull();
     expect(resultCardText({ ...base, metrics: { impressions: { current: 500 }, clicks: { current: 0 } } })).toBeNull();
   });
-  it("nämner aldrig förfrågningar eller samtal", () => {
-    const t = resultCardText({ ...base, metrics: { impressions: { current: 1240 }, clicks: { current: 96 } } }) ?? "";
-    expect(t).not.toMatch(/förfrågning|samtal|kunder/i);
+  it("nämner förfrågningar och samtal bara när de är uppmätta", () => {
+    const utan = resultCardText({ ...base, metrics: { impressions: { current: 1240 }, clicks: { current: 96 } } }) ?? "";
+    expect(utan).not.toMatch(/förfrågning|samtal|kunder/i);
+    const noll = resultCardText({ ...base, metrics: { impressions: { current: 1240 }, clicks: { current: 96 }, inquiries: { current: 0 }, calls: { current: 0 } } }) ?? "";
+    expect(noll).not.toMatch(/förfrågning|samtal/i);
+    const med = resultCardText({ ...base, metrics: { impressions: { current: 1240 }, clicks: { current: 96 }, inquiries: { current: 14 }, calls: { current: 23 } } }) ?? "";
+    expect(med).toContain("Det gav 14 förfrågningar via formuläret på sidan och 23 samtal startade från sidan.");
+    expect(med).toContain("inte en prognos för er");
+    const en = resultCardText({ ...base, metrics: { impressions: { current: 1240 }, clicks: { current: 96 }, inquiries: { current: 1 } } }) ?? "";
+    expect(en).toContain("Det gav 1 förfrågan via formuläret på sidan.");
+    expect(en).not.toContain("samtal");
   });
 });
 

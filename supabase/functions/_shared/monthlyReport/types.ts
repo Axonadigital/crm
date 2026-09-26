@@ -98,6 +98,22 @@ export type ReportSnapshot = {
       position: number;
     }>;
   } | null;
+  /** Samtal/vägbeskrivningar/webbklick från Google-profilen (Business Profile Performance). */
+  gbp_actions?: {
+    calls: number;
+    website_clicks: number;
+    direction_requests: number;
+  } | null;
+  /**
+   * Förfrågningar och samtal mätta på sajten (site_events). null = omätt,
+   * inte noll — sajten saknar nyckel. Se site_event/README.md.
+   */
+  engagement?: {
+    inquiries: number;
+    site_calls: number;
+    email_clicks: number;
+    measured?: boolean;
+  } | null;
   findings?: ReportFinding[];
 };
 
@@ -124,6 +140,13 @@ export type ReportMetrics = {
   field_inp_ms: MetricTrend;
   field_cls: MetricTrend;
   reviews_count: MetricTrend;
+  /**
+   * Förfrågningar via sajtens formulär (site_events) och samtal (tel:-klick
+   * på sajten + samtalsklick på Google-profilen). current är null när inget
+   * mäts — resultatkortet och rapporten nämner dem bara då de finns.
+   */
+  inquiries?: MetricTrend;
+  calls?: MetricTrend;
   /** Topp-sökningar från senaste snapshoten (för "vilka ord driver trafik"). */
   topQueries: Array<{ query: string; clicks: number; position: number }>;
   /**

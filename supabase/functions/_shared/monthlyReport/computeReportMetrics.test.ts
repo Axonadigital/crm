@@ -46,6 +46,18 @@ const previous: ReportSnapshot = {
 };
 
 describe("computeReportMetrics", () => {
+  it("förfrågningar och samtal: null när omätt, summa av sajt och Google-profil när mätt", () => {
+    const omatt = computeReportMetrics(latest, previous);
+    expect(omatt.inquiries?.current).toBeNull();
+    expect(omatt.calls?.current).toBeNull();
+    const matt = computeReportMetrics(
+      { ...latest, engagement: { inquiries: 14, site_calls: 9, email_clicks: 2 }, gbp_actions: { calls: 14, website_clicks: 30, direction_requests: 5 } },
+      { ...previous, engagement: { inquiries: 10, site_calls: 4, email_clicks: 0 } },
+    );
+    expect(matt.inquiries).toMatchObject({ current: 14, previous: 10, deltaPct: 40 });
+    expect(matt.calls).toMatchObject({ current: 23, previous: 4 });
+  });
+
   it("computes click trend with percentage delta", () => {
     const m = computeReportMetrics(latest, previous);
     expect(m.clicks.current).toBe(23);

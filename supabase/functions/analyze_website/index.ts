@@ -31,6 +31,7 @@ import {
   type VisibilityWindowKind,
 } from "../_shared/visibilityPeriods.ts";
 import { classifySearchOpportunities } from "./searchOpportunities.ts";
+import { engagementFromSummary } from "../_shared/engagement.ts";
 import { brandTokens, classifyBrandedQueries } from "./brandedQueries.ts";
 import { findLocalPosition, type LocalRankResult } from "./localRank.ts";
 
@@ -1127,6 +1128,31 @@ async function fetchGbpActions(
   };
 }
 
+// --- e2) Förfrågningar och samtal från sajten (site_events) ---
+
+/**
+ * Summerar site_events för perioden. null när företaget saknar aktiv nyckel:
+ * då mäts sajten inte, och det är något annat än noll. Icke-fatal.
+ */
+async function fetchEngagement(companyId: number, period: VisibilityPeriod) {
+  const { data: keys } = await supabaseAdmin
+    .from("site_event_keys")
+    .select("key")
+    .eq("company_id", companyId)
+    .eq("active", true)
+    .limit(1);
+  const hasKey = (keys?.length ?? 0) > 0;
+  if (!hasKey) return null;
+  const { data, error } = await supabaseAdmin.rpc("site_events_summary", {
+    p_company_id: companyId,
+    p_start: period.startDate,
+    p_end: period.endDate,
+  });
+  if (error) throw new Error(`site_events_summary: ${error.message}`);
+  const summary = engagementFromSummary(data, true);
+  return summary ? { ...summary, period_start: period.startDate, period_end: period.endDate } : null;
+}
+
 // --- f) Lokal map-pack-rank (DataForSEO, gated) ---
 
 /**
@@ -1295,6 +1321,7 @@ async function analyzeCompany(
     competitors,
     gbpActions,
     localRank,
+    engagement,
   ] = await Promise.all([
     inspectSource("pagespeed", fetchPageSpeed(url)),
     inspectSource("seo_crawl", crawlSeoChecks(url)),
@@ -1318,6 +1345,14 @@ async function analyzeCompany(
     }).catch((error) => {
       console.warn(
         `analyze_website: local rank failed: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+      return null;
+    }),
+    fetchEngagement(companyId, period).catch((error) => {
+      console.warn(
+        `analyze_website: engagement failed: ${
           error instanceof Error ? error.message : error
         }`,
       );
@@ -1390,6 +1425,7 @@ async function analyzeCompany(
     competitors: competitors.length > 0 ? competitors : null,
     gbp_actions: gbpActions,
     local_rank: localRank && localRank.length > 0 ? localRank : null,
+    engagement,
     findings,
   };
 

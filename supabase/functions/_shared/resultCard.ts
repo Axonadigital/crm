@@ -4,8 +4,9 @@
 // Varför bara uppmätt och bara namngivet: research 2026-09-25 — förklarad
 // social proof +41 % svar, branschspecifik +88 %; prognoser för mottagaren
 // ("ni kan få X förfrågningar") sänker bokade möten 15 % och bryter mot
-// sanningsregeln. Förfrågningar och samtal mäts inte i dag och får därför
-// inte nämnas; visningar och klick gör det.
+// sanningsregeln. Förfrågningar och samtal nämns BARA när de finns mätta i
+// referenskundens rapport (site_events + Google-profilen, sedan 2026-09-26);
+// saknas måttet står bara visningar och klick.
 
 export interface MetricPair {
   current?: number | null;
@@ -16,6 +17,24 @@ export interface ReportMetricsLike {
   clicks?: MetricPair | null;
   impressions?: MetricPair | null;
   ctr?: MetricPair | null;
+  /** Förfrågningar via formuläret på sidan. current null = omätt. */
+  inquiries?: MetricPair | null;
+  /** Samtal startade från sidan och Google-profilen. current null = omätt. */
+  calls?: MetricPair | null;
+}
+
+/** "14 förfrågningar via formuläret och 23 samtal" — bara det som är mätt och över noll. */
+export function engagementClause(metrics: ReportMetricsLike | null | undefined): string {
+  const inq = metrics?.inquiries?.current;
+  const calls = metrics?.calls?.current;
+  const parts: string[] = [];
+  if (inq != null && Number.isFinite(inq) && inq >= 1) {
+    parts.push(`${sv(inq)} ${inq === 1 ? "förfrågan" : "förfrågningar"} via formuläret på sidan`);
+  }
+  if (calls != null && Number.isFinite(calls) && calls >= 1) {
+    parts.push(`${sv(calls)} samtal startade från sidan`);
+  }
+  return parts.join(" och ");
 }
 
 const MONTHS = ["januari","februari","mars","april","maj","juni","juli","augusti","september","oktober","november","december"];
@@ -51,9 +70,11 @@ export function resultCardText(input: {
   const trend = delta != null && Number.isFinite(delta) && delta >= 10
     ? `, ${sv(delta)} % fler klick än månaden innan`
     : "";
+  const engagement = engagementClause(input.metrics);
+  const tail = engagement ? ` Det gav ${engagement}.` : "";
   return (
     `Ett exempel på vad det ger: ${input.customer} hade i ${periodLabel(input.period)} ` +
-    `${sv(imp)} visningar på Google och ${sv(clicks)} klick till sidan${trend}. ` +
+    `${sv(imp)} visningar på Google och ${sv(clicks)} klick till sidan${trend}.${tail} ` +
     `Det är deras uppmätta siffror, inte en prognos för er.`
   );
 }

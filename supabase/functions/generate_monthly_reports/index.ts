@@ -60,7 +60,7 @@ function monthLabelSv(periodISO: string): string {
 }
 
 const SNAPSHOT_COLUMNS =
-  "id, fetched_at, period_start, period_end, window_kind, data_coverage, source_status, performance_score, seo_score, pagespeed, field_data, seo_checks, business_profile, search_console, findings";
+  "id, fetched_at, period_start, period_end, window_kind, data_coverage, source_status, performance_score, seo_score, pagespeed, field_data, seo_checks, business_profile, search_console, gbp_actions, engagement, findings";
 
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
 
@@ -140,7 +140,41 @@ function aggregateReportSnapshot(
     period_end: range.endDate,
     search_console: (agg ??
       mostRecent.search_console) as ReportSnapshot["search_console"],
+    // Förfrågningar/samtal är additiva över månader, precis som klick.
+    engagement: sumEngagement(sorted.map((s) => s.engagement ?? null)),
+    gbp_actions: sumGbpActions(sorted.map((s) => s.gbp_actions ?? null)),
   };
+}
+
+function sumEngagement(
+  rows: Array<ReportSnapshot["engagement"] | null>,
+): ReportSnapshot["engagement"] {
+  const present = rows.filter((r): r is NonNullable<ReportSnapshot["engagement"]> => r != null);
+  if (present.length === 0) return null;
+  return present.reduce(
+    (acc, r) => ({
+      inquiries: acc.inquiries + (r.inquiries ?? 0),
+      site_calls: acc.site_calls + (r.site_calls ?? 0),
+      email_clicks: acc.email_clicks + (r.email_clicks ?? 0),
+      measured: true,
+    }),
+    { inquiries: 0, site_calls: 0, email_clicks: 0, measured: true },
+  );
+}
+
+function sumGbpActions(
+  rows: Array<ReportSnapshot["gbp_actions"] | null>,
+): ReportSnapshot["gbp_actions"] {
+  const present = rows.filter((r): r is NonNullable<ReportSnapshot["gbp_actions"]> => r != null);
+  if (present.length === 0) return null;
+  return present.reduce(
+    (acc, r) => ({
+      calls: acc.calls + (r.calls ?? 0),
+      website_clicks: acc.website_clicks + (r.website_clicks ?? 0),
+      direction_requests: acc.direction_requests + (r.direction_requests ?? 0),
+    }),
+    { calls: 0, website_clicks: 0, direction_requests: 0 },
+  );
 }
 
 /**
