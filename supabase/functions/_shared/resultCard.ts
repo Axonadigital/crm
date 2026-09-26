@@ -23,16 +23,19 @@ export interface ReportMetricsLike {
   calls?: MetricPair | null;
 }
 
-/** "14 förfrågningar via formuläret och 23 samtal" — bara det som är mätt och över noll. */
+/**
+ * "14 förfrågningar via formuläret och 23 samtal" — bara det som är mätt och
+ * över noll. Talen markeras med ** (fetstil i HTML, se signature.ts).
+ */
 export function engagementClause(metrics: ReportMetricsLike | null | undefined): string {
   const inq = metrics?.inquiries?.current;
   const calls = metrics?.calls?.current;
   const parts: string[] = [];
   if (inq != null && Number.isFinite(inq) && inq >= 1) {
-    parts.push(`${sv(inq)} ${inq === 1 ? "förfrågan" : "förfrågningar"} via formuläret på sidan`);
+    parts.push(`**${sv(inq)} ${inq === 1 ? "förfrågan" : "förfrågningar"}** via formuläret på sidan`);
   }
   if (calls != null && Number.isFinite(calls) && calls >= 1) {
-    parts.push(`${sv(calls)} samtal startade från sidan`);
+    parts.push(`**${sv(calls)} samtal** startade från sidan`);
   }
   return parts.join(" och ");
 }
@@ -56,6 +59,11 @@ export function sv(n: number): string {
  * med minst 100 visningar — under det är kortet mer pinsamt än övertygande.
  * Deltat nämns bara när det är positivt och minst 10 %: ett minus eller ett
  * brus säger inget om sidan.
+ *
+ * Ordföljd och fetstil (2026-09-26): perioden står FÖRE kundnamnet så att
+ * årtalet aldrig hamnar intill visningstalet ("augusti 2026 1 812" lästes
+ * som ett enda tal), och de uppmätta talen markeras med ** som blir
+ * <strong> i HTML-delen och ren text i textdelen.
  */
 export function resultCardText(input: {
   customer: string;
@@ -73,8 +81,8 @@ export function resultCardText(input: {
   const engagement = engagementClause(input.metrics);
   const tail = engagement ? ` Det gav ${engagement}.` : "";
   return (
-    `Ett exempel på vad det ger: ${input.customer} hade i ${periodLabel(input.period)} ` +
-    `${sv(imp)} visningar på Google och ${sv(clicks)} klick till sidan${trend}.${tail} ` +
+    `Ett exempel på vad det ger: i ${periodLabel(input.period)} hade ${input.customer} ` +
+    `**${sv(imp)} visningar** på Google och **${sv(clicks)} klick** till sidan${trend}.${tail} ` +
     `Det är deras uppmätta siffror, inte en prognos för er.`
   );
 }

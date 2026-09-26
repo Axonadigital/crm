@@ -9,6 +9,7 @@ import {
   renderHtmlSignature,
   renderTextEmail,
   removeTextRun,
+  stripEmphasis,
   renderTextSignature,
   rewriteSenderAddress,
   toOutreachSignature,
@@ -333,5 +334,35 @@ describe("renderWithGmailSignature med bild", () => {
   it("en URL som inte matchar raden exakt blir ingen bild", () => {
     const { html } = renderWithGmailSignature(body, sig, { imageUrl: "https://annan.se/bild.png" });
     expect(html).not.toContain("<img");
+  });
+});
+
+describe("fetstil i brödtexten", () => {
+  const sig = "<div><b>Rasmus Joonsson</b></div>";
+  const body = "Hej!\n\nI augusti hade Roddar VVS **1 812 visningar** på Google och **29 klick**.";
+
+  it("** blir <strong> i HTML-delen och försvinner i textdelen", () => {
+    const { text, html } = renderWithGmailSignature(body, sig);
+    expect(html).toContain("<strong>1 812 visningar</strong>");
+    expect(html).toContain("<strong>29 klick</strong>");
+    expect(html).not.toContain("**");
+    expect(text).toContain("hade Roddar VVS 1 812 visningar på Google och 29 klick.");
+    expect(text).not.toContain("**");
+  });
+
+  it("gäller även miljövariabelvägen och bildvarianten", () => {
+    expect(renderTextEmail(body, full)).not.toContain("**");
+    expect(renderHtmlEmail(body, full)).toContain("<strong>29 klick</strong>");
+    const url = "https://x.se/bild.jpg";
+    const { html } = renderWithGmailSignature(`${body}\n\n${url}`, sig, { imageUrl: url });
+    expect(html).toContain("<strong>1 812 visningar</strong>");
+    expect(html).toContain(`<img src="${url}"`);
+  });
+
+  it("rör inte enstaka asterisker eller markörer över radbrytning", () => {
+    expect(stripEmphasis("5 * 3 = 15 och **fet**")).toBe("5 * 3 = 15 och fet");
+    expect(stripEmphasis("**över\nrad**")).toBe("**över\nrad**");
+    const { html } = renderWithGmailSignature("a * b", sig);
+    expect(html).toContain("a * b");
   });
 });

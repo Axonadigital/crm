@@ -76,16 +76,34 @@ export function renderTextSignature(cfg: SignatureConfig): string {
   return lines.join("\n");
 }
 
+/**
+ * Fetstil i brödtexten: `**1 812 visningar**` blir <strong> i HTML-delen
+ * och ren text i textdelen. Tillkom 2026-09-26: resultatkortet radar upp
+ * fyra tal i en mening ("augusti 2026 1 812 visningar") och utan markering
+ * flöt de ihop för läsaren. Markören är medvetet tvåtecken så vanlig text
+ * med enstaka asterisker aldrig tolkas.
+ */
+const EMPHASIS = /\*\*([^*\n]+?)\*\*/g;
+
+/** Textdelen: markörerna bort, orden kvar. */
+export function stripEmphasis(text: string): string {
+  return text.replace(EMPHASIS, "$1");
+}
+
+/** Ett stycke som HTML: escapat, fetstil, radbrytningar. */
+function inlineHtml(block: string): string {
+  return escapeHtml(block)
+    .replace(EMPHASIS, "<strong>$1</strong>")
+    .replace(/\n/g, "<br>");
+}
+
 /** Ren text → HTML-stycken. Escapar först; bolagsnamn kan innehålla &. */
 function paragraphs(text: string): string {
   return text
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean)
-    .map(
-      (block) =>
-        `<p style="margin:0 0 14px 0;">${escapeHtml(block).replace(/\n/g, "<br>")}</p>`,
-    )
+    .map((block) => `<p style="margin:0 0 14px 0;">${inlineHtml(block)}</p>`)
     .join("\n");
 }
 
@@ -102,7 +120,7 @@ function paragraphsWithImage(text: string, options: RenderImageOptions): string 
         ? `<p style="margin:0 0 14px 0;"><a href="${escapeHtml(url)}">` +
           `<img src="${escapeHtml(url)}" alt="${escapeHtml(options.imageAlt ?? "")}" ` +
           `style="display:block;max-width:100%;height:auto;border:0;"></a></p>`
-        : `<p style="margin:0 0 14px 0;">${escapeHtml(block).replace(/\n/g, "<br>")}</p>`,
+        : `<p style="margin:0 0 14px 0;">${inlineHtml(block)}</p>`,
     )
     .join("\n");
 }
@@ -365,8 +383,9 @@ export function renderWithGmailSignature(
     "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;" +
     "font-size:15px;line-height:1.55;color:#111827;";
   const sigText = htmlSignatureToText(signatureHtml);
+  const plain = stripEmphasis(bodyText);
   return {
-    text: sigText ? `${bodyText.trimEnd()}\n\n${sigText}` : bodyText,
+    text: sigText ? `${plain.trimEnd()}\n\n${sigText}` : plain,
     html:
       `<div style="${font}max-width:560px;">` +
       paragraphsWithImage(bodyText, options) +
@@ -396,6 +415,7 @@ export function renderTextEmail(
   bodyText: string,
   cfg: SignatureConfig,
 ): string {
-  if (!hasSignature(cfg)) return bodyText;
-  return `${bodyText.trimEnd()}\n\n${renderTextSignature(cfg)}`;
+  const plain = stripEmphasis(bodyText);
+  if (!hasSignature(cfg)) return plain;
+  return `${plain.trimEnd()}\n\n${renderTextSignature(cfg)}`;
 }
