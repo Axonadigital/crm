@@ -14,6 +14,7 @@ import {
   Repeat,
   Users,
   Wallet,
+  Send,
 } from "lucide-react";
 import { Link, useMatch } from "react-router";
 
@@ -61,6 +62,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Dashboard", to: "/", end: true, icon: LayoutDashboard },
       { label: "Kundradar", to: "/customer-radar", icon: Radar },
       { label: "Ringlista", to: "/call-queue", icon: Phone },
+      { label: "Outreach", to: "/outreach", icon: Send },
       { label: "Kalender", to: "/calendar", icon: CalendarDays },
       { label: "Email-statistik", to: "/email-stats", icon: Mail },
     ],

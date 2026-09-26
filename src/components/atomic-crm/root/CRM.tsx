@@ -65,6 +65,7 @@ import { ContactShow } from "../contacts/ContactShow.tsx";
 import { CompanyShow } from "../companies/CompanyShow.tsx";
 import { NoteShowPage } from "../notes/NoteShowPage.tsx";
 import { CallQueue, MobileCallQueue } from "../call-queue";
+import { OutreachPage } from "../outreach/OutreachPage";
 import { CalendarPage } from "../calendar";
 import { CompanyListMobile } from "../companies/CompanyListMobile";
 import { MobileDealsList } from "../deals/MobileDealsList";
@@ -270,6 +271,7 @@ const DesktopAdmin = (props: CoreAdminProps) => {
         <Route path={SettingsPage.path} element={<SettingsPage />} />
         <Route path={ImportPage.path} element={<ImportPage />} />
         <Route path="/call-queue" element={<CallQueue />} />
+        <Route path={OutreachPage.path} element={<OutreachPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/customer-radar" element={<CustomerVisibilityPage />} />
         <Route path="/email-stats" element={<EmailStatsPage />} />
