@@ -228,10 +228,32 @@ const REFERENCES: Record<string, string> = {
   stad: "Viktorias Städservice",
 };
 
+/**
+ * Allabolags länk bär branschen: /foretag/{namn}/{ort}/{bransch}/{id}.
+ * "byggmästare" för Jemtel AB säger mer än ett namn som slutar på "-el".
+ */
+export function branchFromAllabolag(url: string | null | undefined): "el" | "vvs" | "bygg" | "maleri_golv" | "stad" | null {
+  const slug = decodeURIComponent((url ?? "").split("/foretag/")[1]?.split("/")[2] ?? "").toLowerCase();
+  if (!slug) return null;
+  if (/elinstall|elektr|\bel\b|eltjänst|elservice/.test(slug)) return "el";
+  if (/vvs|rör|värme|sanitet/.test(slug)) return "vvs";
+  if (/bygg|snicker|tak|murar|betong|anläggning/.test(slug)) return "bygg";
+  if (/måler|golv|tapet/.test(slug)) return "maleri_golv";
+  if (/städ|rengör|lokalvård/.test(slug)) return "stad";
+  return null;
+}
+
 export function referenceFor(
   segment: string | null | undefined,
   companyName: string | null | undefined,
+  allabolagUrl?: string | null,
 ): string | null {
+  const branch = branchFromAllabolag(allabolagUrl);
+  if (branch === "el") return REFERENCES.el;
+  if (branch === "vvs") return REFERENCES.vvs;
+  if (branch === "bygg") return REFERENCES.bygg;
+  if (branch === "maleri_golv") return REFERENCES.maleri_golv;
+  if (branch === "stad") return REFERENCES.stad;
   const n = (companyName ?? "").toLowerCase();
   if (segment === "vvs_el") {
     return /\bel\b|elektr|elinstall|elservice|eltjänst|elteknik/.test(n)

@@ -8,6 +8,7 @@ import { segmentCopy } from "../_shared/segmentCopy.ts";
 import { outreachPersonalization } from "../_shared/outreachPersonalization.ts";
 import {
   FAMILIES,
+  OPT_OUT,
   familyFor,
   krokVars,
   measuredValue,
@@ -15,6 +16,18 @@ import {
   referenceFor,
   type KrokFamily,
 } from "../_shared/krokCopy.ts";
+import {
+  crmHistoryEvents,
+  gmailHistoryQuery,
+  latestEvent,
+  parseWarmDraft,
+  summarizeHistory,
+  WARM_SCHEMA,
+  WARM_SYSTEM,
+  warmFollowupPrompt,
+  warmTaskText,
+  type HistoryEvent,
+} from "../_shared/priorContact.ts";
 import {
   FAMILY_LABEL,
   MAX_RESCANS_PER_RUN,
@@ -32,7 +45,13 @@ import {
   withinSendWindow,
   type SendWindow,
 } from "../_shared/sendWindow.ts";
-import { fetchMessageIdHeader } from "../_shared/gmailRead.ts";
+import {
+  decodePlainText,
+  fetchMessage,
+  fetchMessageIdHeader,
+  headerValue,
+  searchMessages,
+} from "../_shared/gmailRead.ts";
 import { checkGate, type GateVerdict } from "../_shared/outreachGate.ts";
 import {
   lowerFirst,
@@ -53,6 +72,7 @@ import {
   topFinding,
 } from "../_shared/scanFindings.ts";
 import {
+  createGmailDraft,
   gmailConfigFromEnv,
   getAccessToken,
   sendViaGmail,
@@ -98,6 +118,8 @@ type Outcome =
   | "rescan_requested"
   | "skipped_asset_missing"
   | "skipped_reached"
+  // Tidigare kontakt: det kalla mejlet byttes mot ett personligt utkast i Gmail.
+  | "drafted_warm"
   // Anspråket på steget, skrivet före Gmail-anropet. Se claimSend().
   | "sending"
   // Steget var redan skickat — vi flyttar fram i stället för att skicka igen.
@@ -403,7 +425,7 @@ async function prepareEmail(
   if (contact.company_id) {
     const { data } = await supabaseAdmin
       .from("companies")
-      .select("name, website, industry, city, industry_segment")
+      .select("name, website, industry, city, industry_segment, allabolag_url")
       .eq("id", contact.company_id)
       .maybeSingle();
     company = data;
@@ -528,6 +550,7 @@ async function krokVarsFor(
     referens: referenceFor(
       company?.industry_segment as string | null,
       company?.name as string | null,
+      company?.allabolag_url as string | null,
     ),
   });
   if (enrollment.krok_familj !== krok.family) {
@@ -542,6 +565,7 @@ async function krokVarsFor(
   const resultatkort = await resultCardFor(vars.krok_referens ? referenceFor(
     company?.industry_segment as string | null,
     company?.name as string | null,
+    company?.allabolag_url as string | null,
   ) : null);
   return {
     ...vars,
@@ -1002,6 +1026,199 @@ async function ensureAssetTask(enrollment: Row, assetStep: Row): Promise<void> {
   enrollment.asset_task_id = data.id;
 }
 
+// --- Tidigare kontakt ---------------------------------------------------------
+
+const WARM_MODEL = "claude-haiku-4-5";
+/** Högst så många Gmail-meddelanden läses in i historiken. */
+const GMAIL_HISTORY_LIMIT = 8;
+
+/** Mejlhistoriken i brevlådan motorn skickar från (from/to leadets adress eller domän). */
+async function gmailHistoryFor(email: string | null, website: string | null): Promise<{
+  events: HistoryEvent[];
+  threadId: string | null;
+  messageId: string | null;
+}> {
+  const gmail = gmailConfigFromEnv((k) => Deno.env.get(k));
+  const query = gmailHistoryQuery(email, website);
+  if (!gmail || !query) return { events: [], threadId: null, messageId: null };
+  const token = await getAccessToken(gmail);
+  const ids = await searchMessages(token, query, GMAIL_HISTORY_LIMIT);
+  const events: HistoryEvent[] = [];
+  let threadId: string | null = null;
+  let messageId: string | null = null;
+  for (const id of ids) {
+    const msg = await fetchMessage(token, id);
+    if (!msg) continue;
+    const from = headerValue(msg.payload, "From") ?? "";
+    const subject = headerValue(msg.payload, "Subject") ?? "";
+    const at = new Date(Number(msg.internalDate ?? 0) || Date.now()).toISOString();
+    const ours = from.toLowerCase().includes(gmail.fromEmail.toLowerCase());
+    const text = (decodePlainText(msg.payload) || msg.snippet || "").replace(/\s+/g, " ").trim().slice(0, 300);
+    events.push({ kind: "gmail", at, label: `${ours ? "från oss" : "från dem"}: ${subject}`, text, source: "gmail" });
+    // Nyaste tråden (sökningen ger nyast först) blir tråden utkastet läggs i.
+    if (!threadId && msg.threadId) {
+      threadId = msg.threadId;
+      messageId = headerValue(msg.payload, "Message-ID") ?? null;
+    }
+  }
+  return { events, threadId, messageId };
+}
+
+/** Kontaktpersonens förnamn ur någon av dubblettraderna, om det finns. */
+async function knownFirstName(companyIds: number[], email: string | null): Promise<string | null> {
+  if (companyIds.length === 0) return null;
+  const { data } = await supabaseAdmin
+    .from("contacts")
+    .select("first_name, email_jsonb")
+    .in("company_id", companyIds)
+    .not("first_name", "is", null)
+    .limit(20);
+  const rows = (data ?? []) as Array<{ first_name: string | null; email_jsonb: Array<{ email?: string }> | null }>;
+  const wanted = (email ?? "").toLowerCase();
+  const match = rows.find((r) => (r.email_jsonb ?? []).some((e) => (e.email ?? "").toLowerCase() === wanted));
+  const name = (match ?? rows[0])?.first_name?.trim() ?? "";
+  return name.length >= 2 ? name : null;
+}
+
+/** Utkastet ur modellen. null när nyckel saknas eller svaret inte duger. */
+async function writeWarmDraft(prompt: string): Promise<{ subject: string; body: string } | null> {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) return null;
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: WARM_MODEL,
+      max_tokens: 800,
+      system: WARM_SYSTEM,
+      messages: [{ role: "user", content: prompt }],
+      output_config: { format: { type: "json_schema", schema: WARM_SCHEMA } },
+    }),
+    signal: AbortSignal.timeout(45_000),
+  });
+  if (!response.ok) {
+    console.error("warm draft: Anthropic", response.status, (await response.text()).slice(0, 200));
+    return null;
+  }
+  const data = (await response.json()) as { content?: Array<{ type: string; text?: string }> };
+  const text = (data.content ?? []).find((c) => c.type === "text")?.text ?? "";
+  return parseWarmDraft(text);
+}
+
+/**
+ * Steg 1 med requires_no_prior_contact: finns historik (CRM över alla
+ * dubbletter, eller Gmail) stoppas det kalla mejlet. I stället skrivs ett
+ * personligt utkast utifrån historiken, läggs i Gmail (i den senaste tråden
+ * om en finns), enrollmenten pausas och en uppgift pekar på utkastet.
+ * Returnerar true när enrollmenten inte ska gå vidare.
+ */
+async function handlePriorContact(
+  enrollment: Row,
+  settings: Settings,
+  counters: TickCounters,
+  stepNumber: number,
+  actionType: string,
+  now: string,
+): Promise<boolean> {
+  if (enrollment.company_id == null) return false;
+  const [{ data: company }, { data: contact }, { data: prior }] = await Promise.all([
+    supabaseAdmin.from("companies").select("id, name, website, industry_segment, allabolag_url").eq("id", enrollment.company_id).maybeSingle(),
+    supabaseAdmin.from("contacts").select("email_jsonb").eq("id", enrollment.contact_id).maybeSingle(),
+    supabaseAdmin.rpc("outreach_prior_contact", { p_company_id: enrollment.company_id, p_exclude_sequence_id: enrollment.sequence_id }),
+  ]);
+  const email = ((contact?.email_jsonb as Array<{ email?: string }> | null)?.[0]?.email ?? "").trim().toLowerCase() || null;
+  const priorRow = (prior ?? {}) as Row;
+  const crmEvents = crmHistoryEvents(priorRow.events);
+  let gmail = { events: [] as HistoryEvent[], threadId: null as string | null, messageId: null as string | null };
+  try {
+    gmail = await gmailHistoryFor(email, (company?.website as string | null) ?? null);
+  } catch (e) {
+    console.error("warm: gmail history failed:", e instanceof Error ? e.message : e);
+  }
+  const events = [...crmEvents, ...gmail.events];
+  const statuses = (priorRow.lead_statuses as string[] | null) ?? [];
+  if (events.length === 0 && statuses.length === 0) return false;
+
+  counters.warm += 1;
+  const namn = shortCompanyName(company?.name);
+  const latest = latestEvent(events);
+  if (settings.dryRun) {
+    if (!(await recentlyLogged(enrollment.id, stepNumber, "drafted_warm", 60))) {
+      await logRun({
+        enrollment, step: stepNumber, actionType, outcome: "drafted_warm",
+        detail: { dry_run: true, would: "pausa och lägga personligt utkast i Gmail", events: events.length, crm: crmEvents.length, gmail: gmail.events.length, statuses },
+      });
+    }
+    return true;
+  }
+
+  // Aldrig ett kallt mejl härifrån: pausa först, skriv utkastet sedan.
+  await pause(enrollment, now);
+
+  const scan = await latestScanFor(enrollment.company_id);
+  const krok = familyFor(scan?.findings);
+  const referens = referenceFor(
+    company?.industry_segment as string | null,
+    company?.name as string | null,
+    company?.allabolag_url as string | null,
+  );
+  const erbjudande = krok
+    ? FAMILIES[krok.family].erbjudande({
+      namn, sajt: websiteHost((company?.website as string) || "") || namn,
+      ort: "närheten", dag: "i dag", varde: measuredValue(krok.finding.title), referens,
+    })
+    : "Vi bygger hemsidor åt lokala företag och tar gärna fram ett förslag på hur er kan se ut.";
+  const companyIds = ((priorRow.company_ids as number[] | null) ?? [enrollment.company_id as number]);
+  const firstName = await knownFirstName(companyIds, email);
+  const draft = await writeWarmDraft(warmFollowupPrompt({
+    namn,
+    kontaktnamn: firstName,
+    historik: summarizeHistory(events),
+    fynd: krok?.finding.title ?? null,
+    erbjudande,
+    referens,
+  }));
+
+  let drafted = false;
+  const gmailCfg = gmailConfigFromEnv((k) => Deno.env.get(k));
+  if (draft && gmailCfg && email) {
+    const greeting = firstName ? `Hej ${firstName}!` : greetingFor(email, company?.name as string | null);
+    const body = `${greeting}\n\n${draft.body.trim()}\n\n${OPT_OUT}`;
+    const rendered = renderWithGmailSignature(body, (await loadGmailSignature()) ?? "");
+    try {
+      await createGmailDraft(gmailCfg, {
+        to: email,
+        subject: draft.subject,
+        text: rendered.text,
+        html: rendered.html,
+        threadId: gmail.threadId ?? undefined,
+        inReplyTo: gmail.messageId ?? undefined,
+        references: gmail.messageId ?? undefined,
+      });
+      drafted = true;
+    } catch (e) {
+      console.error("warm: gmail draft failed:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  await supabaseAdmin.from("tasks").insert({
+    contact_id: enrollment.contact_id,
+    type: "email",
+    text: warmTaskText(namn, latest, drafted),
+    due_date: new Date(Date.now() + 86400000).toISOString(),
+    done_date: null,
+    sales_id: await ownerSalesId(),
+  });
+  await logRun({
+    enrollment, step: stepNumber, actionType, outcome: "drafted_warm",
+    detail: {
+      drafted, threaded: Boolean(gmail.threadId), events: events.length, crm: crmEvents.length, gmail: gmail.events.length,
+      statuses, company_ids: companyIds, subject: draft?.subject ?? null, latest: latest ? `${latest.at} ${latest.kind} ${latest.label}` : null,
+    },
+  });
+  return true;
+}
+
 const CONSENT_REASONS = new Set(["sole_trader_no_consent", "unverified_company_form"]);
 
 /**
@@ -1230,6 +1447,8 @@ interface TickCounters {
   failed: number;
   rescans: number;
   assetWaiting: number;
+  /** Steg 1 som byttes mot ett personligt utkast (tidigare kontakt). */
+  warm: number;
 }
 
 /** Hur länge en påbörjad sändning får hänga innan den räknas som strandad. */
@@ -1397,6 +1616,11 @@ async function processEnrollment(
   //        (eller flyttar fram den) i stället för att pausa: väntan är normal.
   const stepConfig = (step.action_config || {}) as Row;
   ownerEmailForRun = settings.callOwnerEmail;
+  // 1b. Tidigare kontakt: aldrig ett kallt mejl till någon vi redan pratat
+  //     med. Före omskanningen — historiken avgör, inte dagens fynd.
+  if (stepConfig.requires_no_prior_contact === true) {
+    if (await handlePriorContact(enrollment, settings, counters, stepNumber, actionType, now)) return;
+  }
   if (stepConfig.requires_fresh_scan === true) {
     if (!(await ensureFreshScan(enrollment, settings, counters, stepNumber, actionType))) return;
   }
@@ -1677,6 +1901,7 @@ Deno.serve(async (req: Request) =>
       failed: 0,
       rescans: 0,
       assetWaiting: 0,
+      warm: 0,
     };
 
     try {

@@ -98,6 +98,10 @@ describe("referenceFor", () => {
   it("skiljer el från VVS på namnet inom segmentet vvs_el", () => {
     expect(referenceFor("vvs_el", "Nimoz Elinstallation AB")).toBe("Östersunds Elservice");
     expect(referenceFor("vvs_el", "Boströms Rör AB")).toBe("Roddar VVS");
+    // Allabolags bransch slår namnet: Jemtel AB är byggmästare, inte el eller VVS.
+    expect(referenceFor("vvs_el", "Jemtel AB", "https://www.allabolag.se/foretag/jemtel-ab/offerdal/byggm%C3%A4stare/2K2PGY4I5YDDT")).toBe("Tullus Bygg & Entreprenad");
+    expect(referenceFor("bygg", "Elkompetens i Jämtland AB", "https://www.allabolag.se/foretag/elkompetens/ostersund/elinstallat%C3%B6rer/X")).toBe("Östersunds Elservice");
+    expect(referenceFor("vvs_el", "Nimoz Elinstallation AB", null)).toBe("Östersunds Elservice");
   });
   it("ger null när det inte finns ett hemsidecase i branschen", () => {
     expect(referenceFor("tandvard", "City dentists")).toBeNull();

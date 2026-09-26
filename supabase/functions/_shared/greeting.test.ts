@@ -38,6 +38,17 @@ describe("greetingFor — fallen ur utkasten 2026-09-23", () => {
   });
 });
 
+describe("greetingFor — å, ä och ö som adressen tappat", () => {
+  it("återställer stavningen för entydiga svenska förnamn", () => {
+    expect(greetingFor("par@elkompetens.nu", "Elkompetens i Jämtland AB")).toBe("Hej Pär!");
+    expect(greetingFor("bjorn.larsson@bygg.se", "Bygg AB")).toBe("Hej Björn!");
+    expect(greetingFor("hakan@example.se", null)).toBe("Hej Håkan!");
+  });
+  it("rör inte namn som inte finns i listan", () => {
+    expect(greetingFor("anton@legkiropraktik.se", "Hägglunds Kiropraktik & Rehab AB")).toBe("Hej Anton!");
+  });
+});
+
 describe("personalFirstName — avvisar det som inte är namn", () => {
   it("avvisar förkortningar utan vokal", () => {
     expect(personalFirstName("lbm@x.se", "X")).toBeNull();

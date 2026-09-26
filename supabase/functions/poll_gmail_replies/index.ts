@@ -379,7 +379,7 @@ async function draftPackageMail(
 
   const [{ data: company }, { data: contact }, { data: sig }] = await Promise.all([
     enrollment.company_id
-      ? supabaseAdmin.from("companies").select("name, industry_segment").eq("id", enrollment.company_id).maybeSingle()
+      ? supabaseAdmin.from("companies").select("name, industry_segment, allabolag_url").eq("id", enrollment.company_id).maybeSingle()
       : Promise.resolve({ data: null }),
     supabaseAdmin.from("contacts").select("email_jsonb").eq("id", enrollment.contact_id).maybeSingle(),
     supabaseAdmin.from("mc_settings").select("value").eq("key", "outreach_signature").maybeSingle(),
@@ -389,7 +389,11 @@ async function draftPackageMail(
   if (!to) return false;
   const family = (enrollment.krok_familj as KrokFamily | null) ?? null;
   const paket: Paket = family ? (PAKET_FOR_FAMILY[family] ?? "hemsida") : "hemsida";
-  const referens = referenceFor(company?.industry_segment as string | null, company?.name as string | null);
+  const referens = referenceFor(
+    company?.industry_segment as string | null,
+    company?.name as string | null,
+    company?.allabolag_url as string | null,
+  );
   const body = paketBody({
     greeting: greetingFor(to, (company?.name as string) || null),
     namn: shortCompanyName(company?.name),

@@ -23,6 +23,18 @@ const GENERIC_MAILBOXES = new Set([
 /** Tecken som skiljer namndelar åt i en mejladress. */
 const SEPARATORS = /[._\-+]/;
 
+// Mejladresser saknar å, ä och ö. "par@" är Pär, inte Par, och ett fel
+// stavat förnamn i första ordet avslöjar mejlet som maskinellt. Listan är
+// de vanliga svenska förnamnen där ASCII-formen är entydig; för alla andra
+// behålls stavningen som den är.
+const DIACRITIC_NAMES: Record<string, string> = {
+  par: "Pär", bjorn: "Björn", goran: "Göran", hakan: "Håkan", orjan: "Örjan",
+  jorgen: "Jörgen", soren: "Sören", marten: "Mårten", asa: "Åsa", ake: "Åke",
+  borje: "Börje", gosta: "Gösta", torbjorn: "Torbjörn", jorn: "Jörn",
+  ingegard: "Ingegärd", mans: "Måns", helene: "Heléne", andre: "André",
+  rene: "René", jose: "José",
+};
+
 function normalize(value: string): string {
   return value
     .toLowerCase()
@@ -73,7 +85,8 @@ export function personalFirstName(
   const domainRoot = normalize(domain.split(".")[0] ?? "");
   if (domainRoot && key.length >= 3 && domainRoot.includes(key)) return null;
 
-  return capitalize(first.toLocaleLowerCase("sv-SE"));
+  const lower = first.toLocaleLowerCase("sv-SE");
+  return DIACRITIC_NAMES[lower] ?? capitalize(lower);
 }
 
 /**
