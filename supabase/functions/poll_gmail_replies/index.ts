@@ -2,7 +2,13 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse, createJsonResponse } from "../_shared/utils.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
-import { gmailConfigFromEnv, getAccessToken } from "../_shared/gmail.ts";
+import { createGmailDraft, gmailConfigFromEnv, getAccessToken } from "../_shared/gmail.ts";
+import { greetingFor } from "../_shared/greeting.ts";
+import { shortCompanyName } from "../_shared/companyName.ts";
+import { renderWithGmailSignature } from "../_shared/signature.ts";
+import { referenceFor, type KrokFamily } from "../_shared/krokCopy.ts";
+import { PAKET_FOR_FAMILY, paketBody, paketSubject, type Paket } from "../_shared/paketCopy.ts";
+import { resultCardFor } from "../_shared/resultCardLookup.ts";
 import {
   bounceSeverity,
   bouncedRecipient,
@@ -158,11 +164,14 @@ async function createReplyTask(
   fromEmail: string | null,
   snippet: string,
   negative: boolean,
+  draftCreated = false,
 ): Promise<void> {
   const who = fromEmail ?? (send.to_email as string) ?? "okänd avsändare";
   const text = negative
     ? `NEJ från ${who} — spärrad automatiskt. Läs och bekräfta: "${snippet.slice(0, 180)}"`
-    : `SVAR från ${who} på "${send.subject}". Svara idag: "${snippet.slice(0, 180)}"`;
+    : draftCreated
+      ? `SVAR från ${who} på "${send.subject}". Paketmejlet ligger som utkast i Gmail — läs, justera, skicka i dag: "${snippet.slice(0, 160)}"`
+      : `SVAR från ${who} på "${send.subject}". Svara idag: "${snippet.slice(0, 180)}"`;
   const { error } = await supabaseAdmin.from("tasks").insert({
     contact_id: send.contact_id,
     type: "Email",
@@ -330,7 +339,78 @@ async function handleIncoming(
   } else {
     await stopEnrollment(enrollmentId, "replied");
   }
-  await createReplyTask(send, fromEmail, bodyText, negative);
+  // v5-flödet: ett svar som inte är nej får paketmejlet som UTKAST i Gmail,
+  // trådat på samma tråd. En människa läser, justerar och skickar.
+  const draft = !negative && kind === "reply"
+    ? await draftPackageMail(send, enrollmentId, message, fromEmail).catch((e) => {
+        console.error("paketmejl-utkast misslyckades:", e instanceof Error ? e.message : e);
+        return false;
+      })
+    : false;
+  await createReplyTask(send, fromEmail, bodyText, negative, draft);
+}
+
+/**
+ * Paketmejlet efter ett positivt svar: vad som ingår i lösningen som passar
+ * kroken, referensen och resultatkortet, och ett mötesförslag. Bara för
+ * sekvenser märkta v5 i trigger_config. Returnerar true när ett utkast lades.
+ */
+async function draftPackageMail(
+  send: Row,
+  enrollmentId: number | null,
+  message: GmailApiMessage,
+  fromEmail: string | null,
+): Promise<boolean> {
+  if (enrollmentId == null) return false;
+  const { data: enrollment } = await supabaseAdmin
+    .from("sequence_enrollments")
+    .select("id, sequence_id, company_id, contact_id, krok_familj, asset_url")
+    .eq("id", enrollmentId)
+    .maybeSingle();
+  if (!enrollment) return false;
+  const { data: sequence } = await supabaseAdmin
+    .from("sequences")
+    .select("trigger_config")
+    .eq("id", enrollment.sequence_id)
+    .maybeSingle();
+  if ((sequence?.trigger_config as Row | null)?.v5 !== true) return false;
+  const gmail = gmailConfigFromEnv((k) => Deno.env.get(k));
+  if (!gmail) return false;
+
+  const [{ data: company }, { data: contact }, { data: sig }] = await Promise.all([
+    enrollment.company_id
+      ? supabaseAdmin.from("companies").select("name, industry_segment").eq("id", enrollment.company_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabaseAdmin.from("contacts").select("email_jsonb").eq("id", enrollment.contact_id).maybeSingle(),
+    supabaseAdmin.from("mc_settings").select("value").eq("key", "outreach_signature").maybeSingle(),
+  ]);
+  const contactEmail = (contact?.email_jsonb as Array<{ email?: string }> | null)?.[0]?.email;
+  const to = fromEmail ?? contactEmail ?? (send.to_email as string | null);
+  if (!to) return false;
+  const family = (enrollment.krok_familj as KrokFamily | null) ?? null;
+  const paket: Paket = family ? (PAKET_FOR_FAMILY[family] ?? "hemsida") : "hemsida";
+  const referens = referenceFor(company?.industry_segment as string | null, company?.name as string | null);
+  const body = paketBody({
+    greeting: greetingFor(to, (company?.name as string) || null),
+    namn: shortCompanyName(company?.name),
+    paket,
+    assetUrl: ((enrollment.asset_url as string | null) ?? "").trim() || null,
+    resultatkort: await resultCardFor(referens),
+    referens,
+  });
+  const signatureHtml = ((sig?.value as Row | null)?.html as string | undefined) ?? "";
+  const rendered = renderWithGmailSignature(body, signatureHtml);
+  const replyMessageId = headerValue(message.payload, "Message-ID");
+  await createGmailDraft(gmail, {
+    to,
+    subject: paketSubject(String(send.subject ?? "").replace(/^(Re|Sv):\s*/i, "")),
+    text: rendered.text,
+    html: rendered.html,
+    threadId: (send.gmail_thread_id as string | null) ?? undefined,
+    inReplyTo: replyMessageId || undefined,
+    references: replyMessageId || undefined,
+  });
+  return true;
 }
 
 Deno.serve(async (req: Request) =>

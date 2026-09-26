@@ -66,7 +66,7 @@ FROM (VALUES
   ('Outreach v5 · 3 · referensen', 'Re: {{krok_amne}}',
    $b${{greeting}}
 
-{{krok_referens_mening}}
+{{krok_referens_block}}
 
 Erbjudandet från förra mejlet står kvar. Vill du att jag sätter igång?
 

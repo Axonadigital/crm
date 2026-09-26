@@ -24,6 +24,7 @@ import {
   shouldSkipBreakup,
 } from "../_shared/outreachFlow.ts";
 import { shortCompanyName } from "../_shared/companyName.ts";
+import { resultCardFor } from "../_shared/resultCardLookup.ts";
 import {
   outsideWindowReason,
   parseSendWindow,
@@ -536,8 +537,19 @@ async function krokVarsFor(
       .eq("id", enrollment.id);
     enrollment.krok_familj = krok.family;
   }
-  return { ...vars };
+  // Steg 3: referenskundens uppmätta siffror ur månadsrapporten om de finns,
+  // annars textreferensen. Aldrig en prognos för mottagaren.
+  const resultatkort = await resultCardFor(vars.krok_referens ? referenceFor(
+    company?.industry_segment as string | null,
+    company?.name as string | null,
+  ) : null);
+  return {
+    ...vars,
+    krok_resultatkort: resultatkort ?? "",
+    krok_referens_block: resultatkort ?? vars.krok_referens_mening,
+  };
 }
+
 
 /** Rasmus Gmail-signatur, synkad till mc_settings av sync_gmail_signature. */
 async function loadGmailSignature(): Promise<string | null> {

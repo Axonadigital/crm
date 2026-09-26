@@ -213,6 +213,40 @@ export async function getAccessToken(config: GmailConfig): Promise<string> {
   return json.access_token;
 }
 
+const DRAFT_URL = "https://gmail.googleapis.com/gmail/v1/users/me/drafts";
+
+/**
+ * Lägger ett UTKAST i brevlådan i stället för att skicka. Används för
+ * paketmejlet efter ett svar: en människa läser, justerar och trycker skicka.
+ * Trådas som vanligt (threadId + In-Reply-To) så det hamnar i samma tråd.
+ */
+export async function createGmailDraft(
+  config: GmailConfig,
+  message: GmailMessage,
+): Promise<{ draftId: string; messageId: string | null }> {
+  const accessToken = await getAccessToken(config);
+  const raw = base64UrlEncode(
+    new TextEncoder().encode(buildMimeMessage(config, message)),
+  );
+  const inner: Record<string, string> = { raw };
+  if (message.threadId) inner.threadId = message.threadId;
+  const response = await fetch(DRAFT_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message: inner }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Gmail-utkast misslyckades (${response.status}): ${text.slice(0, 300)}`);
+  }
+  const json = (await response.json()) as { id?: string; message?: { id?: string } };
+  if (!json.id) throw new Error("Gmail svarade utan utkast-id");
+  return { draftId: json.id, messageId: json.message?.id ?? null };
+}
+
 export async function sendViaGmail(
   config: GmailConfig,
   message: GmailMessage,
