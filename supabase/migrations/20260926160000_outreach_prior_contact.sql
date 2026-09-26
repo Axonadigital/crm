@@ -31,13 +31,17 @@ AS $$
   WHERE c.id = me.id
      OR (me.org IS NOT NULL AND public.outreach_org_number(c.org_number) = me.org)
      OR (me.site IS NOT NULL AND public.outreach_domain(c.website) = me.site)
-     OR (me.email IS NOT NULL AND public.outreach_clean_email(c.email) = me.email)
+     -- Mejl matchar bara när adressen är bolagets egen: info@boolag.se
+     -- (katalog) delas av hundratals bolag och är ingen dubblett.
+     OR (me.email IS NOT NULL AND NOT public.outreach_is_directory_domain(me.email_domain)
+         AND public.outreach_clean_email(c.email) = me.email)
      OR (me.email_domain IS NOT NULL AND NOT public.outreach_is_free_mailbox(me.email_domain)
          AND public.outreach_domain(split_part(public.outreach_clean_email(c.email), '@', 2)) = me.email_domain)
      OR EXISTS (
        SELECT 1 FROM public.contacts ct, jsonb_array_elements(COALESCE(ct.email_jsonb, '[]'::jsonb)) el
        WHERE ct.company_id = c.id
          AND public.outreach_clean_email(el->>'email') IN (SELECT email FROM contact_emails WHERE email IS NOT NULL)
+         AND NOT public.outreach_is_directory_domain(public.outreach_domain(split_part(el->>'email', '@', 2)))
      );
 $$;
 
