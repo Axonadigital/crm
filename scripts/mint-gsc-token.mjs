@@ -14,7 +14,15 @@
  * rakt in i Supabase-secreten GSC_GOOGLE_CREDENTIALS. Ingen kodändring behövs —
  * analyze_website läser redan det formatet.
  *
- * KÖR SÅ HÄR (inloggad i en webbläsare som info@axonadigital.se):
+ * Sedan 2026-09-27 ber skriptet även om Business Profile-scopet och listar de
+ * Google-profiler kontot hanterar med deras location-id, som ska in i
+ * customer_details.gbp_location_id per kund. Förutsättningar i GCP-projektet
+ * som äger OAuth-klienten: API:erna "Business Profile Performance",
+ * "My Business Account Management" och "My Business Business Information"
+ * påslagna, OCH godkänd åtkomst via Googles formulär (kvoten är 0 innan dess):
+ * https://developers.google.com/my-business/content/prereqs
+ *
+ * KÖR SÅ HÄR (inloggad i en webbläsare som kontot som HANTERAR profilerna):
  *
  *   GOOGLE_OAUTH_CLIENT_ID=...  GOOGLE_OAUTH_CLIENT_SECRET=...  \
  *     node scripts/mint-gsc-token.mjs
@@ -34,7 +42,14 @@ import { stdin, stdout } from "node:process";
 // läggas till under "Authorized redirect URIs" på klienten i GCP-konsolen.
 const PORT = 53682;
 const REDIRECT_URI = `http://localhost:${PORT}/oauth2callback`;
-const SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
+// Två scopes i EN credential: Search Console (rapporterna) och Business
+// Profile (samtal, webbklick och vägbeskrivningar från Google-profilen).
+// analyze_website läser samma secret för båda. Tillkom 2026-09-27: profilens
+// siffror är det närmaste "gav det jobb?" vi kan mäta.
+const SCOPE = [
+  "https://www.googleapis.com/auth/webmasters.readonly",
+  "https://www.googleapis.com/auth/business.manage",
+].join(" ");
 
 async function prompt(question) {
   const rl = createInterface({ input: stdin, output: stdout });
@@ -117,6 +132,54 @@ async function exchangeCodeForToken(code, clientId, clientSecret) {
   return data;
 }
 
+/**
+ * Listar profilerna kontot hanterar. Icke-fatalt: saknas API-åtkomst skrivs
+ * felet ut och credentialen är ändå giltig för Search Console.
+ */
+async function listBusinessLocations(accessToken) {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const accountsRes = await fetch(
+    "https://mybusinessaccountmanagement.googleapis.com/v1/accounts",
+    { headers },
+  );
+  if (!accountsRes.ok) {
+    console.log(
+      `\n⚠️  Kunde inte lista Business Profile-konton (${accountsRes.status}): ` +
+        `${(await accountsRes.text()).slice(0, 300)}\n` +
+        "   Vanligast: API:erna är inte påslagna i GCP-projektet, eller så är\n" +
+        "   åtkomstansökan inte godkänd än. Credentialen fungerar ändå för Search Console.",
+    );
+    return;
+  }
+  const accounts = (await accountsRes.json()).accounts ?? [];
+  console.log("\nGoogle-profiler kontot hanterar (location-id → customer_details.gbp_location_id):\n");
+  for (const account of accounts) {
+    let pageToken = "";
+    do {
+      const url = new URL(
+        `https://mybusinessbusinessinformation.googleapis.com/v1/${account.name}/locations`,
+      );
+      url.searchParams.set("readMask", "name,title,storefrontAddress");
+      url.searchParams.set("pageSize", "100");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        console.log(`   ${account.accountName ?? account.name}: ${res.status} ${(await res.text()).slice(0, 200)}`);
+        break;
+      }
+      const data = await res.json();
+      for (const loc of data.locations ?? []) {
+        const city = loc.storefrontAddress?.locality ?? "";
+        console.log(`   ${loc.name.padEnd(32)} ${loc.title}${city ? ` (${city})` : ""}`);
+      }
+      pageToken = data.nextPageToken ?? "";
+    } while (pageToken);
+  }
+  console.log(
+    "\nKlistra in raderna ovan till Claude, så sätts gbp_location_id per kund i CRM:et.",
+  );
+}
+
 async function main() {
   const { clientId, clientSecret } = await getCredentials();
   const authUrl = buildAuthUrl(clientId);
@@ -160,6 +223,8 @@ async function main() {
   console.log(
     "Klicka sedan 'Uppdatera statistik' på en kund vars sajt finns i Search Console.",
   );
+
+  if (token.access_token) await listBusinessLocations(token.access_token);
 }
 
 main().catch((err) => {
