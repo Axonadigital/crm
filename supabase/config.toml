@@ -230,3 +230,6 @@ verify_jwt = false
 
 [functions.process_sequences]
 verify_jwt = false
+
+[functions.import_new_companies]
+verify_jwt = false

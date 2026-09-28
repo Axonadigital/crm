@@ -45,4 +45,10 @@ describe("phoneNumbers helpers", () => {
       ]),
     ).toEqual([{ number: "08 123 45 67", source: "existing" }]);
   });
+
+  it("tar inte datum, postnummer eller för korta nummer", () => {
+    expect(extractPhoneNumbersFromText("Registrerat 2025-09-29, Östersund")).toEqual([]);
+    expect(extractPhoneNumbersFromText("Postadress 835 97 Offerdal, reg 2026-08-10")).toEqual([]);
+    expect(extractPhoneNumbersFromText("Ring 063-10 20 50 eller 070-362 58 42")).toEqual(["063 10 20 50", "070 362 58 42"]);
+  });
 });

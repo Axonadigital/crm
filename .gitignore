@@ -50,3 +50,6 @@ backup_*.sql
 # Supabase secrets
 supabase/signing_keys.json
 .vercel
+
+# Hemligheten för importen av nystartade bolag (NYSTARTADE_SECRET)
+.env.nystartade.local

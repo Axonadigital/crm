@@ -274,6 +274,15 @@ async function discoverViaSerper(
       "youtube.com",
       "op.se",
       "ltz.se",
+      // Tillagda 2026-09-28: boolag.se sparades som hemsida åt ett nystartat
+      // bolag, och skannern hade då granskat katalogsidan.
+      "boolag.se",
+      "alltombolag.se",
+      "kreditrapporten.se",
+      "bolagsverket.se",
+      "vainu.io",
+      "birthday.se",
+      "brabyggfirmor.se",
     ];
 
     // Domains that are never useful as website or context
@@ -967,7 +976,15 @@ Deno.serve(async (req: Request) =>
               ),
             lead_score: score,
             segment,
-            enrichment_data: enrichmentData,
+            // Slå ihop med det som redan finns. Tidigare skrevs hela fältet
+            // över, vilket raderade SCB-uppgifterna (bolagsform, registrerings-
+            // datum, dubblettnyckel) på nystartade bolag (2026-09-28).
+            enrichment_data: {
+              ...((company.enrichment_data && typeof company.enrichment_data === "object"
+                ? company.enrichment_data
+                : {}) as Record<string, unknown>),
+              ...enrichmentData,
+            },
             enriched_at: new Date().toISOString(),
           };
 
