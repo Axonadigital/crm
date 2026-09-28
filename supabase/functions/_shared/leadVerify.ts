@@ -218,6 +218,34 @@ export interface VerifyInput {
   emailDomainTitle?: string | null;
   /** Jevs dom över sökträffarna. null = inte frågad eller svarade inte. */
   jev?: WebsiteJudgement | null;
+  /**
+   * Google-profiler från platssökningen (Serper places): namn och
+   * webbplatsfält. null = platssökningen gick inte att göra.
+   */
+  places?: PlaceHit[] | null;
+}
+
+export interface PlaceHit {
+  title: string;
+  website?: string | null;
+  address?: string | null;
+}
+
+/**
+ * Google-profilens webbplatsfält är den starkaste källan: det är vad bolaget
+ * själv angett. "Bad & Värme Norderåsens VVS" har bad-varme.se där, fast
+ * ingen vanlig sökträff visar det. Profiler vars namn inte bär bolagets
+ * namnord räknas inte (grannar i samma sökning).
+ */
+export function websiteFromPlaces(name: string, places: PlaceHit[]): string | null {
+  const tokens = nameTokens(name);
+  if (tokens.length === 0) return null;
+  for (const place of places) {
+    if (!tokens.some((t) => fold(place.title).includes(t))) continue;
+    const host = hostOf(place.website);
+    if (host && !isDirectoryHost(host)) return `https://${host}/`;
+  }
+  return null;
 }
 
 /**
@@ -257,6 +285,13 @@ export function verifyLead(input: VerifyInput): VerifyResult {
     const domain = ownEmailDomain(cleaned.email);
     if (domain && input.emailDomainLive === true) {
       return { ok: false, reason: `mejldomänen ${domain} har en egen sajt`, foundWebsite: `https://${domain}/`, email: cleaned.email };
+    }
+    if (input.places === null) {
+      return { ok: false, reason: "platssökningen på Google kunde inte göras, påståendet om att hemsida saknas är overifierat", email: cleaned.email };
+    }
+    const fromProfile = websiteFromPlaces(input.companyName, input.places ?? []);
+    if (fromProfile) {
+      return { ok: false, reason: `Google-profilen anger ${hostOf(fromProfile)} som hemsida`, foundWebsite: fromProfile, email: cleaned.email };
     }
     if (input.searchHits === null) {
       return { ok: false, reason: "Google-sökningen kunde inte göras, påståendet om att hemsida saknas är overifierat", email: cleaned.email };

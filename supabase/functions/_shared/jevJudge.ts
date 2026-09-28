@@ -20,7 +20,7 @@ const GATEWAY_URL = "https://ai-gateway.vercel.sh/v4/ai/evaluation-model";
 const MODEL = "typesafe-ai/jev";
 const RETRY_WAITS_MS = [1500, 4000];
 const TIMEOUT_MS = 20000;
-export const MAX_JUDGED_HITS = 8;
+export const MAX_JUDGED_HITS = 12;
 
 export interface JevQuestion {
   type: "boolean";
@@ -104,10 +104,15 @@ export function readWebsiteJudgement(body: unknown, hits: SearchHit[]): WebsiteJ
   return { hasSite: verdict("has_site"), best, emailBelongs: verdict("email_belongs") };
 }
 
-/** Säkert nej: låg sannolikhet OCH Jev är säker på sin sak. */
-export function confidentNo(v: JevVerdict | null, maxP = 0.25, minConfidence = 0.6): boolean {
+/**
+ * Säkert nej: låg sannolikhet OCH Jev är säker på sin sak. Vercel skickar
+ * inte med Jevs säkerhet (mätt 2026-09-28: confidence alltid tom), så utan
+ * den krävs en lägre sannolikhet i stället.
+ */
+export function confidentNo(v: JevVerdict | null, maxP = 0.25, minConfidence = 0.6, maxPWithoutConfidence = 0.15): boolean {
   if (!v) return false;
-  return v.p <= maxP && (v.confidence == null || v.confidence >= minConfidence);
+  if (v.confidence == null) return v.p <= maxPWithoutConfidence;
+  return v.p <= maxP && v.confidence >= minConfidence;
 }
 
 /** Säkert ja, samma princip. */

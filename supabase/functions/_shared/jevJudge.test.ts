@@ -12,7 +12,7 @@ describe("jevJudge", () => {
     expect(Object.keys(questions)).toEqual(["has_site", "email_belongs", "own_0", "own_1"]);
     expect((state.sokträffar as unknown[]).length).toBe(2);
     const many = Array.from({ length: 12 }, (_, i) => ({ link: `https://x${i}.se/` }));
-    expect(Object.keys(buildWebsiteQuestions({ company: "X", city: null, email: null, emailDomainTitle: null, hits: many }).questions)).toHaveLength(10);
+    expect(Object.keys(buildWebsiteQuestions({ company: "X", city: null, email: null, emailDomainTitle: null, hits: [...many, ...many] }).questions)).toHaveLength(14);
   });
   it("läser sannolikhet, säkerhet och bästa träff ur gatewayens svar", () => {
     const body = {
@@ -30,6 +30,8 @@ describe("jevJudge", () => {
     expect(confidentNo({ p: 0.1, confidence: 0.4 })).toBe(false);
     expect(confidentNo({ p: 0.4, confidence: 0.9 })).toBe(false);
     expect(confidentYes({ p: 0.9, confidence: null })).toBe(true);
+    expect(confidentNo({ p: 0.13, confidence: null })).toBe(true);
+    expect(confidentNo({ p: 0.2, confidence: null })).toBe(false);
     expect(confidentYes(null)).toBe(false);
   });
 });

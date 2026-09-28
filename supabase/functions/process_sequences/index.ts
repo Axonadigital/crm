@@ -45,6 +45,7 @@ import {
   hostOf,
   looksParked,
   ownEmailDomain,
+  type PlaceHit,
   type SearchHit,
   verifyLead,
 } from "../_shared/leadVerify.ts";
@@ -1278,6 +1279,29 @@ async function serperSearch(q: string, key: string): Promise<SearchHit[] | null>
 }
 
 /**
+ * Platssökning (Google Maps via Serper): profilernas namn och webbplatsfält.
+ * Kortnamnet med ort, eftersom profilen ofta heter något annat än bolaget
+ * ("Bad & Värme Norderåsens VVS"). null = gick inte att göra.
+ */
+async function searchPlaces(name: string, city: string | null): Promise<PlaceHit[] | null> {
+  const key = Deno.env.get("SERPER_API_KEY");
+  if (!key) return null;
+  try {
+    const res = await fetch("https://google.serper.dev/places", {
+      method: "POST",
+      headers: { "X-API-KEY": key, "Content-Type": "application/json" },
+      body: JSON.stringify({ q: `${shortCompanyName(cleanCompanyName(name))}${city ? ` ${city}` : ""}`, gl: "se", hl: "sv" }),
+      signal: AbortSignal.timeout(VERIFY_FETCH_MS),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { places?: Array<{ title?: string; website?: string; address?: string }> };
+    return (data.places ?? []).map((p) => ({ title: p.title ?? "", website: p.website ?? null, address: p.address ?? null }));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Två sökningar: hela namnet och kortnamnet, båda med ort. "Norderåsens VVS
  * Entreprenad & Service AB Östersund" ger bara kataloger; "Norderåsens VVS
  * Östersund" ger katalogutdragen som nämner bad-varme.se. Misslyckas någon
@@ -1317,23 +1341,31 @@ async function computeVerification(enrollment: Row) {
   const domain = ownEmailDomain(cleanEmailAddress(rawEmail)?.email ?? null);
   const probe = domain ? await probeDomain(domain) : { live: null, title: null };
   const needsSearch = family != null && ABSENCE_FAMILIES.has(family);
-  const hits = needsSearch ? await searchCompany(name, (company.city as string | null) ?? null) : [];
+  const city = (company.city as string | null) ?? null;
+  const [hits, places] = needsSearch
+    ? await Promise.all([searchCompany(name, city), searchPlaces(name, city)])
+    : [[] as SearchHit[], [] as PlaceHit[]];
 
   // Jev bedömer bara när reglerna inte räcker: frånvaropåståenden, och
   // adresser vars domän inte bär bolagsnamnet.
   const cleanedEmail = cleanEmailAddress(rawEmail)?.email ?? null;
   const foreignDomain = domain != null && probe.live === true && emailBelongsToOther(name, domain, probe.title);
   let jev: WebsiteJudgement | null = null;
+  // Profilerna först: deras webbplatsfält är det Jev behöver se mest.
+  const judged: SearchHit[] = [
+    ...(places ?? []).filter((p) => p.website).map((p) => ({ link: p.website as string, title: p.title, snippet: `Google-profilens webbplats. ${p.address ?? ""}` })),
+    ...(hits ?? []),
+  ];
   if ((needsSearch && hits) || foreignDomain) {
     const { state, questions } = buildWebsiteQuestions({
       company: cleanCompanyName(name),
       city: (company.city as string | null) ?? null,
       email: cleanedEmail,
       emailDomainTitle: probe.title,
-      hits: hits ?? [],
+      hits: judged,
     });
     const body = await askJev(state, questions, Deno.env.get("AI_GATEWAY_API_KEY"));
-    jev = body ? readWebsiteJudgement(body, hits ?? []) : null;
+    jev = body ? readWebsiteJudgement(body, judged) : null;
   }
 
   const verdict = verifyLead({
@@ -1344,9 +1376,10 @@ async function computeVerification(enrollment: Row) {
     emailDomainLive: probe.live,
     emailDomainTitle: probe.title,
     searchHits: hits,
+    places,
     jev,
   });
-  return { company, contact, emails, name, family, domain, probe, searched: needsSearch, hits: hits?.length ?? null, jev, verdict };
+  return { company, contact, emails, name, family, domain, probe, searched: needsSearch, hits: hits?.length ?? null, places: places?.map((p) => `${p.title} → ${p.website ?? "ingen webbplats"}`) ?? null, jev, verdict };
 }
 
 async function ensureVerifiedLead(
@@ -2061,7 +2094,7 @@ Deno.serve(async (req: Request) =>
       for (const row of (rows ?? []) as Row[]) {
         const c = await computeVerification(row);
         out.push(c
-          ? { enrollment_id: row.id, name: c.name, family: c.family, email_domain: c.domain, domain_live: c.probe.live, domain_title: c.probe.title, searched: c.searched, hits: c.hits, jev: c.jev, verdict: c.verdict }
+          ? { enrollment_id: row.id, name: c.name, family: c.family, email_domain: c.domain, domain_live: c.probe.live, domain_title: c.probe.title, searched: c.searched, hits: c.hits, places: c.places, jev: c.jev, verdict: c.verdict }
           : { enrollment_id: row.id, error: "företag eller kontakt saknas" });
       }
       return createJsonResponse({ verify: out });

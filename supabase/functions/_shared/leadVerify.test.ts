@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanCompanyName, domainsInText, looksLikeListing, emailBelongsToOther, cleanEmailAddress, looksParked, ownEmailDomain, verifyLead, websiteFromSearch } from "./leadVerify.ts";
+import { cleanCompanyName, websiteFromPlaces, domainsInText, looksLikeListing, emailBelongsToOther, cleanEmailAddress, looksParked, ownEmailDomain, verifyLead, websiteFromSearch } from "./leadVerify.ts";
 
 describe("cleanEmailAddress", () => {
   it("tar bort skrapans etikett och avslutande punkt", () => {
@@ -137,5 +137,23 @@ describe("okända kataloger", () => {
     ];
     expect(websiteFromSearch("Bodals VVS AB", bodals, null)).toBeNull();
     expect(websiteFromSearch("Bodals VVS AB", [{ link: "https://bodalsvvs.se/kontakt", title: "Kontakt" }], null)).toBe("https://bodalsvvs.se/");
+  });
+});
+
+describe("Google-profilens webbplatsfält", () => {
+  const places = [
+    { title: "Bad & Värme Norderåsens VVS", website: "https://www.bad-varme.se/ort/ostersund/" },
+    { title: "Rörjouren Östersund", website: "https://rorjouren.se/" },
+  ];
+  it("hittar Norderåsens kedjesida och ignorerar grannar", () => {
+    expect(websiteFromPlaces("Norderåsens VVS Entreprenad & Service AB", places)).toBe("https://bad-varme.se/");
+    expect(websiteFromPlaces("Bodals VVS AB", places)).toBeNull();
+    expect(websiteFromPlaces("Bodals VVS AB", [{ title: "Bodals VVS AB", website: "https://bodalsvvs.business.site/" }])).toBeNull();
+  });
+  it("stoppar no-site i verifyLead även när Jev tror att hemsida saknas", () => {
+    const jevNo = { hasSite: { p: 0.13, confidence: null }, best: null, emailBelongs: null };
+    const r = verifyLead({ family: "no-site", companyName: "Norderåsens VVS Entreprenad & Service AB", companyWebsite: "", email: "info@norderasensvvs.se", emailDomainLive: false, searchHits: [], places, jev: jevNo });
+    expect(r).toMatchObject({ ok: false, foundWebsite: "https://bad-varme.se/" });
+    expect(verifyLead({ family: "no-site", companyName: "Bodals VVS AB", companyWebsite: "", email: "bodalsvvs@gmail.com", emailDomainLive: null, searchHits: [], places: null, jev: jevNo })).toMatchObject({ ok: false });
   });
 });
