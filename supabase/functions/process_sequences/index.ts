@@ -37,6 +37,16 @@ import {
   shouldSkipBreakup,
 } from "../_shared/outreachFlow.ts";
 import { shortCompanyName } from "../_shared/companyName.ts";
+import {
+  ABSENCE_FAMILIES,
+  cleanCompanyName,
+  cleanEmailAddress,
+  hostOf,
+  looksParked,
+  ownEmailDomain,
+  type SearchHit,
+  verifyLead,
+} from "../_shared/leadVerify.ts";
 import { resultCardFor } from "../_shared/resultCardLookup.ts";
 import {
   outsideWindowReason,
@@ -120,6 +130,7 @@ type Outcome =
   | "skipped_reached"
   // Tidigare kontakt: det kalla mejlet byttes mot ett personligt utkast i Gmail.
   | "drafted_warm"
+  | "skipped_unverified"
   // Anspråket på steget, skrivet före Gmail-anropet. Se claimSend().
   | "sending"
   // Steget var redan skickat — vi flyttar fram i stället för att skicka igen.
@@ -1219,6 +1230,152 @@ async function handlePriorContact(
   return true;
 }
 
+
+// --- Verifiering före första mejlet (se _shared/leadVerify.ts) -------------
+
+const VERIFY_FETCH_MS = 8000;
+
+/** Mejldomänens startsida: svarar den, och vad heter den? */
+async function probeDomain(domain: string): Promise<{ live: boolean | null; title: string | null }> {
+  try {
+    const res = await fetch(`https://${domain}/`, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(VERIFY_FETCH_MS),
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; AxonaVerify/1.0)" },
+    });
+    if (!res.ok) return { live: false, title: null };
+    const html = (await res.text()).slice(0, 60000);
+    if (looksParked(html)) return { live: false, title: null };
+    const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? null;
+    return { live: true, title };
+  } catch {
+    // DNS-fel, timeout: domänen har ingen sajt vi kan se. Inte samma sak som
+    // att sökningen misslyckades — det avgör Serper-steget.
+    return { live: false, title: null };
+  }
+}
+
+/** En Google-sökning via Serper. null = den gick inte att göra. */
+async function serperSearch(q: string, key: string): Promise<SearchHit[] | null> {
+  try {
+    const res = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: { "X-API-KEY": key, "Content-Type": "application/json" },
+      body: JSON.stringify({ q, gl: "se", hl: "sv", num: 10 }),
+      signal: AbortSignal.timeout(VERIFY_FETCH_MS),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { organic?: SearchHit[]; knowledgeGraph?: { website?: string; title?: string } };
+    const hits = [...(data.organic ?? [])];
+    // Kunskapspanelen bär ofta Google-profilens webbplatsfält.
+    if (data.knowledgeGraph?.website) hits.unshift({ link: data.knowledgeGraph.website, title: data.knowledgeGraph.title ?? q });
+    return hits;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Två sökningar: hela namnet och kortnamnet, båda med ort. "Norderåsens VVS
+ * Entreprenad & Service AB Östersund" ger bara kataloger; "Norderåsens VVS
+ * Östersund" ger katalogutdragen som nämner bad-varme.se. Misslyckas någon
+ * av dem räknas sökningen som ej gjord.
+ */
+async function searchCompany(name: string, city: string | null): Promise<SearchHit[] | null> {
+  const key = Deno.env.get("SERPER_API_KEY");
+  if (!key) return null;
+  const where = city ? ` ${city}` : "";
+  const full = cleanCompanyName(name);
+  const short = shortCompanyName(full);
+  const queries = [...new Set([`${full}${where}`, `${short}${where}`])];
+  const results = await Promise.all(queries.map((q) => serperSearch(q, key)));
+  if (results.some((r) => r === null)) return null;
+  return results.flat() as SearchHit[];
+}
+
+/**
+ * Steg 1 med requires_verified_lead. Städar adress och namn, och stoppar
+ * mejlet när uppgifterna inte håller: ogiltig adress, adress på ett annat
+ * bolags domän, eller ett frånvaropåstående ("utan hemsida?") där vi hittar
+ * en hemsida. Stopp = pausad enrollment + uppgift, aldrig ett tyst skip.
+ */
+/** Hämtar underlaget och gör prövningen, utan sidoeffekter. */
+async function computeVerification(enrollment: Row) {
+  const [{ data: company }, { data: contact }, scan] = await Promise.all([
+    supabaseAdmin.from("companies").select("id, name, website, email, city").eq("id", enrollment.company_id).maybeSingle(),
+    supabaseAdmin.from("contacts").select("id, email_jsonb").eq("id", enrollment.contact_id).maybeSingle(),
+    latestScanFor(enrollment.company_id),
+  ]);
+  if (!company || !contact) return null;
+  const emails = (contact.email_jsonb ?? []) as Array<{ email?: string; type?: string }>;
+  const rawEmail = emails[0]?.email ?? null;
+  const family = familyFor(scan?.findings)?.family ?? null;
+  const name = String(company.name ?? "");
+
+  const domain = ownEmailDomain(cleanEmailAddress(rawEmail)?.email ?? null);
+  const probe = domain ? await probeDomain(domain) : { live: null, title: null };
+  const needsSearch = family != null && ABSENCE_FAMILIES.has(family);
+  const hits = needsSearch ? await searchCompany(name, (company.city as string | null) ?? null) : [];
+
+  const verdict = verifyLead({
+    family,
+    companyName: name,
+    companyWebsite: (company.website as string | null) ?? null,
+    email: rawEmail,
+    emailDomainLive: probe.live,
+    emailDomainTitle: probe.title,
+    searchHits: hits,
+  });
+  return { company, contact, emails, name, family, domain, probe, searched: needsSearch, hits: hits?.length ?? null, verdict };
+}
+
+async function ensureVerifiedLead(
+  enrollment: Row,
+  settings: Settings,
+  stepNumber: number,
+  actionType: string,
+): Promise<boolean> {
+  const checked = await computeVerification(enrollment);
+  if (!checked) return true; // prepareEmail rapporterar saknat företag/kontakt
+  const { company, contact, emails, name, family, verdict } = checked;
+
+  if (verdict.ok) {
+    if (settings.dryRun) return true;
+    // Säkra rättningar skrivs tillbaka så att mejlet och CRM:et är överens.
+    const fixes: PromiseLike<unknown>[] = [];
+    if (verdict.emailChanged) {
+      const rest = emails.slice(1);
+      fixes.push(supabaseAdmin.from("contacts").update({ email_jsonb: [{ ...emails[0], email: verdict.email }, ...rest] }).eq("id", contact.id));
+      fixes.push(supabaseAdmin.from("companies").update({ email: verdict.email }).eq("id", company.id));
+    }
+    if (verdict.name !== name) fixes.push(supabaseAdmin.from("companies").update({ name: verdict.name }).eq("id", company.id));
+    await Promise.all(fixes);
+    return true;
+  }
+
+  if (!(await recentlyLogged(enrollment.id, stepNumber, "skipped_unverified", 24 * 60))) {
+    await logRun({
+      enrollment, step: stepNumber, actionType, outcome: "skipped_unverified",
+      detail: { reason: verdict.reason, found_website: verdict.foundWebsite ?? null, family, dry_run: settings.dryRun || undefined },
+    });
+  }
+  if (settings.dryRun) return false;
+
+  if (verdict.foundWebsite && !hostOf(company.website as string | null)) {
+    await supabaseAdmin.from("companies").update({ website: verdict.foundWebsite }).eq("id", company.id);
+  }
+  await supabaseAdmin.from("sequence_enrollments").update({ status: "paused" }).eq("id", enrollment.id);
+  await supabaseAdmin.from("tasks").insert({
+    contact_id: enrollment.contact_id,
+    type: "email",
+    text: `Outreach stoppad för ${cleanCompanyName(name)} före första mejlet: ${verdict.reason}. Kontrollera uppgifterna och återuppta enrollmenten under Outreach om det stämmer.`,
+    due_date: new Date(Date.now() + 86400000).toISOString(),
+    done_date: null,
+    sales_id: await ownerSalesId(),
+  });
+  return false;
+}
+
 const CONSENT_REASONS = new Set(["sole_trader_no_consent", "unverified_company_form"]);
 
 /**
@@ -1624,6 +1781,11 @@ async function processEnrollment(
   if (stepConfig.requires_fresh_scan === true) {
     if (!(await ensureFreshScan(enrollment, settings, counters, stepNumber, actionType))) return;
   }
+  // 1c. Uppgifterna håller: adressen, namnet och påståenden om att något
+  //     saknas. Efter omskanningen, så att det är dagens fynd som prövas.
+  if (stepConfig.requires_verified_lead === true) {
+    if (!(await ensureVerifiedLead(enrollment, settings, stepNumber, actionType))) return;
+  }
   if (stepConfig.requires_asset === true) {
     if (!(await ensureAsset(enrollment, step, settings, counters, stepNumber, actionType))) return;
   }
@@ -1870,6 +2032,20 @@ Deno.serve(async (req: Request) =>
       .clone()
       .json()
       .catch(() => null)) as Row | null;
+    // Kontrolläge: { verify_enrollment_ids: [..] } kör bara verifieringen och
+    // svarar med utfallet. Inga sidoeffekter, inget skickas, inget loggas.
+    if (body && Array.isArray(body.verify_enrollment_ids)) {
+      const ids = (body.verify_enrollment_ids as unknown[]).filter((v): v is number => typeof v === "number").slice(0, 10);
+      const { data: rows } = await supabaseAdmin.from("sequence_enrollments").select("*").in("id", ids);
+      const out = [];
+      for (const row of (rows ?? []) as Row[]) {
+        const c = await computeVerification(row);
+        out.push(c
+          ? { enrollment_id: row.id, name: c.name, family: c.family, email_domain: c.domain, domain_live: c.probe.live, domain_title: c.probe.title, searched: c.searched, hits: c.hits, verdict: c.verdict }
+          : { enrollment_id: row.id, error: "företag eller kontakt saknas" });
+      }
+      return createJsonResponse({ verify: out });
+    }
     const mcRunId =
       body && typeof body.mc_run_id === "number" ? body.mc_run_id : null;
     const finishRun = async (
