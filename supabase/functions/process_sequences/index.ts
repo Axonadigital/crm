@@ -41,12 +41,14 @@ import {
   ABSENCE_FAMILIES,
   cleanCompanyName,
   cleanEmailAddress,
+  emailBelongsToOther,
   hostOf,
   looksParked,
   ownEmailDomain,
   type SearchHit,
   verifyLead,
 } from "../_shared/leadVerify.ts";
+import { askJev, buildWebsiteQuestions, readWebsiteJudgement, type WebsiteJudgement } from "../_shared/jevJudge.ts";
 import { resultCardFor } from "../_shared/resultCardLookup.ts";
 import {
   outsideWindowReason,
@@ -1317,6 +1319,23 @@ async function computeVerification(enrollment: Row) {
   const needsSearch = family != null && ABSENCE_FAMILIES.has(family);
   const hits = needsSearch ? await searchCompany(name, (company.city as string | null) ?? null) : [];
 
+  // Jev bedömer bara när reglerna inte räcker: frånvaropåståenden, och
+  // adresser vars domän inte bär bolagsnamnet.
+  const cleanedEmail = cleanEmailAddress(rawEmail)?.email ?? null;
+  const foreignDomain = domain != null && probe.live === true && emailBelongsToOther(name, domain, probe.title);
+  let jev: WebsiteJudgement | null = null;
+  if ((needsSearch && hits) || foreignDomain) {
+    const { state, questions } = buildWebsiteQuestions({
+      company: cleanCompanyName(name),
+      city: (company.city as string | null) ?? null,
+      email: cleanedEmail,
+      emailDomainTitle: probe.title,
+      hits: hits ?? [],
+    });
+    const body = await askJev(state, questions, Deno.env.get("AI_GATEWAY_API_KEY"));
+    jev = body ? readWebsiteJudgement(body, hits ?? []) : null;
+  }
+
   const verdict = verifyLead({
     family,
     companyName: name,
@@ -1325,8 +1344,9 @@ async function computeVerification(enrollment: Row) {
     emailDomainLive: probe.live,
     emailDomainTitle: probe.title,
     searchHits: hits,
+    jev,
   });
-  return { company, contact, emails, name, family, domain, probe, searched: needsSearch, hits: hits?.length ?? null, verdict };
+  return { company, contact, emails, name, family, domain, probe, searched: needsSearch, hits: hits?.length ?? null, jev, verdict };
 }
 
 async function ensureVerifiedLead(
@@ -1356,7 +1376,7 @@ async function ensureVerifiedLead(
   if (!(await recentlyLogged(enrollment.id, stepNumber, "skipped_unverified", 24 * 60))) {
     await logRun({
       enrollment, step: stepNumber, actionType, outcome: "skipped_unverified",
-      detail: { reason: verdict.reason, found_website: verdict.foundWebsite ?? null, family, dry_run: settings.dryRun || undefined },
+      detail: { reason: verdict.reason, found_website: verdict.foundWebsite ?? null, family, jev: checked.jev, dry_run: settings.dryRun || undefined },
     });
   }
   if (settings.dryRun) return false;
@@ -2041,7 +2061,7 @@ Deno.serve(async (req: Request) =>
       for (const row of (rows ?? []) as Row[]) {
         const c = await computeVerification(row);
         out.push(c
-          ? { enrollment_id: row.id, name: c.name, family: c.family, email_domain: c.domain, domain_live: c.probe.live, domain_title: c.probe.title, searched: c.searched, hits: c.hits, verdict: c.verdict }
+          ? { enrollment_id: row.id, name: c.name, family: c.family, email_domain: c.domain, domain_live: c.probe.live, domain_title: c.probe.title, searched: c.searched, hits: c.hits, jev: c.jev, verdict: c.verdict }
           : { enrollment_id: row.id, error: "företag eller kontakt saknas" });
       }
       return createJsonResponse({ verify: out });

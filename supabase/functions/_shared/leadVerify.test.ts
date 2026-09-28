@@ -54,13 +54,24 @@ describe("websiteFromSearch", () => {
 
 describe("verifyLead", () => {
   const base = { companyName: "Bodals VVS AB", companyWebsite: "", email: "bodalsvvs@gmail.com", emailDomainLive: null, searchHits: [] };
-  it("släpper ett verifierat no-site-lead", () => {
-    expect(verifyLead({ ...base, family: "no-site" })).toMatchObject({ ok: true, email: "bodalsvvs@gmail.com" });
+  const jevNo = { hasSite: { p: 0.08, confidence: 0.9 }, best: null, emailBelongs: { p: 0.9, confidence: 0.9 } };
+  it("släpper ett no-site-lead bara när Jev är säker på att hemsida saknas", () => {
+    expect(verifyLead({ ...base, family: "no-site", jev: jevNo })).toMatchObject({ ok: true, email: "bodalsvvs@gmail.com" });
+    expect(verifyLead({ ...base, family: "no-site" })).toMatchObject({ ok: false });
+    expect(verifyLead({ ...base, family: "no-site", jev: { ...jevNo, hasSite: { p: 0.4, confidence: 0.9 } } })).toMatchObject({ ok: false });
+    expect(verifyLead({ ...base, family: "no-site", jev: { ...jevNo, hasSite: { p: 0.1, confidence: 0.3 } } })).toMatchObject({ ok: false });
+  });
+  it("Jev fäller reglernas katalogfynd när den är säker, och hittar kedjesidan när reglerna missar", () => {
+    const katalog = [{ link: "https://okandkatalog.se/", title: "Bodals VVS AB – företagsinfo" }];
+    expect(verifyLead({ ...base, family: "no-site", searchHits: katalog, jev: jevNo })).toMatchObject({ ok: true });
+    const kedja = { hasSite: { p: 0.92, confidence: 0.85 }, best: { url: "https://www.bad-varme.se/ort/ostersund/", p: 0.88 }, emailBelongs: null };
+    expect(verifyLead({ ...base, family: "no-site", companyName: "Norderåsens VVS AB", jev: kedja })).toMatchObject({ ok: false, foundWebsite: "https://bad-varme.se/" });
   });
   it("stoppar no-site när mejldomänen har sajt, när CRM:et har sajt och när sökningen hittar en", () => {
-    expect(verifyLead({ ...base, family: "no-site", email: "nick@nhbel.se", emailDomainLive: true })).toMatchObject({ ok: false, foundWebsite: "https://nhbel.se/" });
-    expect(verifyLead({ ...base, family: "no-site", companyWebsite: "https://www.bad-varme.se/" })).toMatchObject({ ok: false });
-    expect(verifyLead({ ...base, family: "no-site", companyName: "Norderåsens VVS AB", searchHits: [{ link: "https://www.bad-varme.se/", title: "Norderåsens VVS" }] })).toMatchObject({ ok: false, foundWebsite: "https://bad-varme.se/" });
+    expect(verifyLead({ ...base, family: "no-site", email: "nick@nhbel.se", emailDomainLive: true, jev: jevNo })).toMatchObject({ ok: false, foundWebsite: "https://nhbel.se/" });
+    expect(verifyLead({ ...base, family: "no-site", companyWebsite: "https://www.bad-varme.se/", jev: jevNo })).toMatchObject({ ok: false });
+    const osaker = { ...jevNo, hasSite: { p: 0.3, confidence: 0.9 } };
+    expect(verifyLead({ ...base, family: "no-site", companyName: "Norderåsens VVS AB", searchHits: [{ link: "https://www.bad-varme.se/", title: "Norderåsens VVS" }], jev: osaker })).toMatchObject({ ok: false, foundWebsite: "https://bad-varme.se/" });
   });
   it("stoppar när sökningen inte gick att göra, men bara för frånvaropåståenden", () => {
     expect(verifyLead({ ...base, family: "no-site", searchHits: null })).toMatchObject({ ok: false });
@@ -76,6 +87,10 @@ describe("emailBelongsToOther", () => {
     expect(emailBelongsToOther("AWR Redovisning AB", "lrredovisning.se", "Lindsten & Rundqvist Redovisning AB")).toBe(true);
     expect(emailBelongsToOther("NHB Elektriska AB", "nhbel.se", "HEM")).toBe(false);
     expect(emailBelongsToOther("Ovikens Mekaniska AB", "o-mek.se", "O-Mek.se – Skoterkälkar och ATV-vagnar")).toBe(true);
+  });
+  it("Jev släpper igenom O-Mek när den är säker på att adressen är bolagets", () => {
+    const r = verifyLead({ family: "slow-mobile", companyName: "Ovikens Mekaniska AB", companyWebsite: "", email: "info@o-mek.se", emailDomainLive: true, emailDomainTitle: "O-Mek.se – Skoterkälkar och ATV-vagnar", searchHits: [], jev: { hasSite: null, best: null, emailBelongs: { p: 0.86, confidence: 0.8 } } });
+    expect(r.ok).toBe(true);
   });
   it("stoppar i verifyLead", () => {
     const r = verifyLead({ family: "slow-mobile", companyName: "AWR Redovisning AB", companyWebsite: "", email: "Emailsandra@lrredovisning.se", emailDomainLive: true, emailDomainTitle: "Lindsten & Rundqvist Redovisning AB", searchHits: [] });

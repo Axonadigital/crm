@@ -12,9 +12,12 @@
 //
 // Regeln: frånvaro av signal är inte frånvaro av saken. Ett påstående om att
 // något SAKNAS får bara gå ut när vi aktivt letat och inte hittat det, på
-// tre sätt: fältet i CRM:et, mejldomänens egen sajt och en Google-sökning.
+// fyra sätt: fältet i CRM:et, mejldomänens egen sajt, en Google-sökning och
+// Jevs bedömning av sökträffarna (jevJudge.ts, sedan 2026-09-28).
 // Kan sökningen inte göras stoppas mejlet, det skickas inte "för säkerhets
 // skull". Ren logik här; nätverk i process_sequences.
+
+import { confidentNo, confidentYes, type WebsiteJudgement } from "./jevJudge.ts";
 
 /** Etiketter som skrapor klistrar ihop med adressen: "E-postbodalsvvs@…". */
 const LABEL_PREFIX = /^(?:e-?post|epost|e-?mail|email|mail|mejl|maila)[:\s.]*(?=[a-z0-9])/i;
@@ -213,6 +216,8 @@ export interface VerifyInput {
   searchHits: SearchHit[] | null;
   /** Titeln på mejldomänens startsida, när den svarar. */
   emailDomainTitle?: string | null;
+  /** Jevs dom över sökträffarna. null = inte frågad eller svarade inte. */
+  jev?: WebsiteJudgement | null;
 }
 
 /**
@@ -238,7 +243,11 @@ export function verifyLead(input: VerifyInput): VerifyResult {
   const name = cleanCompanyName(input.companyName);
   const ownDomain = ownEmailDomain(cleaned.email);
   if (ownDomain && input.emailDomainLive === true && emailBelongsToOther(input.companyName, ownDomain, input.emailDomainTitle)) {
-    return { ok: false, reason: `mejladressen ligger på ${ownDomain}, som verkar tillhöra ett annat bolag ("${(input.emailDomainTitle ?? "").slice(0, 60)}")`, email: cleaned.email };
+    // Regeln ser inget namnord i domänen. Jev får släppa igenom när den är
+    // säker på att adressen ändå är bolagets (O-Mek = Ovikens Mekaniska).
+    if (!confidentYes(input.jev?.emailBelongs ?? null)) {
+      return { ok: false, reason: `mejladressen ligger på ${ownDomain}, som verkar tillhöra ett annat bolag ("${(input.emailDomainTitle ?? "").slice(0, 60)}")`, email: cleaned.email };
+    }
   }
   if (input.family && ABSENCE_FAMILIES.has(input.family)) {
     const site = hostOf(input.companyWebsite);
@@ -253,8 +262,19 @@ export function verifyLead(input: VerifyInput): VerifyResult {
       return { ok: false, reason: "Google-sökningen kunde inte göras, påståendet om att hemsida saknas är overifierat", email: cleaned.email };
     }
     const found = websiteFromSearch(input.companyName, input.searchHits, domain);
-    if (found) {
-      return { ok: false, reason: `Google-sökningen hittade ${hostOf(found)}`, foundWebsite: found, email: cleaned.email };
+    const jev = input.jev ?? null;
+    // Jev krävs för ett frånvaropåstående: reglerna ensamma har missat en
+    // kedjesida och tagit kataloger för hemsidor. Jev får fälla reglernas
+    // fynd bara när den är säker på att ingen egen hemsida finns.
+    if (!jev || !jev.hasSite) {
+      return { ok: false, reason: "Jev kunde inte bedöma sökträffarna, påståendet om att hemsida saknas är overifierat", foundWebsite: found ?? undefined, email: cleaned.email };
+    }
+    if (confidentYes(jev.hasSite) || (found && !confidentNo(jev.hasSite))) {
+      const site = jev.best && jev.best.p >= 0.5 ? `https://${hostOf(jev.best.url)}/` : found;
+      return { ok: false, reason: `sökningen tyder på en egen hemsida${site ? ` (${hostOf(site)})` : ""}, Jev ${Math.round(jev.hasSite.p * 100)} %`, foundWebsite: site ?? undefined, email: cleaned.email };
+    }
+    if (!confidentNo(jev.hasSite)) {
+      return { ok: false, reason: `Jev är osäker på om bolaget har en hemsida (${Math.round(jev.hasSite.p * 100)} %)`, email: cleaned.email };
     }
   }
   return { ok: true, email: cleaned.email, emailChanged: cleaned.changed, name };
