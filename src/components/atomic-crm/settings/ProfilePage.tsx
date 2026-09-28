@@ -1,0 +1,383 @@
+import { useMutation } from "@tanstack/react-query";
+import { CircleX, Copy, Pencil, Save } from "lucide-react";
+import {
+  Form,
+  useDataProvider,
+  useGetIdentity,
+  useGetOne,
+  useLocaleState,
+  useLocales,
+  useNotify,
+  useRecordContext,
+  useTranslate,
+} from "ra-core";
+import { useState } from "react";
+import { useFormState } from "react-hook-form";
+import { RecordField } from "@/components/admin/record-field";
+import { TextInput } from "@/components/admin/text-input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+import ImageEditorField from "../misc/ImageEditorField";
+import type { CrmDataProvider } from "../providers/types";
+import type { Sale, SalesFormData } from "../types";
+
+export const ProfilePage = () => {
+  const [isEditMode, setEditMode] = useState(false);
+  const { identity, refetch: refetchIdentity } = useGetIdentity();
+  const { data, refetch: refetchUser } = useGetOne("sales", {
+    id: identity?.id,
+  });
+  const translate = useTranslate();
+  const notify = useNotify();
+  const dataProvider = useDataProvider<CrmDataProvider>();
+
+  const { mutate } = useMutation({
+    mutationKey: ["signup"],
+    mutationFn: async (data: SalesFormData) => {
+      if (!identity) {
+        throw new Error(
+          translate("crm.profile.record_not_found", {
+            _: "Record not found",
+          }),
+        );
+      }
+      return dataProvider.salesUpdate(identity.id, data);
+    },
+    onSuccess: () => {
+      refetchIdentity();
+      refetchUser();
+      setEditMode(false);
+      notify("crm.profile.updated", {
+        messageArgs: {
+          _: "Your profile has been updated",
+        },
+      });
+    },
+    onError: (_) => {
+      notify("crm.profile.update_error", {
+        type: "error",
+        messageArgs: {
+          _: "An error occurred. Please try again",
+        },
+      });
+    },
+  });
+
+  if (!identity) return null;
+
+  const handleOnSubmit = async (values: any) => {
+    mutate(values);
+  };
+
+  return (
+    <div className="max-w-lg mx-auto mt-8">
+      <Form onSubmit={handleOnSubmit} record={data}>
+        <ProfileForm isEditMode={isEditMode} setEditMode={setEditMode} />
+      </Form>
+    </div>
+  );
+};
+
+const ProfileForm = ({
+  isEditMode,
+  setEditMode,
+}: {
+  isEditMode: boolean;
+  setEditMode: (value: boolean) => void;
+}) => {
+  const notify = useNotify();
+  const translate = useTranslate();
+  const record = useRecordContext<Sale>();
+  const { identity, refetch } = useGetIdentity();
+  const { isDirty } = useFormState();
+  const dataProvider = useDataProvider<CrmDataProvider>();
+  const { mutate: updatePassword } = useMutation({
+    mutationKey: ["updatePassword"],
+    mutationFn: async () => {
+      if (!identity) {
+        throw new Error(
+          translate("crm.profile.record_not_found", {
+            _: "Record not found",
+          }),
+        );
+      }
+
+      const password = window.prompt(
+        translate("crm.profile.password.prompt", {
+          _: "Enter a new password (minimum 8 characters).",
+        }),
+      );
+
+      if (password == null) {
+        return false;
+      }
+
+      const confirmPassword = window.prompt(
+        translate("crm.profile.password.confirm_prompt", {
+          _: "Confirm your new password.",
+        }),
+      );
+
+      if (confirmPassword == null) {
+        return false;
+      }
+
+      const nextPassword = password.trim();
+      if (nextPassword.length < 8) {
+        throw new Error(
+          translate("crm.profile.password.too_short", {
+            _: "Password must be at least 8 characters long",
+          }),
+        );
+      }
+
+      if (nextPassword !== confirmPassword.trim()) {
+        throw new Error(
+          translate("ra-supabase.validation.password_mismatch", {
+            _: "Passwords do not match",
+          }),
+        );
+      }
+
+      return dataProvider.updatePassword(identity.id, nextPassword);
+    },
+    onSuccess: (updated) => {
+      if (!updated) {
+        return;
+      }
+
+      notify("crm.profile.password.updated", {
+        messageArgs: {
+          _: "Your password has been updated",
+        },
+      });
+    },
+    onError: (error) => {
+      notify(`${error}`, { type: "error" });
+    },
+  });
+
+  const { mutate: mutateSale } = useMutation({
+    mutationKey: ["signup"],
+    mutationFn: async (data: SalesFormData) => {
+      if (!record) {
+        throw new Error(
+          translate("crm.profile.record_not_found", {
+            _: "Record not found",
+          }),
+        );
+      }
+      return dataProvider.salesUpdate(record.id, data);
+    },
+    onSuccess: () => {
+      refetch();
+      notify("crm.profile.updated", {
+        messageArgs: {
+          _: "Your profile has been updated",
+        },
+      });
+    },
+    onError: () => {
+      notify("crm.profile.update_error", {
+        type: "error",
+        messageArgs: {
+          _: "An error occurred. Please try again.",
+        },
+      });
+    },
+  });
+  if (!identity) return null;
+
+  const handleAvatarUpdate = async (values: any) => {
+    mutateSale(values);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent>
+          <div className="mb-4 flex flex-row justify-between">
+            <h2 className="text-xl font-semibold text-muted-foreground">
+              {translate("crm.profile.title")}
+            </h2>
+          </div>
+
+          <div className="space-y-4 mb-4">
+            <ImageEditorField
+              source="avatar"
+              type="avatar"
+              onSave={handleAvatarUpdate}
+              linkPosition="right"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <TextRender source="first_name" isEditMode={isEditMode} />
+              <TextRender source="last_name" isEditMode={isEditMode} />
+            </div>
+            <TextRender source="email" isEditMode={isEditMode} />
+            <LanguageSelector />
+          </div>
+
+          <div className="flex flex-row justify-end gap-2">
+            {!isEditMode && (
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => updatePassword()}
+              >
+                {translate("crm.profile.password.change")}
+              </Button>
+            )}
+
+            <Button
+              type="button"
+              variant={isEditMode ? "ghost" : "outline"}
+              onClick={() => setEditMode(!isEditMode)}
+              className="flex items-center"
+            >
+              {isEditMode ? <CircleX /> : <Pencil />}
+              {isEditMode
+                ? translate("ra.action.cancel")
+                : translate("ra.action.edit")}
+            </Button>
+
+            {isEditMode && (
+              <Button type="submit" disabled={!isDirty} variant="outline">
+                <Save />
+                {translate("ra.action.save")}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      {import.meta.env.VITE_INBOUND_EMAIL && (
+        <Card>
+          <CardContent>
+            <div className="space-y-4 justify-between">
+              <h2 className="text-xl font-semibold text-muted-foreground">
+                {translate("crm.profile.inbound.title")}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {translate("crm.profile.inbound.description", {
+                  _: "You can start sending emails to your server's inbound email address, e.g. by adding it to the Cc: field. Axona Digital CRM will process the emails and add notes to the corresponding contacts.",
+                  field: "Cc:",
+                })}
+              </p>
+              <CopyPaste />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+const LanguageSelector = () => {
+  const translate = useTranslate();
+  const locales = useLocales();
+  const [locale, setLocale] = useLocaleState();
+
+  if (locales.length <= 1) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        {translate("crm.language")}
+      </p>
+      <Select value={locale} onValueChange={setLocale}>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {locales.map((language) => (
+            <SelectItem key={language.locale} value={language.locale}>
+              {language.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+};
+
+const TextRender = ({
+  source,
+  isEditMode,
+  className,
+}: {
+  source: string;
+  isEditMode: boolean;
+  className?: string;
+}) => {
+  const label = `resources.sales.fields.${source}`;
+  if (isEditMode) {
+    return (
+      <TextInput
+        source={source}
+        label={label}
+        helperText={false}
+        className={className}
+      />
+    );
+  }
+  return (
+    <div className={className}>
+      <RecordField source={source} label={label} />
+    </div>
+  );
+};
+
+const CopyPaste = () => {
+  const translate = useTranslate();
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    setCopied(true);
+    navigator.clipboard.writeText(import.meta.env.VITE_INBOUND_EMAIL);
+    setTimeout(() => {
+      setCopied(false);
+    }, 1500);
+  };
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            onClick={handleCopy}
+            variant="ghost"
+            className="normal-case justify-between w-full"
+          >
+            <span className="overflow-hidden text-ellipsis">
+              {import.meta.env.VITE_INBOUND_EMAIL}
+            </span>
+            <Copy className="h-4 w-4 ml-2" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>
+            {copied
+              ? translate("crm.common.copied")
+              : translate("crm.common.copy")}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
+ProfilePage.path = "/profile";

@@ -1,0 +1,89 @@
+{
+  "order": "preserved",
+  "send_email": false,
+  "submitters": [
+    {
+      "completed": true,
+      "email": "info@axonadigital.se",
+      "fields": [
+        {
+          "default_value": "Rasmus Jönsson",
+          "name": "Axona signatur",
+          "readonly": true
+        },
+        {
+          "default_value": "__DATE__",
+          "name": "Axona datum",
+          "readonly": true
+        }
+      ],
+      "name": "Rasmus Jönsson",
+      "role": "Axona Digital AB",
+      "send_email": false
+    },
+    {
+      "email": "anna@acme.se",
+      "fields": [
+        {
+          "default_value": "2026-0042",
+          "name": "Offertnummer",
+          "readonly": true
+        },
+        {
+          "default_value": "__DATE__",
+          "name": "Datum",
+          "readonly": true
+        },
+        {
+          "default_value": "__DATE__",
+          "name": "Giltig till",
+          "readonly": true
+        },
+        {
+          "default_value": "Acme AB",
+          "name": "Företag",
+          "readonly": true
+        },
+        {
+          "default_value": "Anna Andersson",
+          "name": "Kontaktperson",
+          "readonly": true
+        },
+        {
+          "default_value": "Uppdraget omfattar:\n• Ny responsiv webbplats i Next.js\n• AI-chattbott integrerad med CRM\n• SEO-optimering och launch-paket\n• Support efter lansering\n\nSe bifogad offert för fullständig beskrivning.",
+          "name": "Uppdragsbeskrivning",
+          "readonly": true
+        },
+        {
+          "default_value": "Ny responsiv webbplats i Next.js  |  1 x 85 000,00 kr  =  85 000,00 kr\nAI-chattbott integrerad med CRM  |  1 x 65 000,00 kr  =  65 000,00 kr\nSEO-optimering och launch-paket  |  1 x 25 000,00 kr  =  25 000,00 kr\nSupport efter lansering  |  3 x 3 333,33 kr  =  10 000,00 kr",
+          "name": "Prislista",
+          "readonly": true
+        },
+        {
+          "default_value": "231 250,00 kr",
+          "name": "Totalt",
+          "readonly": true
+        },
+        {
+          "default_value": "30 dagar netto",
+          "name": "Betalningsvillkor",
+          "readonly": true
+        },
+        {
+          "default_value": "Standardvillkor enligt offert. Betalning inom 30 dagar efter fakturadatum.",
+          "name": "Villkor",
+          "readonly": true
+        },
+        {
+          "default_value": "__PROPOSAL_URL__",
+          "name": "Offertlänk",
+          "readonly": true
+        }
+      ],
+      "name": "Anna Andersson",
+      "role": "First Party",
+      "send_email": false
+    }
+  ],
+  "template_id": 42
+}

@@ -1,0 +1,59 @@
+# Nystartade bolag i Jämtlands län, varje måndag.
+#
+# Laddar ner SCB:s företagsregister (Bolagsverkets värdefulla datamängder,
+# gratis, ingen nyckel), sållar på postnummer 830–846 utom 841 (Ånge) och
+# registreringsdatum de senaste 45 dagarna, och postar raderna till
+# import_new_companies. Överlappet mellan veckorna är avsiktligt: filen
+# uppdateras veckovis och dubbletter sorteras bort i funktionen.
+#
+# Hemligheter: SUPABASE_URL (finns sedan tidigare) och NYSTARTADE_SECRET
+# (samma värde som Supabase-hemligheten med samma namn). Service-nyckeln
+# behövs inte här.
+name: Nystartade bolag
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # måndag 06:00 svensk sommartid
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Antal dagar bakåt"
+        default: "45"
+      dry_run:
+        description: "Torrkörning (lägg inte in något)"
+        type: boolean
+        default: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Hämta SCB:s bulkfil
+        run: curl -fsSL --retry 3 -o scb.zip https://vardefulla-datamangder.bolagsverket.se/scb/scb_bulkfil.zip
+
+      - name: Sålla på län och datum
+        env:
+          DAYS: ${{ inputs.days || '45' }}
+        run: |
+          SINCE=$(date -u -d "$DAYS days ago" +%Y%m%d)
+          echo "SINCE_ISO=$(date -u -d "$DAYS days ago" +%Y-%m-%d)" >> "$GITHUB_ENV"
+          unzip -p scb.zip | iconv -f latin1 -t utf-8 \
+            | awk -F'\t' -v since="$SINCE" 'NR>1 { pn=substr($15,1,3)+0; if (pn>=830 && pn<=846 && pn!=841 && $17>=since) print }' \
+            > rows.tsv
+          echo "Rader efter sållning: $(wc -l < rows.tsv)"
+
+      - name: Skicka till CRM:et
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NYSTARTADE_SECRET: ${{ secrets.NYSTARTADE_SECRET }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          jq -R -s --arg since "$SINCE_ISO" --argjson dry "$DRY_RUN" \
+            '{since: $since, dry_run: $dry, lines: (split("\n") | map(select(length > 0)))}' rows.tsv > body.json
+          curl -fsS -X POST "$SUPABASE_URL/functions/v1/import_new_companies" \
+            -H "Content-Type: application/json" \
+            -H "x-import-secret: $NYSTARTADE_SECRET" \
+            --data @body.json | tee result.json
+          echo
+          jq . result.json

@@ -1,0 +1,978 @@
+import {
+  withLifecycleCallbacks,
+  type CreateParams,
+  type DataProvider,
+  type Identifier,
+  type ResourceCallbacks,
+  type UpdateParams,
+} from "ra-core";
+import fakeRestDataProvider from "ra-data-fakerest";
+
+import type {
+  CalendarEvent,
+  Company,
+  Contact,
+  ContactNote,
+  Deal,
+  DealNote,
+  Sale,
+  SalesFormData,
+  SignUpData,
+  Task,
+  CustomerBillingRow,
+  CustomerCoverage,
+  CustomerVisibilityDashboardResponse,
+  EmailSendStatsResponse,
+  FortnoxInvoice,
+  MonthlyAnalysisPeriodSummary,
+  RecurringRevenueDeal,
+  ScannerLeadStatsResponse,
+} from "../../types";
+import type { ConfigurationContextValue } from "../../root/ConfigurationContext";
+import { buildCustomerBillingOverview } from "../../fortnox/customerBilling";
+import { getActivityLog } from "../commons/activity";
+import { getCompanyAvatar } from "../commons/getCompanyAvatar";
+import { getContactAvatar } from "../commons/getContactAvatar";
+import { mergeContacts } from "../commons/mergeContacts";
+import type { CrmDataProvider } from "../types";
+import {
+  authProvider as defaultAuthProvider,
+  USER_STORAGE_KEY,
+} from "./authProvider";
+import generateData from "./dataGenerator";
+import type { Db } from "./dataGenerator/types";
+import { withSupabaseFilterAdapter } from "./internal/supabaseAdapter";
+
+const TASK_MARKED_AS_DONE = "TASK_MARKED_AS_DONE";
+const TASK_MARKED_AS_UNDONE = "TASK_MARKED_AS_UNDONE";
+const TASK_DONE_NOT_CHANGED = "TASK_DONE_NOT_CHANGED";
+
+const toDateOnly = (date: Date): string => {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+};
+
+const demoInvoiceDate = (
+  companyId: Identifier,
+  interval: Deal["recurring_interval"],
+): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const id = Number(companyId);
+
+  if (id % 7 === 0) {
+    return toDateOnly(new Date(year, now.getMonth() - 2, 15));
+  }
+  if (interval === "yearly") return `${year}-01-15`;
+  if (interval === "quarterly") return toDateOnly(new Date(year, 5, 15));
+  return toDateOnly(new Date(year, now.getMonth() - 1, 15));
+};
+
+/**
+ * Demo billing coverage: some customers are prepaid through year-end, some
+ * mid-year, and some have no manual schedule set (fall back to the estimate).
+ */
+const demoInvoicedThrough = (deal: Deal): string | null => {
+  if (deal.invoiced_through) return deal.invoiced_through;
+  const id = Number(deal.id);
+  const year = new Date().getFullYear();
+  if (id % 3 === 0) return null;
+  if (id % 3 === 1) return `${year}-12-31`;
+  return toDateOnly(new Date(year, 5, 30));
+};
+
+const demoRecurringInterval = (
+  deal: Deal,
+): NonNullable<Deal["recurring_interval"]> => {
+  if (deal.recurring_interval) return deal.recurring_interval;
+  const intervals = ["monthly", "quarterly", "yearly"] as const;
+  return intervals[Number(deal.id) % intervals.length];
+};
+
+const demoRecurringAmount = (deal: Deal): number => {
+  if ((deal.recurring_amount ?? 0) > 0) return deal.recurring_amount ?? 0;
+  const monthly = 1_500 + (Number(deal.id) % 6) * 750;
+  const interval = demoRecurringInterval(deal);
+  if (interval === "yearly") return monthly * 12;
+  if (interval === "quarterly") return monthly * 3;
+  return monthly;
+};
+
+const processCompanyLogo = async (params: any) => {
+  let logo = params.data.logo;
+
+  if (typeof logo !== "object" || logo === null || !logo.src) {
+    logo = await getCompanyAvatar(params.data);
+  } else if (logo.rawFile instanceof File) {
+    const base64Logo = await convertFileToBase64(logo);
+    logo = { src: base64Logo, title: logo.title };
+  }
+
+  return {
+    ...params,
+    data: {
+      ...params.data,
+      logo,
+    },
+  };
+};
+
+async function processContactAvatar(
+  params: UpdateParams<Contact>,
+): Promise<UpdateParams<Contact>>;
+
+async function processContactAvatar(
+  params: CreateParams<Contact>,
+): Promise<CreateParams<Contact>>;
+
+async function processContactAvatar(
+  params: CreateParams<Contact> | UpdateParams<Contact>,
+): Promise<CreateParams<Contact> | UpdateParams<Contact>> {
+  const { data } = params;
+  if (data.avatar?.src || !data.email_jsonb || !data.email_jsonb.length) {
+    return params;
+  }
+  const avatarUrl = await getContactAvatar(data);
+
+  // Clone the data and modify the clone
+  const newData = { ...data, avatar: { src: avatarUrl || undefined } };
+
+  return { ...params, data: newData };
+}
+
+async function fetchAndUpdateCompanyData(
+  params: UpdateParams<Contact>,
+  dataProvider: DataProvider,
+): Promise<UpdateParams<Contact>>;
+
+async function fetchAndUpdateCompanyData(
+  params: CreateParams<Contact>,
+  dataProvider: DataProvider,
+): Promise<CreateParams<Contact>>;
+
+async function fetchAndUpdateCompanyData(
+  params: CreateParams<Contact> | UpdateParams<Contact>,
+  dataProvider: DataProvider,
+): Promise<CreateParams<Contact> | UpdateParams<Contact>> {
+  const { data } = params;
+  const newData = { ...data };
+
+  if (!newData.company_id) {
+    return params;
+  }
+
+  const { data: company } = await dataProvider.getOne("companies", {
+    id: newData.company_id,
+  });
+
+  if (!company) {
+    return params;
+  }
+
+  newData.company_name = company.name;
+  return { ...params, data: newData };
+}
+
+export interface CreateFakeRestDataProviderOptions {
+  db?: Db;
+  latency?: number;
+  authProvider?: Pick<typeof defaultAuthProvider, "getIdentity">;
+}
+
+const processConfigLogo = async (logo: any): Promise<string> => {
+  if (typeof logo === "string") return logo;
+  if (logo?.rawFile instanceof File) {
+    return (await convertFileToBase64(logo)) as string;
+  }
+  return logo?.src ?? "";
+};
+
+const preserveAttachmentMimeType = <
+  NoteType extends { attachments?: Array<{ rawFile?: File; type?: string }> },
+>(
+  note: NoteType,
+): NoteType => ({
+  ...note,
+  attachments: (note.attachments ?? []).map((attachment) => ({
+    ...attachment,
+    type: attachment.type ?? attachment.rawFile?.type,
+  })),
+});
+
+export const createDataProvider = ({
+  db = generateData(),
+  latency = 300,
+  authProvider,
+}: CreateFakeRestDataProviderOptions = {}): CrmDataProvider => {
+  const baseDataProvider = fakeRestDataProvider(db, true, latency);
+  let taskUpdateType = TASK_DONE_NOT_CHANGED;
+  const getIdentity = async () =>
+    authProvider?.getIdentity?.() ?? defaultAuthProvider.getIdentity?.();
+
+  const updateCompany = async (
+    companyId: Identifier,
+    updateFn: (company: Company) => Partial<Company>,
+  ) => {
+    const { data: company } = await dataProvider.getOne<Company>("companies", {
+      id: companyId,
+    });
+
+    return await dataProvider.update("companies", {
+      id: companyId,
+      data: {
+        ...updateFn(company),
+      },
+      previousData: company,
+    });
+  };
+
+  const dataProviderWithCustomMethod: CrmDataProvider = {
+    ...baseDataProvider,
+    async getCustomerVisibilityDashboard(
+      period: string,
+    ): Promise<CustomerVisibilityDashboardResponse> {
+      const start = new Date(`${period}T00:00:00Z`);
+      const previousStart = new Date(
+        Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 1, 1),
+      );
+      const end = new Date(
+        Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0),
+      );
+      const previousEnd = new Date(
+        Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 0),
+      );
+      return {
+        period: {
+          start: period,
+          end: end.toISOString().slice(0, 10),
+        },
+        previous_period: {
+          start: previousStart.toISOString().slice(0, 10),
+          end: previousEnd.toISOString().slice(0, 10),
+        },
+        rows: [],
+      };
+    },
+    async getMonthlyAnalysisStatusSummary(): Promise<
+      MonthlyAnalysisPeriodSummary[]
+    > {
+      // Ingen report_pipeline_queue-generator finns i fakerest-datasetet
+      // ännu; returnera tomt istället för att hitta på siffror.
+      return [];
+    },
+    async getEmailSendStats(): Promise<EmailSendStatsResponse> {
+      // Inget email_sends-dataset i fakerest ännu; returnera tomt istället
+      // för att hitta på siffror.
+      return {
+        totals: {
+          sent: 0,
+          delivered: 0,
+          opened: 0,
+          clicked: 0,
+          bounced: 0,
+          complained: 0,
+          replied: 0,
+          open_rate: null,
+          click_rate: null,
+          bounce_rate: null,
+          reply_rate: null,
+        },
+        by_channel: [],
+        by_template: [],
+        trend: [],
+      };
+    },
+    async getScannerLeadStats(): Promise<ScannerLeadStatsResponse> {
+      // Inget scanner_public_requests-dataset i fakerest ännu; returnera
+      // tomt istället för att hitta på siffror.
+      return {
+        totals: {
+          requests: 0,
+          scans_completed: 0,
+          leads_with_email: 0,
+          conversion_rate: null,
+          avg_score_leads: null,
+          meetings_booked: 0,
+          meeting_conversion_rate: null,
+          open_followups: 0,
+          unassigned_followups: 0,
+        },
+        trend: [],
+        latest_leads: [],
+      };
+    },
+    async getRecurringRevenue(): Promise<RecurringRevenueDeal[]> {
+      const [{ data: deals }, { data: companies }] = await Promise.all([
+        baseDataProvider.getList<Deal>("deals", {
+          filter: { stage: "won" },
+          pagination: { page: 1, perPage: 10_000 },
+          sort: { field: "id", order: "ASC" },
+        }),
+        baseDataProvider.getList<Company>("companies", {
+          filter: {},
+          pagination: { page: 1, perPage: 10_000 },
+          sort: { field: "id", order: "ASC" },
+        }),
+      ]);
+      const companyById = new Map(companies.map((c) => [String(c.id), c]));
+
+      return deals.map((deal) => ({
+        id: deal.id,
+        name: deal.name,
+        company_id: deal.company_id,
+        company_name: deal.company_id
+          ? (companyById.get(String(deal.company_id))?.name ?? null)
+          : null,
+        billing_company_id: deal.billing_company_id ?? null,
+        billing_company_name: deal.billing_company_id
+          ? (companyById.get(String(deal.billing_company_id))?.name ?? null)
+          : null,
+        amount: deal.amount,
+        recurring_amount: demoRecurringAmount(deal),
+        recurring_interval: demoRecurringInterval(deal),
+        billing_schedule_type: deal.billing_schedule_type ?? "standard",
+        installment_count: deal.installment_count ?? null,
+        installment_interval_months: deal.installment_interval_months ?? null,
+        invoiced_through: demoInvoicedThrough(deal),
+        billing_start_date: deal.billing_start_date ?? null,
+      }));
+    },
+    async getCustomerCoverage(): Promise<CustomerCoverage[]> {
+      const [{ data: deals }, { data: companies }] = await Promise.all([
+        baseDataProvider.getList<Deal>("deals", {
+          filter: { stage: "won" },
+          pagination: { page: 1, perPage: 10_000 },
+          sort: { field: "id", order: "ASC" },
+        }),
+        baseDataProvider.getList<Company>("companies", {
+          filter: {},
+          pagination: { page: 1, perPage: 10_000 },
+          sort: { field: "id", order: "ASC" },
+        }),
+      ]);
+      const companyById = new Map(companies.map((c) => [String(c.id), c]));
+      const byCompany = new Map<string, CustomerCoverage>();
+      const toMonthly = (
+        amount: number | null | undefined,
+        interval: Deal["recurring_interval"],
+      ) => {
+        if (!amount) return 0;
+        if (interval === "yearly") return amount / 12;
+        if (interval === "quarterly") return amount / 3;
+        return amount;
+      };
+
+      for (const deal of deals) {
+        if (!deal.company_id) continue;
+        const billingCompanyId = deal.billing_company_id ?? deal.company_id;
+        const key = String(billingCompanyId);
+        const company = companyById.get(key);
+        const interval = demoRecurringInterval(deal);
+        const monthly = toMonthly(demoRecurringAmount(deal), interval);
+        const existing = byCompany.get(key);
+        if (existing) {
+          existing.won_deal_count += 1;
+          existing.won_amount += deal.amount ?? 0;
+          existing.recurring_monthly += monthly;
+          existing.has_recurring = existing.has_recurring || monthly > 0;
+          existing.has_contract =
+            existing.has_contract || (monthly > 0 && Number(deal.id) % 3 !== 0);
+        } else {
+          byCompany.set(key, {
+            company_id: billingCompanyId,
+            company_name: company?.name ?? null,
+            is_fortnox_customer: Number(billingCompanyId) % 4 !== 0,
+            has_invoice: Number(billingCompanyId) % 5 !== 0,
+            won_deal_count: 1,
+            won_amount: deal.amount ?? 0,
+            recurring_monthly: monthly,
+            has_recurring: monthly > 0,
+            has_contract: monthly > 0 && Number(deal.id) % 3 !== 0,
+          });
+        }
+      }
+
+      return [...byCompany.values()].sort(
+        (a, b) => b.won_amount - a.won_amount,
+      );
+    },
+    async getCustomerBillingOverview(): Promise<CustomerBillingRow[]> {
+      const deals = await dataProviderWithCustomMethod.getRecurringRevenue();
+      const invoices: FortnoxInvoice[] = deals
+        .filter((deal) => {
+          const companyId = deal.billing_company_id ?? deal.company_id;
+          return companyId && Number(companyId) % 5 !== 0;
+        })
+        .map((deal, index) => {
+          const companyId = deal.billing_company_id ?? deal.company_id;
+          const invoiceDate = demoInvoiceDate(
+            companyId!,
+            deal.recurring_interval,
+          );
+          const dueDate = toDateOnly(
+            new Date(
+              new Date(`${invoiceDate}T00:00:00`).getTime() + 30 * 864e5,
+            ),
+          );
+          const paid = Number(companyId) % 6 !== 0;
+          const total = Math.round((deal.recurring_amount ?? 0) * 1.25);
+
+          return {
+            document_number: 90_000 + index,
+            company_id: Number(companyId),
+            deal_id: Number(deal.id),
+            quote_id: null,
+            customer_number: String(companyId),
+            customer_name: deal.billing_company_name ?? deal.company_name,
+            organisation_number: null,
+            invoice_date: invoiceDate,
+            due_date: dueDate,
+            final_pay_date: paid ? dueDate : null,
+            currency: "SEK",
+            total,
+            total_vat: total * 0.2,
+            balance: paid ? 0 : total,
+            booked: true,
+            sent: true,
+            cancelled: false,
+            invoice_type: null,
+            ocr: null,
+            reminders: null,
+            status: paid ? "paid" : "unpaid",
+            synced_at: new Date().toISOString(),
+          };
+        });
+
+      return buildCustomerBillingOverview(deals, invoices);
+    },
+    async getUnlinkedFortnoxInvoices() {
+      // Demo has no orphan invoices — every mirrored invoice is linked.
+      return [];
+    },
+    async linkFortnoxCustomer(_companyId: Identifier, customerNumber: string) {
+      return {
+        customer_number: customerNumber,
+        action: "linked" as const,
+        relinked_invoices: 0,
+        customer_name: null,
+        org_number: null,
+      };
+    },
+    async getList(resource: string, params: any) {
+      if (resource === "activity_log") {
+        const { filter = {}, pagination } = params;
+        const all = await getActivityLog(
+          withSupabaseFilterAdapter(baseDataProvider),
+          filter.company_id,
+          filter.sales_id,
+        );
+        const { page, perPage } = pagination;
+        const start = (page - 1) * perPage;
+        return { data: all.slice(start, start + perPage), total: all.length };
+      }
+      return baseDataProvider.getList(resource, params);
+    },
+    unarchiveDeal: async (deal: Deal) => {
+      // get all deals where stage is the same as the deal to unarchive
+      const { data: deals } = await baseDataProvider.getList<Deal>("deals", {
+        filter: { stage: deal.stage },
+        pagination: { page: 1, perPage: 1000 },
+        sort: { field: "index", order: "ASC" },
+      });
+
+      // set index for each deal starting from 1, if the deal to unarchive is found, set its index to the last one
+      const updatedDeals = deals.map((d, index) => ({
+        ...d,
+        index: d.id === deal.id ? 0 : index + 1,
+        archived_at: d.id === deal.id ? null : d.archived_at,
+      }));
+
+      return await Promise.all(
+        updatedDeals.map((updatedDeal) =>
+          dataProvider.update("deals", {
+            id: updatedDeal.id,
+            data: updatedDeal,
+            previousData: deals.find((d) => d.id === updatedDeal.id),
+          }),
+        ),
+      );
+    },
+    signUp: async ({
+      email,
+      password,
+      first_name,
+      last_name,
+    }: SignUpData): Promise<{
+      id: string;
+      email: string;
+      password: string;
+    }> => {
+      const user = await baseDataProvider.create("sales", {
+        data: {
+          email,
+          first_name,
+          last_name,
+        },
+      });
+
+      return {
+        ...user.data,
+        password,
+      };
+    },
+    salesCreate: async ({
+      ...data
+    }: SalesFormData): Promise<{
+      data: Sale;
+      invite_link?: string | null;
+      temporary_password?: string | null;
+      existing_user?: boolean;
+    }> => {
+      const response = await dataProvider.create("sales", {
+        data: {
+          ...data,
+          password: "new_password",
+        },
+      });
+
+      return {
+        data: response.data,
+        invite_link: null,
+        temporary_password: "demo_newPassword42!",
+        existing_user: false,
+      };
+    },
+    salesUpdate: async (
+      id: Identifier,
+      data: Partial<Omit<SalesFormData, "password">>,
+    ): Promise<Sale> => {
+      const { data: previousData } = await dataProvider.getOne<Sale>("sales", {
+        id,
+      });
+
+      if (!previousData) {
+        throw new Error("User not found");
+      }
+
+      const { data: sale } = await dataProvider.update<Sale>("sales", {
+        id,
+        data,
+        previousData,
+      });
+      return { ...sale, user_id: sale.id.toString() };
+    },
+    isInitialized: async (): Promise<boolean> => {
+      const sales = await dataProvider.getList<Sale>("sales", {
+        filter: {},
+        pagination: { page: 1, perPage: 1 },
+        sort: { field: "id", order: "ASC" },
+      });
+      if (sales.data.length === 0) {
+        return false;
+      }
+      return true;
+    },
+    updatePassword: async (id: Identifier, password: string): Promise<true> => {
+      const currentUser = await getIdentity();
+      if (!currentUser) {
+        throw new Error("User not found");
+      }
+      const { data: previousData } = await dataProvider.getOne<Sale>("sales", {
+        id: currentUser.id,
+      });
+
+      if (!previousData) {
+        throw new Error("User not found");
+      }
+
+      await dataProvider.update("sales", {
+        id,
+        data: {
+          password,
+        },
+        previousData,
+      });
+
+      return true;
+    },
+    mergeContacts: async (sourceId: Identifier, targetId: Identifier) => {
+      return mergeContacts(sourceId, targetId, baseDataProvider);
+    },
+    getConfiguration: async (): Promise<ConfigurationContextValue> => {
+      const { data } = await baseDataProvider.getOne("configuration", {
+        id: 1,
+      });
+      return (data?.config as ConfigurationContextValue) ?? {};
+    },
+    updateConfiguration: async (
+      config: ConfigurationContextValue,
+    ): Promise<ConfigurationContextValue> => {
+      const { data: prev } = await baseDataProvider.getOne("configuration", {
+        id: 1,
+      });
+      await baseDataProvider.update("configuration", {
+        id: 1,
+        data: { config },
+        previousData: prev,
+      });
+      return config;
+    },
+    importGoogleSheetLeads: async () => {
+      return {
+        message: "Demo mode: Google Sheet import is not available",
+      };
+    },
+    retryLeadImportEnrichment: async () => {
+      return {
+        message: "Demo mode: import enrichment retry is not available",
+      };
+    },
+    generateQuoteText: async (_quoteId: Identifier) => {
+      return {
+        success: true,
+        message: "Demo mode: quote text generation skipped",
+      };
+    },
+    generateQuotePdf: async (_quoteId: Identifier) => {
+      return { success: true, message: "Demo mode: PDF generation skipped" };
+    },
+    sendQuoteForSigning: async (_quoteId: Identifier) => {
+      return { success: true, message: "Demo mode: signing skipped" };
+    },
+  };
+
+  const dataProvider = withLifecycleCallbacks(
+    withSupabaseFilterAdapter(dataProviderWithCustomMethod),
+    [
+      {
+        resource: "configuration",
+        beforeUpdate: async (params) => {
+          const config = params.data.config;
+          if (config) {
+            config.lightModeLogo = await processConfigLogo(
+              config.lightModeLogo,
+            );
+            config.darkModeLogo = await processConfigLogo(config.darkModeLogo);
+          }
+          return params;
+        },
+      },
+      {
+        resource: "sales",
+        beforeCreate: async (params) => {
+          const { data } = params;
+          // If administrator role is not set, we simply set it to false
+          if (data.administrator == null) {
+            data.administrator = false;
+          }
+          return params;
+        },
+        afterSave: async (data) => {
+          // Since the current user is stored in localStorage in fakerest authProvider
+          // we need to update it to keep information up to date in the UI
+          const currentUser = await getIdentity();
+          if (currentUser?.id === data.id) {
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data));
+          }
+          return data;
+        },
+        beforeDelete: async (params) => {
+          if (params.meta?.identity?.id == null) {
+            throw new Error("Identity MUST be set in meta");
+          }
+
+          const newSaleId = params.meta.identity.id as Identifier;
+
+          const [companies, contacts, contactNotes, deals] = await Promise.all([
+            dataProvider.getList("companies", {
+              filter: { sales_id: params.id },
+              pagination: {
+                page: 1,
+                perPage: 10_000,
+              },
+              sort: { field: "id", order: "ASC" },
+            }),
+            dataProvider.getList("contacts", {
+              filter: { sales_id: params.id },
+              pagination: {
+                page: 1,
+                perPage: 10_000,
+              },
+              sort: { field: "id", order: "ASC" },
+            }),
+            dataProvider.getList("contact_notes", {
+              filter: { sales_id: params.id },
+              pagination: {
+                page: 1,
+                perPage: 10_000,
+              },
+              sort: { field: "id", order: "ASC" },
+            }),
+            dataProvider.getList("deals", {
+              filter: { sales_id: params.id },
+              pagination: {
+                page: 1,
+                perPage: 10_000,
+              },
+              sort: { field: "id", order: "ASC" },
+            }),
+          ]);
+
+          await Promise.all([
+            dataProvider.updateMany("companies", {
+              ids: companies.data.map((company) => company.id),
+              data: {
+                sales_id: newSaleId,
+              },
+            }),
+            dataProvider.updateMany("contacts", {
+              ids: contacts.data.map((company) => company.id),
+              data: {
+                sales_id: newSaleId,
+              },
+            }),
+            dataProvider.updateMany("contact_notes", {
+              ids: contactNotes.data.map((company) => company.id),
+              data: {
+                sales_id: newSaleId,
+              },
+            }),
+            dataProvider.updateMany("deals", {
+              ids: deals.data.map((company) => company.id),
+              data: {
+                sales_id: newSaleId,
+              },
+            }),
+          ]);
+
+          return params;
+        },
+      } satisfies ResourceCallbacks<Sale>,
+      {
+        resource: "contacts",
+        beforeCreate: async (createParams, dataProvider) => {
+          const params = {
+            ...createParams,
+            data: {
+              ...createParams.data,
+              first_seen:
+                createParams.data.first_seen ?? new Date().toISOString(),
+              last_seen:
+                createParams.data.last_seen ?? new Date().toISOString(),
+            },
+          };
+          const newParams = await processContactAvatar(params);
+          return fetchAndUpdateCompanyData(newParams, dataProvider);
+        },
+        afterCreate: async (result) => {
+          if (result.data.company_id != null) {
+            await updateCompany(result.data.company_id, (company) => ({
+              nb_contacts: (company.nb_contacts ?? 0) + 1,
+            }));
+          }
+
+          return result;
+        },
+        beforeUpdate: async (params) => {
+          const newParams = await processContactAvatar(params);
+          return fetchAndUpdateCompanyData(newParams, dataProvider);
+        },
+        afterDelete: async (result) => {
+          if (result.data.company_id != null) {
+            await updateCompany(result.data.company_id, (company) => ({
+              nb_contacts: (company.nb_contacts ?? 1) - 1,
+            }));
+          }
+
+          return result;
+        },
+      } satisfies ResourceCallbacks<Contact>,
+      {
+        resource: "tasks",
+        afterCreate: async (result, dataProvider) => {
+          // update the task count in the related contact
+          const { contact_id } = result.data;
+          const { data: contact } = await dataProvider.getOne("contacts", {
+            id: contact_id,
+          });
+          await dataProvider.update("contacts", {
+            id: contact_id,
+            data: {
+              nb_tasks: (contact.nb_tasks ?? 0) + 1,
+            },
+            previousData: contact,
+          });
+          return result;
+        },
+        beforeUpdate: async (params) => {
+          const { data, previousData } = params;
+          if (previousData.done_date !== data.done_date) {
+            taskUpdateType = data.done_date
+              ? TASK_MARKED_AS_DONE
+              : TASK_MARKED_AS_UNDONE;
+          } else {
+            taskUpdateType = TASK_DONE_NOT_CHANGED;
+          }
+          return params;
+        },
+        afterUpdate: async (result, dataProvider) => {
+          // update the contact: if the task is done, decrement the nb tasks, otherwise increment it
+          const { contact_id } = result.data;
+          const { data: contact } = await dataProvider.getOne("contacts", {
+            id: contact_id,
+          });
+          if (taskUpdateType !== TASK_DONE_NOT_CHANGED) {
+            await dataProvider.update("contacts", {
+              id: contact_id,
+              data: {
+                nb_tasks:
+                  taskUpdateType === TASK_MARKED_AS_DONE
+                    ? (contact.nb_tasks ?? 0) - 1
+                    : (contact.nb_tasks ?? 0) + 1,
+              },
+              previousData: contact,
+            });
+          }
+          return result;
+        },
+        afterDelete: async (result, dataProvider) => {
+          // update the task count in the related contact
+          const { contact_id } = result.data;
+          const { data: contact } = await dataProvider.getOne("contacts", {
+            id: contact_id,
+          });
+          await dataProvider.update("contacts", {
+            id: contact_id,
+            data: {
+              nb_tasks: (contact.nb_tasks ?? 0) - 1,
+            },
+            previousData: contact,
+          });
+          return result;
+        },
+      } satisfies ResourceCallbacks<Task>,
+      {
+        resource: "companies",
+        beforeCreate: async (params) => {
+          const createParams = await processCompanyLogo(params);
+
+          return {
+            ...createParams,
+            data: {
+              ...createParams.data,
+              created_at: new Date().toISOString(),
+            },
+          };
+        },
+        beforeUpdate: async (params) => {
+          return await processCompanyLogo(params);
+        },
+        afterUpdate: async (result, dataProvider) => {
+          // get all contacts of the company and for each contact, update the company_name
+          const { id, name } = result.data;
+          const { data: contacts } = await dataProvider.getList("contacts", {
+            filter: { company_id: id },
+            pagination: { page: 1, perPage: 1000 },
+            sort: { field: "id", order: "ASC" },
+          });
+
+          const contactIds = contacts.map((contact) => contact.id);
+          await dataProvider.updateMany("contacts", {
+            ids: contactIds,
+            data: { company_name: name },
+          });
+          return result;
+        },
+      } satisfies ResourceCallbacks<Company>,
+      {
+        resource: "calendar_events",
+        beforeCreate: async (params) => {
+          return {
+            ...params,
+            data: {
+              source: "crm",
+              status: "scheduled",
+              meeting_provider: "google_meet",
+              time_zone: "Europe/Stockholm",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              ...params.data,
+            },
+          };
+        },
+        beforeUpdate: async (params) => {
+          return {
+            ...params,
+            data: {
+              ...params.data,
+              updated_at: new Date().toISOString(),
+            },
+          };
+        },
+      } satisfies ResourceCallbacks<CalendarEvent>,
+      {
+        resource: "deals",
+        beforeCreate: async (params) => {
+          return {
+            ...params,
+            data: {
+              ...params.data,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          };
+        },
+        afterCreate: async (result) => {
+          await updateCompany(result.data.company_id, (company) => ({
+            nb_deals: (company.nb_deals ?? 0) + 1,
+          }));
+
+          return result;
+        },
+        beforeUpdate: async (params) => {
+          return {
+            ...params,
+            data: {
+              ...params.data,
+              updated_at: new Date().toISOString(),
+            },
+          };
+        },
+        afterDelete: async (result) => {
+          await updateCompany(result.data.company_id, (company) => ({
+            nb_deals: (company.nb_deals ?? 1) - 1,
+          }));
+
+          return result;
+        },
+      } satisfies ResourceCallbacks<Deal>,
+      {
+        resource: "contact_notes",
+        beforeSave: async (params) => preserveAttachmentMimeType(params),
+      } satisfies ResourceCallbacks<ContactNote>,
+      {
+        resource: "deal_notes",
+        beforeSave: async (params) => preserveAttachmentMimeType(params),
+      } satisfies ResourceCallbacks<DealNote>,
+    ],
+  ) as CrmDataProvider;
+
+  return dataProvider;
+};
+
+export const dataProvider = createDataProvider();
+
+/**
+ * Convert a `File` object returned by the upload input into a base 64 string.
+ * That's not the most optimized way to store images in production, but it's
+ * enough to illustrate the idea of dataprovider decoration.
+ */
+const convertFileToBase64 = (file: { rawFile: Blob }): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    // We know result is a string as we used readAsDataURL
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file.rawFile);
+  });

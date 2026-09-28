@@ -1,0 +1,70 @@
+import type { DataProvider, Identifier } from "ra-core";
+import type {
+  CustomerVisibilityDashboardResponse,
+  MonthlyAnalysisPeriodSummary,
+  PresentationPolicy,
+  ReportAiContent,
+} from "../../types";
+
+export type VisibilityDataProvider = DataProvider & {
+  analyzeWebsite(
+    companyId: Identifier,
+    options?: {
+      window_kind?: "rolling_28d" | "calendar_month";
+      start_date?: string;
+      end_date?: string;
+    },
+  ): Promise<{
+    success: true;
+    snapshot_id: number;
+    findings_count: number;
+  }>;
+  backfillWebsiteHistory(
+    companyId: Identifier,
+  ): Promise<{ accepted?: boolean; created?: number; skipped?: number }>;
+  generateMonthlyReport(
+    companyId: Identifier,
+    period?: {
+      period_start: string;
+      period_end: string;
+      /** Kör om en period som redan har status sent/approved. Manuellt, aldrig från cron. */
+      force?: boolean;
+      /** Manuellt vald huvudåtgärd som ska styra AI-text och åtgärdsplan. */
+      recommended_service?: string;
+    },
+  ): Promise<{ success: true; report_id: number | null; status: string }>;
+  sendMonthlyReport(
+    reportId: Identifier,
+    overrides?: {
+      recipient_email?: string;
+      recipient_name?: string;
+      ai_content?: ReportAiContent;
+      presentation?: Partial<PresentationPolicy>;
+    },
+  ): Promise<{
+    success: true;
+    report_id: number;
+    status: string;
+    email_send_id: number | null;
+  }>;
+  /** Bygg om HTML/PDF med aktuella inställningar utan att skicka (förhandsvisning). */
+  previewMonthlyReport(
+    reportId: Identifier,
+    overrides?: {
+      recipient_email?: string;
+      recipient_name?: string;
+      ai_content?: ReportAiContent;
+      presentation?: Partial<PresentationPolicy>;
+    },
+  ): Promise<{ success: true; report_id: number; status: string }>;
+  getMonthlyReportPdf(
+    reportId: Identifier,
+  ): Promise<{ success: true; signed_url: string; expires_in: number }>;
+  archiveMonthlyReport(
+    reportId: Identifier,
+  ): Promise<{ success: true; report_id: Identifier; status: "archived" }>;
+  getCustomerVisibilityDashboard(
+    period: string,
+  ): Promise<CustomerVisibilityDashboardResponse>;
+  getMonthlyAnalysisStatusSummary(): Promise<MonthlyAnalysisPeriodSummary[]>;
+};

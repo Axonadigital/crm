@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Avtalsbekräftelse</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 40px 50px;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 11pt;
+        color: #1a1a1a;
+        line-height: 1.4;
+      }
+
+      /* Header */
+      .header {
+        text-align: center;
+        margin-bottom: 10px;
+      }
+      .header h1 {
+        font-size: 22pt;
+        font-weight: bold;
+        margin-bottom: 4px;
+        letter-spacing: 0.5px;
+      }
+      .header .subtitle {
+        font-size: 11pt;
+        color: #555;
+        margin-bottom: 16px;
+      }
+      .divider {
+        border: none;
+        border-top: 2.5px solid #2563eb;
+        margin: 16px 0 28px 0;
+      }
+
+      /* Info grid */
+      .info-grid {
+        display: table;
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0 12px;
+        margin-bottom: 28px;
+      }
+      .info-row {
+        display: table-row;
+      }
+      .info-cell {
+        display: table-cell;
+        width: 50%;
+        vertical-align: top;
+        padding-right: 20px;
+      }
+      .info-cell:last-child {
+        padding-right: 0;
+        padding-left: 20px;
+      }
+      .info-label {
+        font-size: 7.5pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #888;
+        letter-spacing: 0.8px;
+        margin-bottom: 2px;
+      }
+
+      /* Sections */
+      .section {
+        margin-bottom: 24px;
+      }
+      .section-title {
+        font-size: 13pt;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      .proposal-link {
+        margin-bottom: 24px;
+      }
+      .proposal-link-label {
+        font-size: 8pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #dc2626;
+        letter-spacing: 0.5px;
+        margin-bottom: 2px;
+      }
+
+      /* Total */
+      .total-row {
+        text-align: right;
+        font-size: 13pt;
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+      .total-label {
+        margin-right: 12px;
+      }
+
+      /* Signing */
+      .signing-section {
+        margin-top: 30px;
+      }
+      .signing-title {
+        font-size: 14pt;
+        font-weight: bold;
+        margin-bottom: 6px;
+      }
+      .signing-intro {
+        font-size: 10pt;
+        color: #555;
+        margin-bottom: 20px;
+      }
+      .signing-grid {
+        display: flex;
+        justify-content: space-between;
+        gap: 40px;
+      }
+      .signing-party {
+        flex: 1;
+        text-align: center;
+      }
+      .signing-party-label {
+        font-size: 8pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #888;
+        letter-spacing: 0.8px;
+        margin-bottom: 8px;
+      }
+      .signing-date-label {
+        font-size: 8pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #888;
+        letter-spacing: 0.8px;
+        margin-top: 10px;
+        margin-bottom: 4px;
+      }
+
+      /* Footer */
+      .footer {
+        text-align: center;
+        font-size: 8.5pt;
+        color: #999;
+        margin-top: 40px;
+        padding-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Header -->
+    <div class="header">
+      <h1>Avtalsbekräftelse</h1>
+      <div class="subtitle">Axona Digital AB</div>
+    </div>
+    <hr class="divider" />
+
+    <!-- Info grid -->
+    <div class="info-grid">
+      <div class="info-row">
+        <div class="info-cell">
+          <div class="info-label">Offertnummer</div>
+          <number-field
+            name="Offertnummer"
+            role="First Party"
+            readonly="true"
+            style="width: 200px; height: 24px; display: inline-block"
+          >
+          </number-field>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Datum</div>
+          <date-field
+            name="Datum"
+            role="First Party"
+            readonly="true"
+            format="YYYY-MM-DD"
+            style="width: 200px; height: 24px; display: inline-block"
+          >
+          </date-field>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-cell">
+          <div class="info-label">Företag</div>
+          <text-field
+            name="Företag"
+            role="First Party"
+            readonly="true"
+            style="width: 200px; height: 24px; display: inline-block"
+          >
+          </text-field>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Giltig till</div>
+          <date-field
+            name="Giltig till"
+            role="First Party"
+            readonly="true"
+            format="YYYY-MM-DD"
+            style="width: 200px; height: 24px; display: inline-block"
+          >
+          </date-field>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-cell">
+          <div class="info-label">Kontaktperson</div>
+          <text-field
+            name="Kontaktperson"
+            role="First Party"
+            readonly="true"
+            style="width: 200px; height: 24px; display: inline-block"
+          >
+          </text-field>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Betalningsvillkor</div>
+          <text-field
+            name="Betalningsvillkor"
+            role="First Party"
+            readonly="true"
+            style="width: 200px; height: 24px; display: inline-block"
+          >
+          </text-field>
+        </div>
+      </div>
+    </div>
+
+    <!-- Uppdragsbeskrivning -->
+    <div class="section">
+      <div class="section-title">Uppdragsbeskrivning</div>
+      <text-field
+        name="Uppdragsbeskrivning"
+        role="First Party"
+        readonly="true"
+        style="width: 100%; height: 120px; display: block"
+      >
+      </text-field>
+    </div>
+
+    <!-- Fullständig offert -->
+    <div class="proposal-link">
+      <div class="proposal-link-label">Fullständig offert</div>
+      <text-field
+        name="Offertlänk"
+        role="First Party"
+        readonly="true"
+        style="width: 300px; height: 20px; display: inline-block"
+      >
+      </text-field>
+    </div>
+
+    <!-- Prislista -->
+    <div class="section">
+      <div class="section-title">Prislista</div>
+      <text-field
+        name="Prislista"
+        role="First Party"
+        readonly="true"
+        style="width: 100%; height: 120px; display: block"
+      >
+      </text-field>
+    </div>
+
+    <!-- Totalt -->
+    <div class="total-row">
+      <span class="total-label">Totalt inkl. moms:</span>
+      <text-field
+        name="Totalt"
+        role="First Party"
+        readonly="true"
+        style="width: 160px; height: 26px; display: inline-block"
+      >
+      </text-field>
+    </div>
+
+    <!-- Villkor -->
+    <div class="section">
+      <div class="section-title">Villkor</div>
+      <text-field
+        name="Villkor"
+        role="First Party"
+        readonly="true"
+        style="width: 100%; height: 100px; display: block"
+      >
+      </text-field>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- Signering -->
+    <div class="signing-section">
+      <div class="signing-title">Signering</div>
+      <div class="signing-intro">
+        Genom att signera nedan godkänner parterna ovanstående villkor.
+      </div>
+
+      <div class="signing-grid">
+        <!-- Kundens signatur -->
+        <div class="signing-party">
+          <div class="signing-party-label">Kundens signatur</div>
+          <signature-field
+            name="Kundens signatur"
+            role="First Party"
+            style="width: 200px; height: 80px; display: inline-block"
+          >
+          </signature-field>
+          <div class="signing-date-label">Datum</div>
+          <date-field
+            name="Kund datum"
+            role="First Party"
+            format="YYYY-MM-DD"
+            style="width: 160px; height: 24px; display: inline-block"
+          >
+          </date-field>
+        </div>
+
+        <!-- Axona signatur -->
+        <div class="signing-party">
+          <div class="signing-party-label">Axona Digital AB</div>
+          <signature-field
+            name="Axona signatur"
+            role="Axona digital AB"
+            readonly="true"
+            style="width: 200px; height: 80px; display: inline-block"
+          >
+          </signature-field>
+          <div class="signing-date-label">Datum</div>
+          <date-field
+            name="Axona datum"
+            role="Axona digital AB"
+            readonly="true"
+            format="YYYY-MM-DD"
+            style="width: 160px; height: 24px; display: inline-block"
+          >
+          </date-field>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      Axona Digital AB | Org.nr 559438-8587 | Östersund, Sverige
+    </div>
+  </body>
+</html>

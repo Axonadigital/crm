@@ -1,0 +1,324 @@
+/**
+ * Delade typer för månadsrapporten. Speglar jsonb-formerna i website_snapshots
+ * (se findings.ts + migration 20260611150000) men hålls fristående här så att de
+ * rena modulerna kan unit-testas utan att importera analyze_website-funktionen.
+ */
+
+export type FindingSeverity = "high" | "medium" | "low";
+
+export type ReportFinding = {
+  key: string;
+  severity: FindingSeverity;
+  title: string;
+  description: string;
+  internalNote?: string;
+  /** Axona-tjänsten som löser bristen — nyckeln mot upsell-katalogen. */
+  service: string;
+};
+
+/** Delmängd av en website_snapshots-rad som rapporten behöver. */
+export type ReportSnapshot = {
+  id?: number;
+  fetched_at?: string;
+  period_start?: string | null;
+  period_end?: string | null;
+  window_kind?: "legacy" | "rolling_28d" | "calendar_month";
+  data_coverage?: {
+    available_sources?: number;
+    total_sources?: number;
+    ratio?: number;
+    has_search_console?: boolean;
+    has_field_data?: boolean;
+  };
+  source_status?: Record<
+    string,
+    { status: "available" | "unavailable" | "error"; message?: string }
+  >;
+  performance_score?: number | null;
+  seo_score?: number | null;
+  pagespeed?: {
+    lcp_ms?: number | null;
+    cls?: number | null;
+    tbt_ms?: number | null;
+  } | null;
+  field_data?: {
+    scope: "url" | "origin";
+    lcp_ms?: number | null;
+    inp_ms?: number | null;
+    cls?: number | null;
+    lcp_rating?: "GOOD" | "NEEDS_IMPROVEMENT" | "POOR" | null;
+    inp_rating?: "GOOD" | "NEEDS_IMPROVEMENT" | "POOR" | null;
+    cls_rating?: "GOOD" | "NEEDS_IMPROVEMENT" | "POOR" | null;
+  } | null;
+  seo_checks?: {
+    schema_org?: boolean;
+    sitemap?: boolean;
+    h1?: boolean;
+    title?: string | null;
+    meta_description?: string | null;
+    indexable?: boolean | null;
+    robots?: boolean;
+    og_tags?: boolean;
+    h1_count?: number | null;
+  } | null;
+  business_profile?: {
+    found: boolean;
+    rating?: number | null;
+    reviews_count?: number | null;
+  } | null;
+  search_console?: {
+    clicks: number;
+    impressions: number;
+    ctr?: number;
+    position: number;
+    period_start?: string;
+    period_end?: string;
+    top_queries: Array<{
+      query: string;
+      clicks: number;
+      impressions: number;
+      ctr?: number;
+      position: number;
+    }>;
+    top_pages?: Array<{
+      page: string;
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+    }>;
+    branded?: { clicks: number; impressions: number; queries: number };
+    non_branded?: { clicks: number; impressions: number; queries: number };
+    opportunities?: Array<{
+      kind: "low_ctr" | "position_4_10" | "position_11_20";
+      query: string;
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+    }>;
+  } | null;
+  /** Samtal/vägbeskrivningar/webbklick från Google-profilen (Business Profile Performance). */
+  gbp_actions?: {
+    calls: number;
+    website_clicks: number;
+    direction_requests: number;
+  } | null;
+  /**
+   * Förfrågningar och samtal mätta på sajten (site_events). null = omätt,
+   * inte noll — sajten saknar nyckel. Se site_event/README.md.
+   */
+  engagement?: {
+    inquiries: number;
+    site_calls: number;
+    email_clicks: number;
+    measured?: boolean;
+  } | null;
+  findings?: ReportFinding[];
+};
+
+/**
+ * Trend för ett enskilt mått. `deltaPct` är null när föregående saknas (första
+ * månaden) eller är 0. `deltaAbsolute` används för mått där procent är
+ * missvisande (t.ex. snittposition, som mäts i heltalssteg).
+ */
+export type MetricTrend = {
+  current: number | null;
+  previous: number | null;
+  deltaPct: number | null;
+  deltaAbsolute: number | null;
+};
+
+export type ReportMetrics = {
+  clicks: MetricTrend;
+  impressions: MetricTrend;
+  ctr: MetricTrend;
+  position: MetricTrend;
+  performance_score: MetricTrend;
+  lcp_ms: MetricTrend;
+  field_lcp_ms: MetricTrend;
+  field_inp_ms: MetricTrend;
+  field_cls: MetricTrend;
+  reviews_count: MetricTrend;
+  /**
+   * Förfrågningar via sajtens formulär (site_events) och samtal (tel:-klick
+   * på sajten + samtalsklick på Google-profilen). current är null när inget
+   * mäts — resultatkortet och rapporten nämner dem bara då de finns.
+   */
+  inquiries?: MetricTrend;
+  calls?: MetricTrend;
+  /** Topp-sökningar från senaste snapshoten (för "vilka ord driver trafik"). */
+  topQueries: Array<{ query: string; clicks: number; position: number }>;
+  /**
+   * Sökord med visningar men position utanför topp 3 — konkreta exempel på
+   * vad som är värt att optimera för (se keywordOpportunities.ts). Valfri på
+   * typnivå av samma bakåtkompatibilitetsskäl som keywordMovers.
+   */
+  keywordOpportunities?: Array<{
+    query: string;
+    clicks: number;
+    impressions: number;
+    position: number;
+  }>;
+  /**
+   * En punkt per kalendermånad i den begärda perioden (klick + visningar) —
+   * underlag för trendgrafen. Byggs i generate_monthly_reports/index.ts ur
+   * rangeSnaps (inte tillgängligt inne i den rena computeReportMetrics, som
+   * bara ser den redan hopslagna latest/previous-snapshoten) och tilldelas
+   * post-hoc, samma mönster som view_model.presentation.
+   */
+  monthlySeries?: Array<{ month: string; clicks: number; impressions: number }>;
+  topPages: Array<{
+    page: string;
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  }>;
+  opportunities: NonNullable<
+    NonNullable<ReportSnapshot["search_console"]>["opportunities"]
+  >;
+  branded: NonNullable<ReportSnapshot["search_console"]>["branded"] | null;
+  nonBranded:
+    | NonNullable<ReportSnapshot["search_console"]>["non_branded"]
+    | null;
+  /** True när det inte fanns någon föregående snapshot (ingen trend att visa). */
+  isFirstReport: boolean;
+  /**
+   * Positionsrörelser mot föregående månad (se keywordMovement.ts). Valfri
+   * på typnivå för bakåtkompatibilitet med andra konsumenter av ReportMetrics
+   * (t.ex. kundportfölj-dashboarden) som inte bygger fältet.
+   */
+  keywordMovers?: {
+    improved: Array<{
+      query: string;
+      current: number;
+      previous: number;
+      delta: number;
+    }>;
+    declined: Array<{
+      query: string;
+      current: number;
+      previous: number;
+      delta: number;
+    }>;
+  };
+};
+
+/** En upsell-post i katalogen (utan pris — pris tas i dialog, per beslut). */
+export type UpsellOffer = {
+  /** Matchar finding.service-strängen (SERVICES-värdet i findings.ts). */
+  service: string;
+  label: string;
+  /** En mening kunden förstår. */
+  description: string;
+  /** Intern säljnotis. Ska inte matas in som kundvänd pitch. */
+  internalNote?: string;
+  /** Pitch-vinkel för säljaren/AI:n. */
+  pitch: string;
+};
+
+/**
+ * En post i den handlingsdrivna åtgärdsplanen. Knyts till en `ReportFinding`
+ * via `key` så att rapporten kan koppla "vad vi ser" till rätt prioritering.
+ */
+export type ReportActionItem = {
+  /** Matchar ReportFinding.key (samma sträng som findings/upsell-katalogen). */
+  key: string;
+  /** "Vad vi ser" — observationen, gärna med siffran. */
+  what_we_see: string;
+  /** "Vad det betyder" — konsekvens för affären, i klartext. */
+  what_it_means: string;
+  /** "Så löser vi det" — konkret insats, namnger Axona-tjänsten. */
+  how_we_help: string;
+  /** "Nästa steg" — tydlig inbjudan, utan pris. */
+  next_step: string;
+};
+
+/** AI-genererat, kundvänt innehåll. Speglar monthlyReportContentSchema. */
+export type ReportAiContent = {
+  greeting: string;
+  summary: string;
+  recommended_action: string;
+  upsell_pitch: string;
+  /**
+   * Handlingsdriven åtgärdsplan (1–3 poster). Mejlet leder med post 0.
+   * Valfri på typnivå för bakåtkompatibilitet med äldre lagrade rapporter och
+   * manuella send-time-overrides — renderarna faller tillbaka snyggt om den saknas.
+   */
+  action_plan?: ReportActionItem[];
+  /**
+   * Servicen kunden manuellt valt som "Rekommenderad huvudåtgärd" i CRM-modalen
+   * (matchar UpsellOffer.service / ReportFinding.service). Styr rubrik och
+   * prioritering i mejl/PDF — går före det vid generering fixerade
+   * `primaryRecommendation.service`. Saknas på äldre rapporter (fallback).
+   */
+  recommended_service?: string;
+};
+
+export type ReportStatus = "good" | "needs_attention" | "poor" | "missing";
+
+export type ReportTone = "celebrate" | "balanced" | "reassure";
+
+/**
+ * Presentations-policy: vilka kundvända sektioner/siffror som visas + ton.
+ * Beräknas ur view_model (reportPresentation.ts) och lagras INUTI view_model så
+ * den följer med till både generate och send. Valfri på typnivå för
+ * bakåtkompatibilitet med äldre lagrade rapporter.
+ */
+export type PresentationPolicy = {
+  tone: ReportTone;
+  showClicks: boolean;
+  showImpressions: boolean;
+  showCtr: boolean;
+  showPositionAbsolute: boolean;
+  showPositionTrend: boolean;
+  showPerformanceScore: boolean;
+  showLcp: boolean;
+  showPageExperience: boolean;
+  showFourParts: boolean;
+  showMethodology: boolean;
+  filterZeroClickQueries: boolean;
+};
+
+export type ReportViewModel = {
+  version: 2;
+  companyName: string;
+  period: { start: string; end: string; label: string };
+  comparisonPeriod: { start: string; end: string } | null;
+  coverage: {
+    available: number;
+    total: number;
+    ratio: number;
+    missingSources: string[];
+  };
+  metrics: ReportMetrics;
+  statuses: {
+    googleVisibility: ReportStatus;
+    pageExperience: ReportStatus;
+    localVisibility: ReportStatus;
+    technicalFoundation: ReportStatus;
+  };
+  technicalChecks: Array<{
+    key: string;
+    label: string;
+    passed: boolean | null;
+    explanation: string;
+  }>;
+  recommendations: ReportFinding[];
+  primaryRecommendation: ReportFinding | null;
+  /** Auto-beräknad presentations-policy (reportPresentation.ts). */
+  presentation?: PresentationPolicy;
+  /**
+   * Hur många av de begärda kalendermånaderna som faktiskt hade en snapshot
+   * att aggregera. `complete: false` betyder att siffrorna i rapporten INTE
+   * täcker hela den valda perioden (t.ex. saknad historik före pipelinen gick
+   * live) — måste synas i CRM:t istället för att tyst se ut som en fullständig
+   * periodsumma. Tilldelas post-hoc i generate_monthly_reports/index.ts.
+   */
+  periodCoverage?: {
+    monthsRequested: number;
+    monthsFound: number;
+    complete: boolean;
+  };
+};

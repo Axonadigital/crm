@@ -1,0 +1,147 @@
+import { describe, expect, it } from "vitest";
+import { computeReportMetrics } from "./computeReportMetrics.ts";
+import type { ReportSnapshot } from "./types.ts";
+
+const latest: ReportSnapshot = {
+  performance_score: 81,
+  pagespeed: { lcp_ms: 3500, cls: 0 },
+  business_profile: { found: true, rating: 4.5, reviews_count: 12 },
+  search_console: {
+    clicks: 23,
+    impressions: 121,
+    position: 6.8,
+    top_queries: [
+      { query: "jvs maskiner ab", clicks: 10, impressions: 40, position: 1.2 },
+      {
+        query: "entreprenadmaskiner",
+        clicks: 5,
+        impressions: 30,
+        position: 8.1,
+      },
+    ],
+    top_pages: [
+      {
+        page: "https://example.se/service",
+        clicks: 8,
+        impressions: 80,
+        ctr: 0.1,
+        position: 5,
+      },
+    ],
+    branded: { clicks: 15, impressions: 50, queries: 2 },
+    non_branded: { clicks: 8, impressions: 71, queries: 10 },
+  },
+};
+
+const previous: ReportSnapshot = {
+  performance_score: 67,
+  pagespeed: { lcp_ms: 5100, cls: 0 },
+  business_profile: { found: true, rating: 4.5, reviews_count: 10 },
+  search_console: {
+    clicks: 20,
+    impressions: 100,
+    position: 8.0,
+    top_queries: [],
+  },
+};
+
+describe("computeReportMetrics", () => {
+  it("förfrågningar och samtal: null när omätt, summa av sajt och Google-profil när mätt", () => {
+    const omatt = computeReportMetrics(latest, previous);
+    expect(omatt.inquiries?.current).toBeNull();
+    expect(omatt.calls?.current).toBeNull();
+    const matt = computeReportMetrics(
+      { ...latest, engagement: { inquiries: 14, site_calls: 9, email_clicks: 2 }, gbp_actions: { calls: 14, website_clicks: 30, direction_requests: 5 } },
+      { ...previous, engagement: { inquiries: 10, site_calls: 4, email_clicks: 0 } },
+    );
+    expect(matt.inquiries).toMatchObject({ current: 14, previous: 10, deltaPct: 40 });
+    expect(matt.calls).toMatchObject({ current: 23, previous: 4 });
+  });
+
+  it("computes click trend with percentage delta", () => {
+    const m = computeReportMetrics(latest, previous);
+    expect(m.clicks.current).toBe(23);
+    expect(m.clicks.previous).toBe(20);
+    expect(m.clicks.deltaPct).toBeCloseTo(15, 5);
+    expect(m.isFirstReport).toBe(false);
+  });
+
+  it("computes CTR from clicks/impressions", () => {
+    const m = computeReportMetrics(latest, previous);
+    // 23/121*100 ≈ 19.0
+    expect(m.ctr.current).toBeCloseTo(19.008, 2);
+    expect(m.ctr.previous).toBe(20); // 20/100*100
+    expect(m.ctr.deltaPct).toBeCloseTo(-0.992, 2);
+    expect(m.ctr.deltaAbsolute).toBeCloseTo(-0.992, 2);
+  });
+
+  it("uses deltaAbsolute for position (lower is better)", () => {
+    const m = computeReportMetrics(latest, previous);
+    expect(m.position.current).toBe(6.8);
+    expect(m.position.deltaAbsolute).toBeCloseTo(-1.2, 5);
+  });
+
+  it("limits top queries to 5 and rounds position", () => {
+    const m = computeReportMetrics(latest, previous);
+    expect(m.topQueries).toHaveLength(2);
+    expect(m.topQueries[0]).toEqual({
+      query: "jvs maskiner ab",
+      clicks: 10,
+      position: 1.2,
+    });
+  });
+
+  it("carries page and brand discovery context into report metrics", () => {
+    const m = computeReportMetrics(latest, previous);
+    expect(m.topPages[0]?.page).toBe("https://example.se/service");
+    expect(m.branded?.clicks).toBe(15);
+    expect(m.nonBranded?.queries).toBe(10);
+  });
+
+  it("flags first report when no previous snapshot", () => {
+    const m = computeReportMetrics(latest, null);
+    expect(m.isFirstReport).toBe(true);
+    expect(m.clicks.deltaPct).toBeNull();
+    expect(m.clicks.previous).toBeNull();
+    expect(m.clicks.current).toBe(23);
+  });
+
+  it("returns null trend when search_console missing", () => {
+    const m = computeReportMetrics({ performance_score: 90 }, null);
+    expect(m.clicks.current).toBeNull();
+    expect(m.ctr.current).toBeNull();
+    expect(m.performance_score.current).toBe(90);
+  });
+
+  it("computes keyword movers from the two snapshots' top_queries", () => {
+    const withHistory: ReportSnapshot = {
+      ...previous,
+      search_console: {
+        ...previous.search_console!,
+        top_queries: [
+          {
+            query: "jvs maskiner ab",
+            clicks: 6,
+            impressions: 30,
+            position: 3.4,
+          },
+        ],
+      },
+    };
+    const m = computeReportMetrics(latest, withHistory);
+    expect(m.keywordMovers?.improved[0]?.query).toBe("jvs maskiner ab");
+    expect(m.keywordMovers?.improved[0]?.delta).toBeCloseTo(1.2 - 3.4, 5);
+  });
+
+  it("computes keyword opportunities from the latest snapshot's top_queries", () => {
+    const m = computeReportMetrics(latest, previous);
+    expect(m.keywordOpportunities).toEqual([
+      {
+        query: "entreprenadmaskiner",
+        clicks: 5,
+        impressions: 30,
+        position: 8.1,
+      },
+    ]);
+  });
+});

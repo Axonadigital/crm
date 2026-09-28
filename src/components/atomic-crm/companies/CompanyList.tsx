@@ -1,0 +1,78 @@
+import { useGetIdentity, useListContext, useTranslate } from "ra-core";
+import { CreateButton } from "@/components/admin/create-button";
+import { ExportButton } from "@/components/admin/export-button";
+import { List } from "@/components/admin/list";
+import { ListPagination } from "@/components/admin/list-pagination";
+import { SortButton } from "@/components/admin/sort-button";
+
+import { TopToolbar } from "../layout/TopToolbar";
+import { CompanyEmpty } from "./CompanyEmpty";
+import { CompanyListFilter } from "./CompanyListFilter";
+import { ImageList } from "./GridList";
+import { GoogleMapsScraper } from "./GoogleMapsScraper";
+import { BatchScanButton } from "./BatchScanButton";
+import { SearchProfiles } from "./SearchProfiles";
+
+export const CompanyList = () => {
+  const { identity } = useGetIdentity();
+  if (!identity) return null;
+  return (
+    <List
+      title={false}
+      perPage={25}
+      sort={{ field: "name", order: "ASC" }}
+      actions={<CompanyListActions />}
+      pagination={<ListPagination rowsPerPageOptions={[10, 25, 50, 100]} />}
+    >
+      <CompanyListLayout />
+    </List>
+  );
+};
+
+const CompanyListLayout = () => {
+  const { data, isPending, filterValues } = useListContext();
+  const hasFilters = filterValues && Object.keys(filterValues).length > 0;
+
+  if (isPending) return null;
+  if (!data?.length && !hasFilters) return <CompanyEmpty />;
+
+  return (
+    <div className="w-full flex flex-row gap-8">
+      <CompanyListFilter />
+      <div className="flex flex-col flex-1 gap-4" data-tour="companies-list">
+        <ImageList />
+      </div>
+    </div>
+  );
+};
+
+const CompanyListActions = () => {
+  const translate = useTranslate();
+  return (
+    <TopToolbar>
+      <SortButton
+        fields={[
+          "name",
+          "created_at",
+          "nb_contacts",
+          "lead_status",
+          "last_touch_at",
+        ]}
+      />
+      <ExportButton />
+      <span
+        data-tour="companies-leadtools"
+        className="inline-flex items-center gap-2"
+      >
+        <SearchProfiles />
+        <GoogleMapsScraper />
+        <BatchScanButton />
+      </span>
+      <CreateButton
+        label={translate("resources.companies.action.new", {
+          _: "New Company",
+        })}
+      />
+    </TopToolbar>
+  );
+};

@@ -1,0 +1,80 @@
+// Based on https://github.com/supabase/supabase/blob/master/examples/edge-functions/supabase/functions/_shared/jwt/default.ts
+import * as jose from "jsr:@panva/jose@6";
+import { type User } from "jsr:@supabase/supabase-js@2";
+import { createErrorResponse } from "./utils.ts";
+
+const SUPABASE_JWT_ISSUER =
+  Deno.env.get("SB_JWT_ISSUER") ?? Deno.env.get("SUPABASE_URL") + "/auth/v1";
+
+const SUPABASE_JWT_KEYS = jose.createRemoteJWKSet(
+  new URL(Deno.env.get("SUPABASE_URL")! + "/auth/v1/.well-known/jwks.json"),
+);
+
+function getAuthToken(req: Request) {
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const [bearer, token] = authHeader.split(" ");
+  if (bearer !== "Bearer") {
+    throw new Error(`Auth header is not 'Bearer {token}'`);
+  }
+
+  return token;
+}
+
+function verifySupabaseJWT(jwt: string) {
+  return jose.jwtVerify(jwt, SUPABASE_JWT_KEYS, {
+    issuer: SUPABASE_JWT_ISSUER,
+  });
+}
+
+async function getAuthenticatedUser(req: Request) {
+  const token = getAuthToken(req);
+  const { payload } = await verifySupabaseJWT(token);
+  const userId = payload.sub;
+
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+
+  return {
+    id: userId,
+    email: payload.email as string | undefined,
+  } as User;
+}
+
+/**
+ * Validates the Authorization header to ensure that a user is authenticated.
+ */
+export const AuthMiddleware = async (
+  req: Request,
+  next: (req: Request) => Promise<Response>,
+) => {
+  if (req.method === "OPTIONS") return await next(req);
+
+  try {
+    await getAuthenticatedUser(req);
+    return await next(req);
+  } catch (e) {
+    return createErrorResponse(401, e?.toString() || "Unauthorized");
+  }
+};
+
+/**
+ * Get the authenticated user using the authorization header.
+ * User will be undefined for OPTIONS requests.
+ */
+export const UserMiddleware = async (
+  req: Request,
+  next: (req: Request, user?: User) => Promise<Response>,
+) => {
+  if (req.method === "OPTIONS") return await next(req);
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    return next(req, user);
+  } catch (err) {
+    return createErrorResponse(401, err?.toString() || "Unauthorized");
+  }
+};

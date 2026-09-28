@@ -1,0 +1,261 @@
+import { PDFDocument } from "pdf-lib";
+import { describe, expect, it } from "vitest";
+import { buildReportPdf } from "./buildReportPdf.ts";
+import type { ReportViewModel } from "./types.ts";
+
+const viewModel: ReportViewModel = {
+  version: 2,
+  companyName: "Östersunds Måleri AB",
+  period: { start: "2026-05-01", end: "2026-05-31", label: "maj 2026" },
+  comparisonPeriod: { start: "2026-04-01", end: "2026-04-30" },
+  coverage: { available: 4, total: 4, ratio: 1, missingSources: [] },
+  metrics: {
+    clicks: { current: 50, previous: 40, deltaPct: 25, deltaAbsolute: 10 },
+    impressions: {
+      current: 1000,
+      previous: 800,
+      deltaPct: 25,
+      deltaAbsolute: 200,
+    },
+    ctr: { current: 5, previous: 5, deltaPct: 0, deltaAbsolute: 0 },
+    position: {
+      current: 8,
+      previous: 10,
+      deltaPct: -20,
+      deltaAbsolute: -2,
+    },
+    performance_score: {
+      current: 82,
+      previous: 75,
+      deltaPct: 9.33,
+      deltaAbsolute: 7,
+    },
+    lcp_ms: {
+      current: 2200,
+      previous: 2800,
+      deltaPct: -21.4,
+      deltaAbsolute: -600,
+    },
+    field_lcp_ms: {
+      current: 2400,
+      previous: 2800,
+      deltaPct: -14.3,
+      deltaAbsolute: -400,
+    },
+    field_inp_ms: {
+      current: 160,
+      previous: 220,
+      deltaPct: -27.3,
+      deltaAbsolute: -60,
+    },
+    field_cls: {
+      current: 0.08,
+      previous: 0.12,
+      deltaPct: -33.3,
+      deltaAbsolute: -0.04,
+    },
+    reviews_count: {
+      current: 14,
+      previous: 12,
+      deltaPct: 16.7,
+      deltaAbsolute: 2,
+    },
+    topQueries: [{ query: "målare östersund", clicks: 20, position: 4.2 }],
+    topPages: [],
+    opportunities: [
+      {
+        kind: "position_4_10",
+        query: "fasadmålning jämtland",
+        clicks: 4,
+        impressions: 90,
+        ctr: 0.044,
+        position: 7.1,
+      },
+    ],
+    branded: null,
+    nonBranded: null,
+    isFirstReport: false,
+  },
+  statuses: {
+    googleVisibility: "good",
+    pageExperience: "good",
+    localVisibility: "good",
+    technicalFoundation: "needs_attention",
+  },
+  technicalChecks: [
+    {
+      key: "title",
+      label: "Sidtitel",
+      passed: true,
+      explanation: "Beskriver sidan för sökmotorer.",
+    },
+    {
+      key: "schema_org",
+      label: "Strukturerad data",
+      passed: false,
+      explanation: "Hjälper Google förstå verksamheten.",
+    },
+  ],
+  recommendations: [
+    {
+      key: "missing_schema_org",
+      severity: "medium",
+      title: "Saknar strukturerad data",
+      description: "Google och AI får svårare att förstå erbjudandet.",
+      service: "AI-sök-optimering",
+    },
+  ],
+  primaryRecommendation: {
+    key: "missing_schema_org",
+    severity: "medium",
+    title: "Saknar strukturerad data",
+    description: "Google och AI får svårare att förstå erbjudandet.",
+    service: "AI-sök-optimering",
+  },
+};
+
+describe("buildReportPdf", () => {
+  it("creates a readable multi-section PDF with Swedish characters", async () => {
+    const bytes = await buildReportPdf({
+      viewModel,
+      aiContent: {
+        greeting: "Hej Åsa,",
+        summary: "Synligheten ökade och sidupplevelsen blev bättre.",
+        recommended_action: "Lägg till strukturerad data för måleritjänsterna.",
+        upsell_pitch: "Det gör erbjudandet tydligare för både Google och AI.",
+      },
+    });
+    expect(bytes.byteLength).toBeGreaterThan(2_000);
+    const pdf = await PDFDocument.load(bytes);
+    expect(pdf.getPageCount()).toBeGreaterThanOrEqual(2);
+    expect(pdf.getTitle()).toContain("Östersunds Måleri");
+  });
+
+  it("builds when selected service differs from the original primary recommendation", async () => {
+    const mismatchedViewModel: ReportViewModel = {
+      ...viewModel,
+      companyName: "Axona Digital AB",
+      metrics: {
+        ...viewModel.metrics,
+        keywordMovers: {
+          improved: [
+            {
+              query: "crm system stockholm",
+              current: 3.2,
+              previous: 9.4,
+              delta: -6.2,
+            },
+          ],
+          declined: [],
+        },
+      },
+      recommendations: [
+        {
+          key: "missing_business_profile",
+          severity: "high",
+          title: "Google Business saknas",
+          description: "Ni syns inte i lokala kartresultat.",
+          service: "Google Business-paket",
+        },
+        {
+          key: "low_position",
+          severity: "medium",
+          title: "Nära första sidan",
+          description: "Flera sökord ligger precis utanför topp 10.",
+          service: "SEO-optimering",
+        },
+      ],
+      primaryRecommendation: {
+        key: "missing_business_profile",
+        severity: "high",
+        title: "Google Business saknas",
+        description: "Ni syns inte i lokala kartresultat.",
+        service: "Google Business-paket",
+      },
+    };
+
+    const bytes = await buildReportPdf({
+      viewModel: mismatchedViewModel,
+      aiContent: {
+        greeting: "Hej,",
+        summary: "Klicken ökade och nästa möjlighet är SEO.",
+        recommended_action: "Vi rekommenderar SEO-optimering: position 9 → 3.",
+        upsell_pitch: "Det hjälper er lyfta viktiga sökord.",
+        recommended_service: "SEO-optimering",
+        action_plan: [
+          {
+            key: "missing_business_profile",
+            what_we_see: "Google Business-profilen saknas.",
+            what_it_means: "Lokala kunder hittar er inte lika enkelt.",
+            how_we_help: "Vi sätter upp Google Business-paketet.",
+            next_step: "Hör av er så startar vi.",
+          },
+        ],
+      },
+    });
+
+    expect(bytes.byteLength).toBeGreaterThan(2_000);
+    const pdf = await PDFDocument.load(bytes);
+    expect(pdf.getPageCount()).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders the monthly trend chart and keyword opportunities for a multi-month SEO-optimering report", async () => {
+    const multiMonthViewModel: ReportViewModel = {
+      ...viewModel,
+      companyName: "ES Byggmontage AB",
+      period: {
+        start: "2026-04-01",
+        end: "2026-06-30",
+        label: "april – juni 2026",
+      },
+      metrics: {
+        ...viewModel.metrics,
+        monthlySeries: [
+          { month: "2026-04", clicks: 12, impressions: 180 },
+          { month: "2026-05", clicks: 20, impressions: 210 },
+          { month: "2026-06", clicks: 17, impressions: 234 },
+        ],
+        keywordOpportunities: [
+          {
+            query: "byggmontage östersund",
+            clicks: 0,
+            impressions: 74,
+            position: 12.4,
+          },
+          { query: "montageteam", clicks: 0, impressions: 55, position: 8.1 },
+        ],
+      },
+      recommendations: [
+        {
+          key: "low_position",
+          severity: "medium",
+          title: "Flera sökord nära första sidan",
+          description: "Sökord med visningar men utanför topp 3.",
+          service: "SEO-optimering",
+        },
+      ],
+      primaryRecommendation: {
+        key: "low_position",
+        severity: "medium",
+        title: "Flera sökord nära första sidan",
+        description: "Sökord med visningar men utanför topp 3.",
+        service: "SEO-optimering",
+      },
+    };
+
+    const bytes = await buildReportPdf({
+      viewModel: multiMonthViewModel,
+      aiContent: {
+        greeting: "Hej,",
+        summary: "Klicken ökade under perioden.",
+        recommended_action: "Vi rekommenderar SEO-optimering.",
+        upsell_pitch: "Fler sökord kan flyttas till topp 3.",
+        recommended_service: "SEO-optimering",
+      },
+    });
+
+    expect(bytes.byteLength).toBeGreaterThan(2_000);
+    const pdf = await PDFDocument.load(bytes);
+    expect(pdf.getPageCount()).toBeGreaterThanOrEqual(2);
+  });
+});

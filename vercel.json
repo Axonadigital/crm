@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/quote.html",
+      "destination": "/quote.html"
+    },
+    {
+      "source": "/((?!quote\\.html$).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
