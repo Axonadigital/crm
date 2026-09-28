@@ -134,6 +134,7 @@ type Outcome =
   // Tidigare kontakt: det kalla mejlet byttes mot ett personligt utkast i Gmail.
   | "drafted_warm"
   | "skipped_unverified"
+  | "awaiting_review"
   // Anspråket på steget, skrivet före Gmail-anropet. Se claimSend().
   | "sending"
   // Steget var redan skickat — vi flyttar fram i stället för att skicka igen.
@@ -1325,8 +1326,12 @@ async function searchCompany(name: string, city: string | null): Promise<SearchH
  * bolags domän, eller ett frånvaropåstående ("utan hemsida?") där vi hittar
  * en hemsida. Stopp = pausad enrollment + uppgift, aldrig ett tyst skip.
  */
-/** Hämtar underlaget och gör prövningen, utan sidoeffekter. */
-async function computeVerification(enrollment: Row) {
+/**
+ * Hämtar underlaget och gör prövningen, utan sidoeffekter.
+ * skipAbsence: en människa har redan bekräftat frånvaropåståendet i
+ * kontrollkön; då prövas bara adressen och namnet.
+ */
+async function computeVerification(enrollment: Row, opts: { skipAbsence?: boolean } = {}) {
   const [{ data: company }, { data: contact }, scan] = await Promise.all([
     supabaseAdmin.from("companies").select("id, name, website, email, city").eq("id", enrollment.company_id).maybeSingle(),
     supabaseAdmin.from("contacts").select("id, email_jsonb").eq("id", enrollment.contact_id).maybeSingle(),
@@ -1335,7 +1340,10 @@ async function computeVerification(enrollment: Row) {
   if (!company || !contact) return null;
   const emails = (contact.email_jsonb ?? []) as Array<{ email?: string; type?: string }>;
   const rawEmail = emails[0]?.email ?? null;
-  const family = familyFor(scan?.findings)?.family ?? null;
+  const scannedFamily = familyFor(scan?.findings)?.family ?? null;
+  const absence = scannedFamily != null && ABSENCE_FAMILIES.has(scannedFamily);
+  // Bekräftat i kontrollkön: frånvaron ska inte prövas igen, men adressen ska.
+  const family = opts.skipAbsence && absence ? null : scannedFamily;
   const name = String(company.name ?? "");
 
   const domain = ownEmailDomain(cleanEmailAddress(rawEmail)?.email ?? null);
@@ -1379,7 +1387,7 @@ async function computeVerification(enrollment: Row) {
     places,
     jev,
   });
-  return { company, contact, emails, name, family, domain, probe, searched: needsSearch, hits: hits?.length ?? null, places: places?.map((p) => `${p.title} → ${p.website ?? "ingen webbplats"}`) ?? null, jev, verdict };
+  return { company, contact, emails, name, family, domain, probe, searched: needsSearch, hits: hits?.length ?? null, places: places?.map((p) => `${p.title} → ${p.website ?? "ingen webbplats"}`) ?? null, jev, verdict, absence, scannedFamily };
 }
 
 async function ensureVerifiedLead(
@@ -1388,9 +1396,37 @@ async function ensureVerifiedLead(
   stepNumber: number,
   actionType: string,
 ): Promise<boolean> {
-  const checked = await computeVerification(enrollment);
+  const approved = enrollment.manual_check === "approved";
+  const checked = await computeVerification(enrollment, { skipAbsence: approved });
   if (!checked) return true; // prepareEmail rapporterar saknat företag/kontakt
   const { company, contact, emails, name, family, verdict } = checked;
+
+  // Frånvaropåståenden går aldrig automatiskt: de läggs i kontrollkön på
+  // /outreach. Undantaget är när adressen i sig är fel (ogiltig eller ett
+  // annat bolags) — då stoppas leadet som vanligt, en människa ska inte
+  // behöva googla ett lead som ändå inte går att mejla.
+  const addressProblem = !verdict.ok && !verdict.foundWebsite && /mejladress|ogiltig/.test(verdict.reason);
+  if (checked.absence && !approved && !addressProblem) {
+    const note = verdict.ok
+      ? `Kontrollen hittade ingen hemsida${checked.jev?.hasSite ? ` (Jev ${Math.round(checked.jev.hasSite.p * 100)} %)` : ""}.`
+      : verdict.foundWebsite
+        ? `Kontrollen tror att de har en hemsida: ${hostOf(verdict.foundWebsite)}. ${verdict.reason}.`
+        : `${verdict.reason}.`;
+    if (!(await recentlyLogged(enrollment.id, stepNumber, "awaiting_review", 24 * 60))) {
+      await logRun({
+        enrollment, step: stepNumber, actionType, outcome: "awaiting_review",
+        detail: { note, found_website: verdict.ok ? null : verdict.foundWebsite ?? null, jev: checked.jev, dry_run: settings.dryRun || undefined },
+      });
+    }
+    if (settings.dryRun) return false;
+    await supabaseAdmin.from("sequence_enrollments").update({
+      status: "paused",
+      manual_check: "pending",
+      manual_check_note: note,
+      manual_check_at: new Date().toISOString(),
+    }).eq("id", enrollment.id);
+    return false;
+  }
 
   if (verdict.ok) {
     if (settings.dryRun) return true;

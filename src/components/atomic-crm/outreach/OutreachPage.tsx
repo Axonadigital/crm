@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useGetList, useNotify, useRefresh, useDataProvider } from "ra-core";
 import { Link } from "react-router";
-import { Image, Phone, RefreshCw, Save } from "lucide-react";
+import { Check, ExternalLink, Globe, Image, Phone, RefreshCw, Save, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +21,9 @@ import { supabase } from "../providers/supabase/supabase";
 
 /**
  * Outreach — det fyrstegsflödet behöver en människa till:
+ *  0. kontrollkön: leads vars första mejl påstår att hemsida saknas. Ingen
+ *     automatisk källa hittar kedjesidor säkert (Norderåsen, 2026-09-28), så
+ *     en människa googlar och bekräftar innan mejlet går;
  *  1. leveransen till steg 2 (före/efter-bild eller skiss) — URL:en klistras
  *     in här, sedan skickar motorn mejl två av sig själv;
  *  2. tratten per steg och A/B-grupp, så att vi ser vad som ger svar;
@@ -38,9 +41,12 @@ type Enrollment = {
   asset_url: string | null;
   krok_familj: string | null;
   ab_variant: string | null;
+  manual_check?: string | null;
+  manual_check_note?: string | null;
+  manual_check_at?: string | null;
 };
 
-type Company = { id: number; name: string; website: string | null };
+type Company = { id: number; name: string; website: string | null; city?: string | null; email?: string | null };
 
 type FunnelRow = {
   id: string;
@@ -87,12 +93,159 @@ export function OutreachPage() {
               Samtalen ligger i <Link className="underline" to="/call-queue">ringlistan</Link>.
             </p>
           </div>
+          <Kontrollko />
           <VantarPaLeverans />
           <Tratt />
           <Ringlistematning />
         </div>
       </MobileContent>
     </>
+  );
+}
+
+function Kontrollko() {
+  const { data, isPending } = useGetList<Enrollment>("sequence_enrollments", {
+    filter: { "manual_check@eq": "pending" },
+    sort: { field: "manual_check_at", order: "ASC" },
+    pagination: { page: 1, perPage: 100 },
+  });
+  const rows = data ?? [];
+  const ids = rows.map((r) => r.company_id).filter((id): id is number => id != null);
+  const { data: companies } = useGetList<Company>("companies", {
+    filter: { "id@in": `(${ids.length ? ids.join(",") : "0"})` },
+    pagination: { page: 1, perPage: 100 },
+  });
+  const byId = new Map((companies ?? []).map((c) => [c.id, c]));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Globe className="h-4 w-4" /> Kontrollera hemsida ({rows.length})
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Första mejlet till de här bolagen säger att vi inte hittade någon egen hemsida. Googla bolaget
+          innan det går. Saknas hemsida skickas mejlet vid nästa körning. Har de en, stoppas sekvensen och
+          hemsidan sparas på bolaget.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {isPending ? (
+          <p className="text-sm text-muted-foreground">Laddar…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Inget att kontrollera just nu.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {rows.map((e) => (
+              <KontrollRad key={e.id} enrollment={e} company={byId.get(e.company_id ?? -1)} />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function KontrollRad({ enrollment, company }: { enrollment: Enrollment; company?: Company }) {
+  const [url, setUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const namn = company?.name ?? `Enrollment ${enrollment.id}`;
+  const sok = `https://www.google.com/search?q=${encodeURIComponent(`${namn} ${company?.city ?? ""}`.trim())}`;
+  const giltigUrl = /^https?:\/\/[^\s.]+\.\S+$/i.test(url.trim()) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(url.trim());
+
+  const saknar = async () => {
+    setSaving(true);
+    try {
+      await dataProvider.update("sequence_enrollments", {
+        id: enrollment.id,
+        data: {
+          manual_check: "approved",
+          manual_check_at: new Date().toISOString(),
+          status: "active",
+          next_action_at: new Date().toISOString(),
+        },
+        previousData: enrollment,
+      });
+      notify(`${namn}: bekräftat. Mejlet går vid nästa körning inom sändfönstret.`, { type: "success" });
+      refresh();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Kunde inte spara", { type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const harHemsida = async () => {
+    setSaving(true);
+    try {
+      const site = url.trim() ? (/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`) : null;
+      if (site && company) {
+        await dataProvider.update("companies", { id: company.id, data: { website: site }, previousData: company });
+      }
+      await dataProvider.update("sequence_enrollments", {
+        id: enrollment.id,
+        data: { manual_check: "rejected", manual_check_at: new Date().toISOString(), status: "completed" },
+        previousData: enrollment,
+      });
+      notify(`${namn}: stoppad${site ? `, hemsidan sparad` : ""}. Inget mejl går.`, { type: "success" });
+      refresh();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Kunde inte spara", { type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border p-3">
+      <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className="font-medium">
+            {company ? (
+              <Link className="underline-offset-2 hover:underline" to={`/companies/${company.id}/show`}>
+                {namn}
+              </Link>
+            ) : (
+              namn
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {[company?.city, company?.email].filter(Boolean).join(" · ")}
+            {` · i kön sedan ${datum(enrollment.manual_check_at ?? null)}`}
+          </div>
+          {enrollment.manual_check_note ? (
+            <p className="mt-1 text-sm">{enrollment.manual_check_note}</p>
+          ) : null}
+        </div>
+        <a
+          className="inline-flex shrink-0 items-center gap-1 text-sm underline underline-offset-2"
+          href={sok}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Googla <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      </div>
+      <div className="flex flex-col gap-2 md:flex-row">
+        <Button size="sm" disabled={saving} onClick={saknar}>
+          <Check className="mr-1 h-4 w-4" /> Saknar hemsida, skicka
+        </Button>
+        <div className="flex flex-1 gap-2">
+          <Input
+            id={`site-${enrollment.id}`}
+            placeholder="Hittade hemsidan? Klistra in den (valfritt)"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <Button size="sm" variant="outline" disabled={saving || (url.trim() !== "" && !giltigUrl)} onClick={harHemsida}>
+            <X className="mr-1 h-4 w-4" /> Har hemsida
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
