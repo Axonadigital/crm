@@ -6,9 +6,9 @@
 # import_new_companies. Överlappet mellan veckorna är avsiktligt: filen
 # uppdateras veckovis och dubbletter sorteras bort i funktionen.
 #
-# Hemligheter: SUPABASE_URL (finns sedan tidigare) och NYSTARTADE_SECRET
-# (samma värde som Supabase-hemligheten med samma namn). Service-nyckeln
-# behövs inte här.
+# Hemlighet: NYSTARTADE_SECRET (samma värde som Supabase-hemligheten med
+# samma namn). Projektets adress är inte hemlig och står nedan. Service-
+# nyckeln behövs inte här.
 name: Nystartade bolag
 
 on:
@@ -36,6 +36,7 @@ jobs:
         env:
           DAYS: ${{ inputs.days || '45' }}
         run: |
+          set -euo pipefail
           SINCE=$(date -u -d "$DAYS days ago" +%Y%m%d)
           echo "SINCE_ISO=$(date -u -d "$DAYS days ago" +%Y-%m-%d)" >> "$GITHUB_ENV"
           unzip -p scb.zip | iconv -f latin1 -t utf-8 \
@@ -45,10 +46,11 @@ jobs:
 
       - name: Skicka till CRM:et
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: https://hgyusrlrzdahucljvqsz.supabase.co
           NYSTARTADE_SECRET: ${{ secrets.NYSTARTADE_SECRET }}
           DRY_RUN: ${{ inputs.dry_run || false }}
         run: |
+          set -euo pipefail
           jq -R -s --arg since "$SINCE_ISO" --argjson dry "$DRY_RUN" \
             '{since: $since, dry_run: $dry, lines: (split("\n") | map(select(length > 0)))}' rows.tsv > body.json
           curl -fsS -X POST "$SUPABASE_URL/functions/v1/import_new_companies" \
