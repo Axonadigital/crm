@@ -43,6 +43,7 @@ import {
   cleanEmailAddress,
   emailBelongsToOther,
   hostOf,
+  isDirectoryHost,
   looksParked,
   ownEmailDomain,
   type PlaceHit,
@@ -454,7 +455,7 @@ async function prepareEmail(
       .select("total_score, report_slug, verdict, findings, scanned_at")
       .eq("company_id", contact.company_id)
       .maybeSingle();
-    scan = latest;
+    scan = scanOrNoSite(company?.website, latest);
   }
 
   const firstName = (contact.first_name as string) || "";
@@ -883,14 +884,41 @@ async function ownerSalesId(): Promise<number | null> {
   return id;
 }
 
+/**
+ * Bolag utan egen hemsida går inte att skanna: skannern svarar 404 "has no
+ * website". Före 2026-10-06 begärde motorn då omskanning var femte minut
+ * dygnet runt (Ovikens Mekaniska och nystartade Peakanto: 646 försök var på
+ * tre dygn), och de två åt upp hela kvoten så att inga andra leads skannades
+ * om — fem mejl på tre dagar. Nu får sådana bolag ett "utan hemsida"-underlag
+ * direkt. Påståendet prövas ändå av verifieringen och går alltid via
+ * kontrollkön, där en människa googlar bolaget samma dag.
+ */
+export function noSiteScan(): Row {
+  return {
+    scanned_at: new Date().toISOString(),
+    findings: [{ id: "no-site", title: "Ingen egen hemsida", mailable: true, severity: "high" }],
+    synthetic: true,
+  };
+}
+
+function hasOwnWebsite(website: unknown): boolean {
+  const host = hostOf(typeof website === "string" ? website : null);
+  return host != null && !isDirectoryHost(host);
+}
+
+/** Skanningen, eller "utan hemsida"-underlaget för bolag utan egen sajt. */
+function scanOrNoSite(website: unknown, scan: Row | null): Row | null {
+  if (hasOwnWebsite(website)) return scan;
+  return noSiteScan();
+}
+
 async function latestScanFor(companyId: unknown): Promise<Row | null> {
   if (companyId == null) return null;
-  const { data } = await supabaseAdmin
-    .from("company_latest_scan")
-    .select("scanned_at, findings")
-    .eq("company_id", companyId)
-    .maybeSingle();
-  return data;
+  const [{ data }, { data: company }] = await Promise.all([
+    supabaseAdmin.from("company_latest_scan").select("scanned_at, findings").eq("company_id", companyId).maybeSingle(),
+    supabaseAdmin.from("companies").select("website").eq("id", companyId).maybeSingle(),
+  ]);
+  return scanOrNoSite(company?.website, data);
 }
 
 /**
@@ -907,6 +935,8 @@ async function ensureFreshScan(
   actionType: string,
 ): Promise<boolean> {
   const scan = await latestScanFor(enrollment.company_id);
+  // Utan egen hemsida finns inget att skanna om (se noSiteScan).
+  if (scan?.synthetic === true) return true;
   if (scanIsFresh(scan?.scanned_at as string | null)) return true;
 
   const secret = Deno.env.get("SCANNER_SECRET");
@@ -966,6 +996,14 @@ async function ensureFreshScan(
     outcome: "rescan_requested",
     detail: { scanned_at: scan?.scanned_at ?? null, http_status: status, error },
   });
+  // Misslyckad skanning: vänta sex timmar i stället för nästa tick, så att
+  // ett trasigt lead inte äter omskanningskvoten för alla andra.
+  if (status !== 200) {
+    await supabaseAdmin
+      .from("sequence_enrollments")
+      .update({ next_action_at: new Date(Date.now() + 6 * 3600_000).toISOString() })
+      .eq("id", enrollment.id);
+  }
   // Även när skanningen lyckades väntar vi till nästa tick: då läses den
   // färska skanningen in på vanligt sätt och "i dag" blir sant.
   return false;
