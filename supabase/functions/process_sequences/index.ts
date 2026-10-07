@@ -966,13 +966,18 @@ async function ensureFreshScan(
 
   counters.rescans += 1;
   if (settings.dryRun) {
-    await logRun({
-      enrollment,
-      step: stepNumber,
-      actionType,
-      outcome: "rescan_requested",
-      detail: { would: "begära omskanning", scanned_at: scan?.scanned_at ?? null, dry_run: true },
-    });
+    // Torrläge ändrar inget tillstånd, så enrollmenten förblir förfallen och
+    // hamnar här varje tick. Logga högst en gång i timmen — Ovikens Mekaniska
+    // fick 1 449 identiska rader på sex dagar innan den här spärren fanns.
+    if (!(await recentlyLogged(enrollment.id, stepNumber, "rescan_requested", 60))) {
+      await logRun({
+        enrollment,
+        step: stepNumber,
+        actionType,
+        outcome: "rescan_requested",
+        detail: { would: "begära omskanning", scanned_at: scan?.scanned_at ?? null, dry_run: true },
+      });
+    }
     return false;
   }
   let status = 0;
@@ -996,16 +1001,16 @@ async function ensureFreshScan(
     outcome: "rescan_requested",
     detail: { scanned_at: scan?.scanned_at ?? null, http_status: status, error },
   });
-  // Misslyckad skanning: vänta sex timmar i stället för nästa tick, så att
-  // ett trasigt lead inte äter omskanningskvoten för alla andra.
-  if (status !== 200) {
-    await supabaseAdmin
-      .from("sequence_enrollments")
-      .update({ next_action_at: new Date(Date.now() + 6 * 3600_000).toISOString() })
-      .eq("id", enrollment.id);
-  }
-  // Även när skanningen lyckades väntar vi till nästa tick: då läses den
-  // färska skanningen in på vanligt sätt och "i dag" blir sant.
+  // Lyckad begäran: ge scannern två timmar att leverera i stället för att
+  // begära om varje tick. Svarade scannern 200 men skrev aldrig någon
+  // skanning loopade leadet annars för evigt och åt omskanningskvoten för
+  // alla andra (Peakanto: 799 begäranden på tre dagar). Misslyckad begäran:
+  // sex timmar, så ett trasigt lead inte blockerar resten.
+  const retryAfterMs = status === 200 ? 2 * 3600_000 : 6 * 3600_000;
+  await supabaseAdmin
+    .from("sequence_enrollments")
+    .update({ next_action_at: new Date(Date.now() + retryAfterMs).toISOString() })
+    .eq("id", enrollment.id);
   return false;
 }
 
