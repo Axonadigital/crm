@@ -180,6 +180,31 @@ describe("stripQuotedReply", () => {
     const text = "Nej tack.\n\n-----Ursprungligt meddelande-----\nFrån: Rasmus";
     expect(stripQuotedReply(text)).toBe("Nej tack.");
   });
+
+  it("klipper vid Apple Mails citathuvud (datum först, utan 'Den')", () => {
+    // Formatet HH Revision svarade med 2026-10-26 — citatet följde med in i
+    // klassningen eftersom raden börjar med datumet, inte med "Den".
+    const text = [
+      "Hej!",
+      "",
+      "Ja jag önskar att inte få fler mail.",
+      "",
+      "Med vänlig hälsning,",
+      "Jon",
+      "",
+      "26 okt. 2026 kl. 08:00 skrev Rasmus Jönsson <rasmus@axonadigital.com>:",
+      "",
+      "Hej! Jag lägger ner det här från min sida nu.",
+    ].join("\n");
+    expect(stripQuotedReply(text)).toBe(
+      "Hej!\n\nJa jag önskar att inte få fler mail.\n\nMed vänlig hälsning,\nJon",
+    );
+  });
+
+  it("klipper vid Gmails engelska citathuvud", () => {
+    const text = "Sounds good.\n\nOn Mon, Oct 26, 2026 at 8:00 AM Rasmus <r@x.se> wrote:\n> hej";
+    expect(stripQuotedReply(text)).toBe("Sounds good.");
+  });
 });
 
 describe("isNegativeReply", () => {
@@ -193,6 +218,33 @@ describe("isNegativeReply", () => {
       "Not interested, please remove me.",
     ]) {
       expect(isNegativeReply(text), text).toBe(true);
+    }
+  });
+
+  it("hittar nej som uttrycks som 'inte fler mejl' (missat 2026-10-26, HH Revision)", () => {
+    for (const text of [
+      "Hej! Ja jag önskar att inte få fler mail. Med vänlig hälsning, Jon",
+      "Jag vill inte få fler mejl från er.",
+      "Inga fler mail tack.",
+      "Vänligen sluta med utskicken.",
+      "Vi tackar nej till detta.",
+      "Önskar inte fler utskick.",
+      "Ni kan ta bort vår adress från listan.",
+      "Vi avböjer, tack.",
+      "Please stop sending these emails.",
+      "No more emails please.",
+    ]) {
+      expect(isNegativeReply(text), text).toBe(true);
+    }
+  });
+
+  it("räknar inte 'fler' i ett positivt svar som nej", () => {
+    for (const text of [
+      "Ja gärna, skicka fler exempel på vad ni gjort.",
+      "Vi vill gärna få mer info om priser.",
+      "Kul, får vi fler bilder?",
+    ]) {
+      expect(isNegativeReply(text), text).toBe(false);
     }
   });
 

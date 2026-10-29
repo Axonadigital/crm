@@ -206,6 +206,9 @@ export function stripQuotedReply(text: string): string {
         l,
       ) ||
       /^(den|on)\s.+\b(skrev|wrote)\b.*:\s*$/i.test(l) ||
+      // Apple Mail/iOS: "26 okt. 2026 kl. 08:00 skrev Rasmus Jönsson <…>:" —
+      // datumet först, utan "Den". Missades 2026-10-26 så citatet följde med.
+      /^\d{1,2}\s+[a-zåäö]+\.?\s+\d{4}\b.*\b(skrev|wrote)\b.*:\s*$/i.test(l) ||
       /^från:\s|^from:\s/i.test(l)
     );
   });
@@ -213,7 +216,10 @@ export function stripQuotedReply(text: string): string {
 }
 
 const NEGATIVE =
-  /(nej tack|inte intresserad|ointresserad|ej intresserad|inget intresse|avregistrera|avbeställ|ta bort (mig|oss|vår)|sluta (mejla|maila|skicka|kontakta)|hör inte av (er|dig)|vill inte (ha|bli)|undanbe|inte aktuellt|ej aktuellt|not interested|no thanks|unsubscribe|remove me|stop emailing)/i;
+  /(nej tack|tackar? nej|avböj|inte intresserad|ointresserad|ej intresserad|inget intresse|avregistrera|avbeställ|ta bort (mig|oss|vår|er|min)|sluta (mejla|maila|skicka|kontakta)|sluta med (utskick|mejl|mail)|hör inte av (er|dig)|vill inte (ha|bli|få)|önskar (att )?inte|(inte|inga|ej) (få )?(fler|flera|mer) (mejl|mail|e-?post|utskick|meddelanden)|undanbe|inte aktuellt|ej aktuellt|not interested|no thanks|unsubscribe|remove me|stop (emailing|sending)|no more (e-?mails?|messages))/i;
+// "önskar att inte få fler mail" (HH Revision 2026-10-26) passerade som
+// "okänt" och ingen spärr lades. Varianterna ovan är de nej som faktiskt
+// skrivs på svenska: inte/inga fler mejl, tackar nej, avböjer, sluta med.
 
 /**
  * Ett tydligt nej. Konservativ med flit: den ska hitta klara avböjanden, inte
