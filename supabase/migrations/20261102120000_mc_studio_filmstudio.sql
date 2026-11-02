@@ -132,7 +132,7 @@ create table if not exists public.mc_studio_filmer (
     check (postad is null or jsonb_typeof(postad) = 'object'),
   postningspaket jsonb
     check (postningspaket is null or jsonb_typeof(postningspaket) = 'object'),
-  kund_id uuid,
+  company_id bigint references public.companies (id) on delete set null,
   skapad_av uuid default auth.uid()
     references auth.users (id) on delete set null,
   created_at timestamptz not null default now(),
@@ -155,13 +155,13 @@ comment on column public.mc_studio_filmer.postad is
   '{kanal, lank, tid, av} när filmen är ute.';
 comment on column public.mc_studio_filmer.postningspaket is
   '{bildtext, hashtags, forsta_kommentar, omslag}.';
-comment on column public.mc_studio_filmer.kund_id is
-  'Koppling till CRM-kund. Ingen FK: CRM:ets kunder är companies.id/customer_details.id (bigint), inte uuid. Avgörs i en senare migration.';
+comment on column public.mc_studio_filmer.company_id is
+  'Kunden filmen handlar om (CRM: companies.id). Tom för Axonas egna filmer.';
 
 create index if not exists mc_studio_filmer_status_idx
   on public.mc_studio_filmer (status, updated_at desc);
-create index if not exists mc_studio_filmer_kund_idx
-  on public.mc_studio_filmer (kund_id) where kund_id is not null;
+create index if not exists mc_studio_filmer_company_idx
+  on public.mc_studio_filmer (company_id) where company_id is not null;
 create index if not exists mc_studio_filmer_skapad_av_idx
   on public.mc_studio_filmer (skapad_av);
 
