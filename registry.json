@@ -522,6 +522,42 @@
           "type": "registry:component"
         },
         {
+          "path": "src/components/atomic-crm/planning/ui.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/planning/planningStats.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/planning/TasksSection.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/planning/ProjectsSection.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/planning/PlanningPage.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/planning/OverviewSection.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/planning/IdeasSection.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/planning/GoalsSection.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/atomic-crm/planning/GoalIdeas.tsx",
+          "type": "registry:component"
+        },
+        {
           "path": "src/components/atomic-crm/outreach/OutreachPage.tsx",
           "type": "registry:component"
         },

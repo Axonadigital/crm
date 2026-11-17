@@ -67,6 +67,7 @@ import { NoteShowPage } from "../notes/NoteShowPage.tsx";
 import { CallQueue, MobileCallQueue } from "../call-queue";
 import { OutreachPage } from "../outreach/OutreachPage";
 import { CalendarPage } from "../calendar";
+import { PlanningPage } from "../planning/PlanningPage";
 import { CompanyListMobile } from "../companies/CompanyListMobile";
 import { MobileDealsList } from "../deals/MobileDealsList";
 import { DealShow } from "../deals/DealShow";
@@ -273,6 +274,7 @@ const DesktopAdmin = (props: CoreAdminProps) => {
         <Route path="/call-queue" element={<CallQueue />} />
         <Route path={OutreachPage.path} element={<OutreachPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/planning/*" element={<PlanningPage />} />
         <Route path="/customer-radar" element={<CustomerVisibilityPage />} />
         <Route path="/email-stats" element={<EmailStatsPage />} />
         <Route path={InvoicesPage.path} element={<InvoicesPage />} />
@@ -304,6 +306,10 @@ const DesktopAdmin = (props: CoreAdminProps) => {
       <Resource name="lead_import_runs" {...leadImportRuns} />
       <Resource name="meeting_transcriptions" />
       <Resource name="tags" />
+      <Resource name="planning_ideas" />
+      <Resource name="planning_goals" />
+      <Resource name="planning_projects" />
+      <Resource name="planning_tasks" />
       <Resource name="feedback_items" />
       <Resource name="customer_details" />
       <Resource name="website_snapshots" />

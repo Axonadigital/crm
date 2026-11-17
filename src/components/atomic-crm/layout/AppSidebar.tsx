@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LineChart,
   Mail,
+  NotebookPen,
   Phone,
   Radar,
   Receipt,
@@ -79,6 +80,17 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Likviditet", to: "/liquidity", icon: LineChart },
       { label: "Abonnemang", to: "/subscriptions", icon: Repeat },
       { label: "Kundtäckning", to: "/customer-coverage", icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: "Intern",
+    items: [
+      {
+        label: "Planering",
+        to: "/planning/overview",
+        icon: NotebookPen,
+        alsoMatch: ["/planning"],
+      },
     ],
   },
   {
