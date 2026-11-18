@@ -89,6 +89,67 @@ export function recurringRowText(
   );
 }
 
+/** Fortnox terms code on every manual invoice we send: 30 days net. */
+export const RECURRING_PAYMENT_TERMS = "30";
+
+/**
+ * Invoice header fields a recurring copies onto every invoice it generates.
+ * Fortnox does not fill these from the customer card for a recurring, so a
+ * recurring created without them produces invoices with no Vår/Er referens.
+ */
+export type RecurringInvoiceDetails = {
+  our_reference?: string;
+  your_reference?: string;
+  payment_terms: string;
+  distribution_method?: "EMAIL";
+  email?: { to: string };
+};
+
+/** "Pending" is the placeholder name of a sales user who never signed in. */
+const PLACEHOLDER_NAMES = new Set(["pending"]);
+
+/** A printable person name, or null when there is nothing real to print. */
+export function personName(
+  firstName?: string | null,
+  lastName?: string | null,
+): string | null {
+  const parts = [firstName, lastName]
+    .map((part) => part?.trim() ?? "")
+    .filter((part) => part && !PLACEHOLDER_NAMES.has(part.toLowerCase()));
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
+export function recurringInvoiceDetails(input: {
+  ourReference?: string | null;
+  yourReference?: string | null;
+  invoiceEmail?: string | null;
+}): RecurringInvoiceDetails {
+  const email = input.invoiceEmail?.trim();
+  return {
+    ...(input.ourReference ? { our_reference: input.ourReference } : {}),
+    ...(input.yourReference ? { your_reference: input.yourReference } : {}),
+    payment_terms: RECURRING_PAYMENT_TERMS,
+    ...(email
+      ? { distribution_method: "EMAIL" as const, email: { to: email } }
+      : {}),
+  };
+}
+
+/**
+ * JSON Patch that writes the invoice details onto an existing recurring. `add`
+ * rather than `replace`: replace fails on a member the recurring lacks, which
+ * is exactly the case for one created before these fields were sent.
+ */
+export function invoiceDetailOps(
+  details: RecurringInvoiceDetails,
+): Array<{ op: "add"; path: string; value: unknown }> {
+  return Object.entries(details).map(([key, value]) => ({
+    op: "add",
+    path: `/${key}`,
+    value,
+  }));
+}
+
 export type BuildRecurringInput = {
   customerNumber: string;
   description: string;
@@ -99,7 +160,7 @@ export type BuildRecurringInput = {
   currency?: string;
   /** Defaults to MANUAL so creating one can never bill anybody by itself. */
   invoiceHandling?: InvoiceHandling;
-  ourReference?: string | null;
+  details?: RecurringInvoiceDetails;
 };
 
 export type CreateRecurringPayload = {
@@ -118,8 +179,7 @@ export type CreateRecurringPayload = {
   }>;
   invoice_handling: InvoiceHandling;
   currency: string;
-  our_reference?: string;
-};
+} & Partial<RecurringInvoiceDetails>;
 
 /**
  * The create body. `invoice_processing_date` and `period_start_date` are the
@@ -160,7 +220,8 @@ export function buildCreateRecurringPayload(
     ],
     invoice_handling: input.invoiceHandling ?? "MANUAL",
     currency: input.currency ?? "SEK",
-    ...(input.ourReference ? { our_reference: input.ourReference } : {}),
+    payment_terms: RECURRING_PAYMENT_TERMS,
+    ...input.details,
   };
 }
 

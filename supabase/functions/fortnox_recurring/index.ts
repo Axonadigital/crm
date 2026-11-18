@@ -38,6 +38,9 @@ import {
 } from "../_shared/fortnox/customerSync.ts";
 import {
   buildCreateRecurringPayload,
+  invoiceDetailOps,
+  personName,
+  recurringInvoiceDetails,
   nextRecurringStartDate,
   RECURRINGS_PATH,
   recurringRowText,
@@ -54,16 +57,17 @@ type RecurringResponse = {
   dates?: { dates?: { invoice_date?: string; period_start_date?: string } };
 };
 
-async function requireUser(req: Request) {
+async function requireUser(req: Request): Promise<string> {
   const token = (req.headers.get("authorization") || "").replace("Bearer ", "");
   if (!token) throw new HttpError(401, "Missing authorization token");
 
   const { data, error } = await supabaseAdmin.auth.getUser(token);
   if (error || !data?.user) throw new HttpError(401, "Unauthorized");
+  return data.user.id;
 }
 
 const DEAL_FIELDS =
-  "id, name, company_id, billing_company_id, recurring_amount, recurring_interval, billing_start_date, invoiced_through, stage, archived_at, fortnox_recurring_id, fortnox_recurring_status";
+  "id, name, company_id, billing_company_id, recurring_amount, recurring_interval, billing_start_date, invoiced_through, stage, archived_at, fortnox_recurring_id, fortnox_recurring_status, sales_id, contact_ids";
 
 async function loadDeal(dealId: number) {
   const { data: deal, error } = await supabaseAdmin
@@ -76,7 +80,62 @@ async function loadDeal(dealId: number) {
   return deal;
 }
 
-async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
+type Deal = Awaited<ReturnType<typeof loadDeal>>;
+
+async function salesName(
+  column: "id" | "user_id",
+  value: number | string | null | undefined,
+): Promise<string | null> {
+  if (value == null) return null;
+  const { data } = await supabaseAdmin
+    .from("sales")
+    .select("first_name, last_name")
+    .eq(column, value)
+    .maybeSingle();
+  return data ? personName(data.first_name, data.last_name) : null;
+}
+
+/**
+ * Vår referens, Er referens and the invoice email, read from the CRM the same
+ * way a person filling in a manual invoice would: the deal owner (or whoever
+ * clicked, when the owner has no real name), the deal's first contact, and the
+ * company's invoice email — the address the Fortnox customer was created with.
+ */
+async function loadInvoiceDetails(deal: Deal, userId: string) {
+  const ourReference =
+    (await salesName("id", deal.sales_id)) ??
+    (await salesName("user_id", userId));
+
+  let yourReference: string | null = null;
+  const contactId = deal.contact_ids?.[0];
+  if (contactId != null) {
+    const { data: contact } = await supabaseAdmin
+      .from("contacts")
+      .select("first_name, last_name")
+      .eq("id", contactId)
+      .maybeSingle();
+    yourReference = contact
+      ? personName(contact.first_name, contact.last_name)
+      : null;
+  }
+
+  const billingCompanyId = deal.billing_company_id ?? deal.company_id;
+  const company = billingCompanyId
+    ? await loadCompany(supabaseAdmin, billingCompanyId)
+    : null;
+
+  return recurringInvoiceDetails({
+    ourReference,
+    yourReference,
+    invoiceEmail: company?.billing_email ?? company?.email,
+  });
+}
+
+async function createFromDeal(
+  dealId: number,
+  environment: FortnoxEnvironment,
+  userId: string,
+) {
   const deal = await loadDeal(dealId);
   // A sandbox run exercises the Fortnox side only. Its ids belong to a test
   // company, so writing them onto the production deal would mark a real deal as
@@ -142,6 +201,7 @@ async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
     interval,
     startDate,
     invoiceHandling: "MANUAL",
+    details: await loadInvoiceDetails(deal, userId),
   });
 
   const created = await client.requestWithHeaders<RecurringResponse>(
@@ -233,6 +293,7 @@ async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
 async function activate(
   dealId: number,
   environment: FortnoxEnvironment,
+  userId: string,
   recurringIdOverride?: string | null,
 ) {
   const deal = await loadDeal(dealId);
@@ -279,9 +340,15 @@ async function activate(
     });
   }
 
+  // The invoice details are rewritten in the same patch, so going live always
+  // carries the CRM's current references and email — and a recurring created
+  // before these were sent gets them filled in rather than invoicing blank.
   const patched = await client.patch<RecurringResponse>(
     path,
-    replaceOps({ status: "ACTIVE", invoice_handling: "AUTOMATIC" }),
+    [
+      ...invoiceDetailOps(await loadInvoiceDetails(deal, userId)),
+      ...replaceOps({ status: "ACTIVE", invoice_handling: "AUTOMATIC" }),
+    ],
     { ifMatch: current.etag },
   );
 
@@ -309,7 +376,7 @@ Deno.serve((req: Request) =>
     }
 
     try {
-      await requireUser(req);
+      const userId = await requireUser(req);
 
       const body = await parseRequiredJsonBody(req);
       const action = getEnumField(
@@ -338,8 +405,13 @@ Deno.serve((req: Request) =>
 
       return createJsonResponse(
         action === "create_from_deal"
-          ? await createFromDeal(dealId, environmentField)
-          : await activate(dealId, environmentField, recurringIdOverride),
+          ? await createFromDeal(dealId, environmentField, userId)
+          : await activate(
+              dealId,
+              environmentField,
+              userId,
+              recurringIdOverride,
+            ),
       );
     } catch (error) {
       if (error instanceof MissingBillingDataError) {
