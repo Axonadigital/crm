@@ -69,6 +69,26 @@ export function recurringRuleFor(
   };
 }
 
+const ROW_TEXT_PER_INTERVAL: Record<RecurringInterval, string> = {
+  monthly: "Löpande underhåll / månad",
+  quarterly: "Löpande underhåll / kvartal",
+  yearly: "Löpande underhåll / 12 månader",
+};
+
+/**
+ * The row text printed on every invoice the recurring generates. It describes
+ * the service per period, matching the manual invoices customers already know,
+ * instead of the deal name — which is internal ("Hemsida", "finnsbyggdesign").
+ */
+export function recurringRowText(
+  interval: RecurringInterval | null | undefined,
+): string {
+  return (
+    ROW_TEXT_PER_INTERVAL[interval ?? "monthly"] ??
+    ROW_TEXT_PER_INTERVAL.monthly
+  );
+}
+
 export type BuildRecurringInput = {
   customerNumber: string;
   description: string;
@@ -175,7 +195,9 @@ export function nextRecurringStartDate({
   const todayIso = toDateOnly(today);
 
   const startDate = invoicedThrough
-    ? toDateOnly(new Date(new Date(`${invoicedThrough}T00:00:00Z`).getTime() + DAY_MS))
+    ? toDateOnly(
+        new Date(new Date(`${invoicedThrough}T00:00:00Z`).getTime() + DAY_MS),
+      )
     : (billingStartDate ?? todayIso);
 
   return { startDate, inThePast: startDate < todayIso };
