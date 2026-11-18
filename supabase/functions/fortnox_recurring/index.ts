@@ -40,6 +40,7 @@ import {
   buildCreateRecurringPayload,
   nextRecurringStartDate,
   RECURRINGS_PATH,
+  recurringRowText,
   replaceOps,
   type RecurringInterval,
   type RecurringStatus,
@@ -131,13 +132,15 @@ async function createFromDeal(dealId: number, environment: FortnoxEnvironment) {
     today: new Date(),
   });
 
+  // No our_reference: Fortnox prints it as "Vår referens" on every invoice, and
+  // the deal link is read from external references, not from this field.
+  const interval = deal.recurring_interval as RecurringInterval | null;
   const payload = buildCreateRecurringPayload({
     customerNumber: customer_number,
-    description: deal.name,
+    description: recurringRowText(interval),
     price: deal.recurring_amount,
-    interval: deal.recurring_interval as RecurringInterval | null,
+    interval,
     startDate,
-    ourReference: `crm-deal-${deal.id}`,
     invoiceHandling: "MANUAL",
   });
 

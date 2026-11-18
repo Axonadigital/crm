@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCreateRecurringPayload,
   nextRecurringStartDate,
+  recurringRowText,
   recurringRuleFor,
   replaceOps,
   RECURRINGS_PATH,
@@ -31,6 +32,20 @@ describe("recurringRuleFor", () => {
       interval: 1,
       frequency: "MONTH",
     });
+  });
+});
+
+describe("recurringRowText", () => {
+  it("names the row after what the customer pays for, per period", () => {
+    // The row text is printed on every invoice the customer receives, so it
+    // must describe the service, not echo an internal deal name like "Hemsida".
+    expect(recurringRowText("monthly")).toBe("Löpande underhåll / månad");
+    expect(recurringRowText("quarterly")).toBe("Löpande underhåll / kvartal");
+    expect(recurringRowText("yearly")).toBe("Löpande underhåll / 12 månader");
+  });
+
+  it("falls back to monthly like the cadence rule does", () => {
+    expect(recurringRowText(null)).toBe("Löpande underhåll / månad");
   });
 });
 
@@ -152,8 +167,9 @@ describe("nextRecurringStartDate", () => {
   });
 
   it("falls back to today when the deal carries no dates at all", () => {
-    expect(
-      nextRecurringStartDate({ today }),
-    ).toEqual({ startDate: "2026-08-18", inThePast: false });
+    expect(nextRecurringStartDate({ today })).toEqual({
+      startDate: "2026-08-18",
+      inThePast: false,
+    });
   });
 });
