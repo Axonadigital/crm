@@ -3,6 +3,9 @@ import {
   buildCreateRecurringPayload,
   nextRecurringStartDate,
   recurringRowText,
+  invoiceDetailOps,
+  personName,
+  recurringInvoiceDetails,
   recurringRuleFor,
   replaceOps,
   RECURRINGS_PATH,
@@ -50,6 +53,21 @@ describe("recurringRowText", () => {
 });
 
 describe("buildCreateRecurringPayload", () => {
+  it("prints the references and email on every generated invoice", () => {
+    const payload = buildCreateRecurringPayload({
+      ...base,
+      details: recurringInvoiceDetails({
+        ourReference: "Rasmus Jönsson",
+        yourReference: "Patrick Sundqvist",
+        invoiceEmail: "info@z-bud.se",
+      }),
+    });
+    expect(payload.our_reference).toBe("Rasmus Jönsson");
+    expect(payload.your_reference).toBe("Patrick Sundqvist");
+    expect(payload.distribution_method).toBe("EMAIL");
+    expect(payload.email).toEqual({ to: "info@z-bud.se" });
+  });
+
   const base = {
     customerNumber: "1234",
     description: "SEO hantering",
@@ -81,6 +99,7 @@ describe("buildCreateRecurringPayload", () => {
       },
     ]);
     expect(payload.currency).toBe("SEK");
+    expect(payload.payment_terms).toBe("30");
   });
 
   it("allows an explicit handling so activation can reuse the same builder", () => {
@@ -107,6 +126,59 @@ describe("buildCreateRecurringPayload", () => {
       buildCreateRecurringPayload({ ...base, description: "   " }).rows[0]
         .description,
     ).toBe("Tjänst");
+  });
+});
+
+describe("personName", () => {
+  it("joins first and last name and skips placeholders", () => {
+    expect(personName("Rasmus", "Jönsson")).toBe("Rasmus Jönsson");
+    expect(personName("Patrick", null)).toBe("Patrick");
+    // Unconfirmed sales users are stored as "Pending Pending" — printing that
+    // as Vår referens on a customer invoice is worse than leaving it out.
+    expect(personName("Pending", "Pending")).toBeNull();
+    expect(personName(" ", null)).toBeNull();
+  });
+});
+
+describe("recurringInvoiceDetails", () => {
+  it("carries the same references, terms and email as our manual invoices", () => {
+    expect(
+      recurringInvoiceDetails({
+        ourReference: "Rasmus Jönsson",
+        yourReference: "Patrick Sundqvist",
+        invoiceEmail: "info@z-bud.se",
+      }),
+    ).toEqual({
+      our_reference: "Rasmus Jönsson",
+      your_reference: "Patrick Sundqvist",
+      payment_terms: "30",
+      distribution_method: "EMAIL",
+      email: { to: "info@z-bud.se" },
+    });
+  });
+
+  it("leaves out what the CRM does not know instead of sending blanks", () => {
+    expect(recurringInvoiceDetails({ ourReference: "Isak Persson" })).toEqual({
+      our_reference: "Isak Persson",
+      payment_terms: "30",
+    });
+  });
+});
+
+describe("invoiceDetailOps", () => {
+  it("uses add so empty fields on an existing recurring can be filled", () => {
+    // RFC 6902 replace fails on a member that is absent; add sets or overwrites.
+    expect(
+      invoiceDetailOps({
+        our_reference: "Rasmus Jönsson",
+        payment_terms: "30",
+        email: { to: "a@b.se" },
+      }),
+    ).toEqual([
+      { op: "add", path: "/our_reference", value: "Rasmus Jönsson" },
+      { op: "add", path: "/payment_terms", value: "30" },
+      { op: "add", path: "/email", value: { to: "a@b.se" } },
+    ]);
   });
 });
 
