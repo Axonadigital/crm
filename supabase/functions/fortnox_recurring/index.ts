@@ -45,6 +45,9 @@ import {
   RECURRINGS_PATH,
   recurringRowText,
   replaceOps,
+  rescheduleOps,
+  recurringRuleFor,
+  type RecurringSchedule,
   type RecurringInterval,
   type RecurringStatus,
   REVIEW_STATUS,
@@ -54,7 +57,7 @@ type RecurringResponse = {
   id?: string;
   status?: RecurringStatus;
   invoice_handling?: string;
-  dates?: { dates?: { invoice_date?: string; period_start_date?: string } };
+  dates?: RecurringSchedule;
 };
 
 async function requireUser(req: Request): Promise<string> {
@@ -340,12 +343,34 @@ async function activate(
     });
   }
 
+  // Start where the CRM says invoicing stands. Invoices settled by hand after
+  // the recurring was created (e.g. two months on one invoice) move
+  // "fakturerad t.o.m." forward, and Fortnox must follow or it bills twice.
+  const { startDate, inThePast } = nextRecurringStartDate({
+    invoicedThrough: deal.invoiced_through,
+    billingStartDate: deal.billing_start_date,
+    today: new Date(),
+  });
+  if (inThePast) {
+    throw new HttpError(
+      422,
+      `Startdatumet ${startDate} ligger bakåt i tiden, så Fortnox skulle skapa ikapp-fakturor direkt. Uppdatera "Fakturerad t.o.m." på affären först.`,
+      { code: "start_in_the_past" },
+    );
+  }
+  const reschedule = rescheduleOps(
+    current.data?.dates,
+    startDate,
+    recurringRuleFor(deal.recurring_interval as RecurringInterval | null),
+  );
+
   // The invoice details are rewritten in the same patch, so going live always
   // carries the CRM's current references and email — and a recurring created
   // before these were sent gets them filled in rather than invoicing blank.
   const patched = await client.patch<RecurringResponse>(
     path,
     [
+      ...reschedule,
       ...invoiceDetailOps(await loadInvoiceDetails(deal, userId)),
       ...replaceOps({ status: "ACTIVE", invoice_handling: "AUTOMATIC" }),
     ],

@@ -264,6 +264,56 @@ export function nextRecurringStartDate({
   return { startDate, inThePast: startDate < todayIso };
 }
 
+/** The scheduling block Fortnox returns on GET (`dates` + `rules`). */
+export type RecurringSchedule = {
+  dates?: {
+    invoice_processing_date?: string;
+    period_start_date?: string;
+    invoice_date?: string;
+  };
+  rules?: Record<string, unknown>;
+};
+
+/**
+ * Patch that moves a recurring's next occurrence to `startDate`, or nothing if
+ * it is already there. Used on activation so Fortnox starts where the CRM's
+ * "fakturerad t.o.m." says, even if invoicing was settled by hand after the
+ * recurring was created. The current rules are sent back unchanged — Fortnox
+ * requires them on a dates update — and the new dates win over their anchors.
+ */
+export function rescheduleOps(
+  current: RecurringSchedule | undefined,
+  startDate: string,
+  fallbackRule: RecurringRule = recurringRuleFor(null),
+): Array<{
+  op: "replace";
+  path: "/dates";
+  value: {
+    dates: { invoice_processing_date: string; period_start_date: string };
+    rules: Record<string, unknown>;
+  };
+}> {
+  const next = current?.dates;
+  const alreadyThere =
+    next?.period_start_date === startDate &&
+    (next.invoice_processing_date ?? startDate) === startDate;
+  if (alreadyThere) return [];
+
+  return [
+    {
+      op: "replace",
+      path: "/dates",
+      value: {
+        dates: {
+          invoice_processing_date: startDate,
+          period_start_date: startDate,
+        },
+        rules: current?.rules ?? fallbackRule,
+      },
+    },
+  ];
+}
+
 /** JSON Patch operations, the only write shape PATCH accepts. */
 export function replaceOps(
   values: Record<string, string | number>,

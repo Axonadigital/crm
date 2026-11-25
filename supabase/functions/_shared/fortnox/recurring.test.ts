@@ -8,6 +8,7 @@ import {
   recurringInvoiceDetails,
   recurringRuleFor,
   replaceOps,
+  rescheduleOps,
   RECURRINGS_PATH,
 } from "./recurring.ts";
 
@@ -179,6 +180,51 @@ describe("invoiceDetailOps", () => {
       { op: "add", path: "/payment_terms", value: "30" },
       { op: "add", path: "/email", value: { to: "a@b.se" } },
     ]);
+  });
+});
+
+describe("rescheduleOps", () => {
+  const scheduled = (date: string) => ({
+    dates: {
+      invoice_processing_date: date,
+      period_start_date: date,
+      invoice_date: date,
+    },
+    rules: { interval: 1, frequency: "MONTH", invoice_anchor: "FIRST_DAY" },
+  });
+
+  it("moves a recurring to the CRM's start date, keeping its cadence", () => {
+    // Tullus: fakturerad t.o.m. 2026-12-31 in the CRM, but Fortnox still says
+    // 2026-12-01 — activating as-is would bill December twice.
+    expect(rescheduleOps(scheduled("2026-12-01"), "2027-01-01")).toEqual([
+      {
+        op: "replace",
+        path: "/dates",
+        value: {
+          dates: {
+            invoice_processing_date: "2027-01-01",
+            period_start_date: "2027-01-01",
+          },
+          rules: {
+            interval: 1,
+            frequency: "MONTH",
+            invoice_anchor: "FIRST_DAY",
+          },
+        },
+      },
+    ]);
+  });
+
+  it("leaves a recurring alone when the dates already agree", () => {
+    expect(rescheduleOps(scheduled("2026-12-15"), "2026-12-15")).toEqual([]);
+  });
+
+  it("falls back to a monthly rule when Fortnox returns none", () => {
+    const [op] = rescheduleOps(
+      { dates: { period_start_date: "2026-12-01" } },
+      "2027-01-01",
+    );
+    expect(op.value.rules).toEqual({ interval: 1, frequency: "MONTH" });
   });
 });
 
